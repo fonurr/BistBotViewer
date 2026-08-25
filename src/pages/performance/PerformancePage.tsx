@@ -436,11 +436,13 @@ function PerformanceStrip({
       value: formatSignedNumber(summary.grossPnl),
       sub: metricText(summary.grossReturnPercent, true),
       tone: signedTone(summary.grossPnl),
+      subTone: summary.grossReturnPercent.available ? undefined : 'status-warn',
     },
     {
       label: 'round trips',
       value: String(summary.tradeCount),
       sub: `${summary.winningTrades} won · ${metricText(summary.winRatePercent, true)}`,
+      subTone: summary.winRatePercent.available ? undefined : 'status-warn',
     },
     {
       label: 'per trade',
@@ -467,7 +469,12 @@ function PerformanceStrip({
         summary.drawdown.peakDate && summary.drawdown.troughDate
           ? `${formatDateKey(summary.drawdown.peakDate)} → ${formatDateKey(summary.drawdown.troughDate)}`
           : 'observed gross curve',
-      tone: summary.drawdown.amount.available ? 'number-negative' : 'status-warn',
+      // A drawdown of zero is not a number that went down (TOKENS rule 7).
+      tone: !summary.drawdown.amount.available
+        ? 'status-warn'
+        : summary.drawdown.amount.value > 0
+          ? 'number-negative'
+          : undefined,
     },
     {
       label: 'configured limits',
@@ -480,6 +487,7 @@ function PerformanceStrip({
       label: 'profit factor',
       value: metricNumber(summary.profitFactor),
       sub: 'gross profit ÷ gross loss',
+      tone: summary.profitFactor.available ? undefined : 'status-warn',
     },
   ];
   return (
@@ -977,8 +985,11 @@ function metricText(metric: PerformanceMetric, percent = false): string {
 function metricTone(metric: PerformanceMetric): string | undefined {
   return metric.available ? signedTone(metric.value) : 'status-warn';
 }
-function signedTone(value: number): string {
-  return value >= 0 ? 'number-positive' : 'number-negative';
+// TOKENS rule 7: a sign is inked only where it means one thing. Zero is not up
+// and not down, so it stays in body ink.
+function signedTone(value: number): string | undefined {
+  if (value === 0) return undefined;
+  return value > 0 ? 'number-positive' : 'number-negative';
 }
 function unavailableReason(metric: PerformanceMetric): string {
   return metric.available ? '' : metric.reason.replaceAll('-', ' ');
