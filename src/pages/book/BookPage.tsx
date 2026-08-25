@@ -716,38 +716,25 @@ function StatStrip({ summary, pendingCount }: { summary: BookSummary; pendingCou
       />
       <Stat
         label="unrealized"
-        value={
-          summary.unrealizedKnown
-            ? `${formatSignedNumber(summary.unrealized)}${
-                summary.marketFiguresTrusted ? '' : ' · last known'
-              }`
-            : 'not available'
-        }
+        value={summary.unrealizedKnown ? formatSignedNumber(summary.unrealized) : 'not available'}
+        detail={summary.unrealizedKnown && !summary.marketFiguresTrusted ? 'last known' : null}
         signed={summary.marketFiguresTrusted ? summary.unrealized : undefined}
         unavailable={!summary.unrealizedKnown}
         className={trustClass}
       />
       <Stat
         label="total"
-        value={
-          summary.total === null
-            ? 'not available'
-            : `${formatSignedNumber(summary.total)}${
-                summary.marketFiguresTrusted ? '' : ' · last known'
-              }`
-        }
+        value={summary.total === null ? 'not available' : formatSignedNumber(summary.total)}
+        detail={summary.total !== null && !summary.marketFiguresTrusted ? 'last known' : null}
         signed={summary.marketFiguresTrusted ? (summary.total ?? undefined) : undefined}
         unavailable={summary.total === null}
         className={trustClass}
       />
       <Stat
         label="committed"
-        value={
-          summary.committed === null
-            ? 'not available'
-            : `${formatNumber(summary.committed, 0)}${
-                summary.committedCompleteOnly ? ' · complete bots only' : ''
-              }`
+        value={summary.committed === null ? 'not available' : formatNumber(summary.committed, 0)}
+        detail={
+          summary.committed !== null && summary.committedCompleteOnly ? 'complete bots only' : null
         }
         unavailable={summary.committed === null}
       />
@@ -763,6 +750,7 @@ function StatStrip({ summary, pendingCount }: { summary: BookSummary; pendingCou
 function Stat({
   label,
   value,
+  detail = null,
   accent,
   signed,
   unavailable = false,
@@ -770,6 +758,7 @@ function Stat({
 }: {
   label: string;
   value: string;
+  detail?: string | null;
   accent?: boolean;
   signed?: number;
   unavailable?: boolean;
@@ -788,6 +777,8 @@ function Stat({
     <div className="book-stat">
       <span className={`kicker${accent ? ' accent-kicker' : ''}`}>{label}</span>
       <strong className={`${signedClass}${unavailable ? '' : className}`}>{value}</strong>
+      {/* A qualifier is not the figure: at the strip's size it read louder than the number. */}
+      {detail ? <small className="status-warn">{detail}</small> : null}
     </div>
   );
 }

@@ -373,6 +373,11 @@
   gap: var(--space-3);
 }
 
+/* One action per line: a card action that wrapped read as two controls. */
+.bots-card-actions .btn {
+  white-space: nowrap;
+}
+
 .bots-card-actions .btn {
   width: 100%;
 }
@@ -526,7 +531,7 @@
 }
 
 .bots-chip-input {
-  width: calc(var(--space-8) * 3);
+  width: calc(var(--space-8) * 5);
   min-height: var(--space-8);
   padding: var(--space-1) var(--space-2);
   text-transform: uppercase;

@@ -380,9 +380,12 @@ export function BotsPage() {
                 ? 'not available'
                 : !fleet.allCompleteBudgetsKnown
                   ? 'loading or unavailable'
-                  : fleet.incompleteBots > 0
-                    ? `${formatNumber(fleet.committed, 0)} · complete bots only`
-                    : formatNumber(fleet.committed, 0)
+                  : formatNumber(fleet.committed, 0)
+            }
+            detail={
+              snapshotAvailable && fleet.allCompleteBudgetsKnown && fleet.incompleteBots > 0
+                ? 'complete bots only'
+                : null
             }
             unavailable={!snapshotAvailable || !fleet.allCompleteBudgetsKnown}
           />

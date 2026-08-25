@@ -287,6 +287,10 @@
   font-weight: 500;
 }
 
+.book-stat small {
+  font-size: var(--font-meta);
+}
+
 .book-scope-summaries {
   display: grid;
   gap: var(--space-2);
