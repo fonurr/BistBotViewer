@@ -152,6 +152,28 @@ export function BookFilters(props: BookFiltersProps) {
 
   return (
     <>
+      {props.noClosingOrderCount > 0 || props.mismatchCount > 0 ? (
+        <div className="human-banner" role="status">
+          <span className="human-total">
+            {props.noClosingOrderCount + props.mismatchCount === 1
+              ? '1 needs a human'
+              : `${props.noClosingOrderCount + props.mismatchCount} need a human`}
+          </span>
+          {props.noClosingOrderCount > 0 ? (
+            <button type="button" onClick={setNoExit} aria-pressed={filters.noClosingOrder}>
+              {plural(props.noClosingOrderCount, 'position')} with no closing order
+            </button>
+          ) : null}
+          {props.mismatchCount > 0 ? (
+            <button type="button" onClick={props.onOpenMismatch}>
+              {plural(props.mismatchCount, 'account mismatch', 'account mismatches')}
+            </button>
+          ) : null}
+          <span className="human-unfiltered">
+            never filtered · these stay visible whatever the toolbar says
+          </span>
+        </div>
+      ) : null}
       <div className="book-toolbar">
         <div className="seg" aria-label="Book scopes">
           {scopes.map((scope) => (
@@ -378,27 +400,6 @@ export function BookFilters(props: BookFiltersProps) {
           <p className="filter-help">These are batch dates, not calendar days.</p>
         </FilterPopover>
         <span className="book-toolbar-spacer" />
-        {(props.noClosingOrderCount > 0 || props.mismatchCount > 0) && (
-          <div className="human-banner" role="status">
-            <span className="human-total">
-              {props.noClosingOrderCount + props.mismatchCount === 1
-                ? '1 needs a human'
-                : `${props.noClosingOrderCount + props.mismatchCount} need a human`}
-            </span>
-            {props.noClosingOrderCount > 0 ? (
-              <button type="button" onClick={setNoExit} aria-pressed={filters.noClosingOrder}>
-                {props.noClosingOrderCount} position{props.noClosingOrderCount === 1 ? '' : 's'}{' '}
-                with no closing order
-              </button>
-            ) : null}
-            {props.mismatchCount > 0 ? (
-              <button type="button" onClick={props.onOpenMismatch}>
-                {props.mismatchCount} account mismatch{props.mismatchCount === 1 ? '' : 'es'}
-              </button>
-            ) : null}
-            <span className="human-unfiltered">unfiltered</span>
-          </div>
-        )}
         {props.canceledCount > 0 ? (
           <button
             type="button"

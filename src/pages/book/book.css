@@ -198,11 +198,16 @@
   min-height: 32px;
   align-items: center;
   flex-wrap: wrap;
-  gap: var(--space-3);
-  padding: 4px 10px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+  padding: var(--space-2) var(--space-4);
   border: 1px solid color-mix(in srgb, var(--st-dead) 45%, transparent);
   border-radius: var(--radius-md);
   background: var(--st-dead-t);
+}
+
+.human-banner .human-unfiltered {
+  margin-left: auto;
 }
 
 .human-total {
