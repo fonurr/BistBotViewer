@@ -94,6 +94,35 @@ export function makeActiveOrder(overrides: Partial<ActiveOrder> = {}): ActiveOrd
   };
 }
 
+export function makeCanceledOrder(overrides: Partial<CanceledOrder> = {}): CanceledOrder {
+  return {
+    id: 401,
+    botId: 'bot-alpha',
+    clientOrderId: 'client-thyao-sell-dead',
+    matriksOrderId: 'mx-thyao-sell-dead',
+    matriksOrderId2: null,
+    symbol: 'THYAO',
+    orderTime: FIXTURE_NOW_MS - 3_600_000,
+    sentTime: FIXTURE_NOW_MS - 3_600_000,
+    cancelTime: FIXTURE_NOW_MS - 1_800_000,
+    orderQuantity: 120,
+    canceledQuantity: 120,
+    direction: 'sell',
+    type: 'limit',
+    orderPrice: 310,
+    timeInForce: '0',
+    status: 'CanceledByUser',
+    explanation: 'canceled in the MatriksIQ terminal',
+    retryCount: 0,
+    intentType: 'limit',
+    cancelAtFloor: false,
+    chainId: 'chain-thyao',
+    parentClientOrderId: 'client-thyao-open-000001',
+    retryOfClientOrderId: null,
+    ...overrides,
+  };
+}
+
 export function makePosition(overrides: Partial<Position> = {}): Position {
   return {
     id: 201,
