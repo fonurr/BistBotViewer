@@ -496,6 +496,22 @@ describe('OrderDialog copy', () => {
     expect(screen.getByRole('heading', { name: 'Sell THYAO' })).toBeVisible();
   });
 
+  it('states the ceiling an edited buy is judged by, with its own reservation added back', () => {
+    const chain = chainFor({ activeOrders: [makeActiveOrder()] });
+    renderDialog(chain, { kind: 'edit', row: chain.activeRows[0]! });
+
+    // The fixture bot has 420.000 remaining and a 40 x 68,25 limit buy resting,
+    // so the budget side of the ceiling is 422.730, not the raw remainder.
+    expect(
+      screen.getByText(
+        /may reserve up to 100\.000,00 TL — the per-position cap binds it, under the 422\.730,00 the bot budget allows/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/own 2\.730,00 is added back: an edit is not judged against itself/),
+    ).toBeVisible();
+  });
+
   it('states how early a fire now goes before it asks for assent', () => {
     vi.setSystemTime(new Date('2026-08-25T09:00:00.000Z'));
     const scheduled = makeActiveOrder({

@@ -978,16 +978,8 @@ function validateDraft(
         price: finalPrice,
       };
     if (finalQuantity !== null && finalPrice !== null) {
-      const ownCommitment =
-        action.kind === 'edit' && action.row.orderPrice !== null && action.row.quantity !== null
-          ? reservedBuyCost(
-              action.row.quantity,
-              action.row.orderPrice,
-              action.row.orderType ?? action.row.intentType ?? 'limit',
-            )
-          : 0;
       const ceiling = Math.min(
-        budget.remainingBotBudget + ownCommitment,
+        budget.remainingBotBudget + ownBuyCommitment(action),
         effectivePerPositionCap(budget),
       );
       const cost = reservedBuyCost(finalQuantity, finalPrice, effectiveDraft.type);
@@ -1093,7 +1085,32 @@ function boundCopy(
   }
   if (!budget)
     return 'A buy is bounded by the bot budget and effective per-position cap; those figures are not available yet.';
-  return `Available bot budget: ${formatNumber(budget.remainingBotBudget)}. Effective per-position cap: ${formatNumber(effectivePerPositionCap(budget))}. Market buys reserve 10% extra per share.`;
+  const perPosition = effectivePerPositionCap(budget);
+  // SPEC 4: an edit is judged with the order excluded from its own limit, and
+  // the form has to state the ceiling that produces — `remainingBotBudget`
+  // already has this order's reservation taken out of it.
+  const ownCommitment = ownBuyCommitment(action);
+  const budgetCeiling = budget.remainingBotBudget + ownCommitment;
+  const binder =
+    budgetCeiling <= perPosition
+      ? `the bot budget binds it, under the ${formatNumber(perPosition)} the per-position cap allows`
+      : `the per-position cap binds it, under the ${formatNumber(budgetCeiling)} the bot budget allows`;
+  const selfExclusion =
+    ownCommitment > 0
+      ? ` This order's own ${formatNumber(ownCommitment)} is added back: an edit is not judged against itself.`
+      : '';
+  return `This buy may reserve up to ${formatNumber(Math.min(budgetCeiling, perPosition))} TL — ${binder}.${selfExclusion} Market buys reserve 10% extra per share.`;
+}
+
+/** What an edited buy already holds against the budget, and so gets back. */
+function ownBuyCommitment(action: Exclude<OrderDialogAction, { kind: 'cancel' | 'fire' }>): number {
+  if (action.kind !== 'edit' || action.row.direction !== 'buy') return 0;
+  if (action.row.orderPrice === null || action.row.quantity === null) return 0;
+  return reservedBuyCost(
+    action.row.quantity,
+    action.row.orderPrice,
+    action.row.orderType ?? action.row.intentType ?? 'limit',
+  );
 }
 
 /**
