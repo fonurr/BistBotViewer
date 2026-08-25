@@ -226,6 +226,26 @@ export function makeErrorRow(overrides: Partial<ErrorRow> = {}): ErrorRow {
   };
 }
 
+export function makePendingOrderRequest(
+  overrides: Partial<PendingOrderRequest> = {},
+): PendingOrderRequest {
+  return {
+    id: 7,
+    botId: 'bot-alpha',
+    direction: 'buy',
+    request: {
+      botId: 'bot-alpha',
+      direction: 'buy',
+      type: 'market',
+      stocks: [{ symbol: 'THYAO', price: 301 }],
+    },
+    createdTime: FIXTURE_NOW_MS - 600_000,
+    retryCount: 1,
+    nextAttemptTime: FIXTURE_NOW_MS + 600_000,
+    ...overrides,
+  };
+}
+
 export function makeBookReadFixture(): BistReadFixture {
   const bot = makeBot();
   return {

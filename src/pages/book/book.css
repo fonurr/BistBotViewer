@@ -163,9 +163,24 @@
 
 .pending-baskets > header {
   display: flex;
+  align-items: center;
   gap: var(--space-4);
   margin-bottom: var(--space-2);
   font-size: var(--font-meta);
+}
+
+.pending-select {
+  display: flex;
+  align-items: center;
+  padding-left: var(--space-3);
+}
+
+.pending-select input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--color-accent);
+  cursor: pointer;
 }
 
 .pending-basket {

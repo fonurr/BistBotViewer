@@ -53,7 +53,8 @@ export function BookPage() {
   const [canceledOverrides, setCanceledOverrides] = useState<ReadonlySet<string>>(new Set());
   const [openChain, setOpenChain] = useState<OpenChainState | null>(null);
   const [mismatchOpen, setMismatchOpen] = useState(false);
-  const [pendingTarget, setPendingTarget] = useState<PendingOrderRequest | null>(null);
+  const [pendingSelection, setPendingSelection] = useState<ReadonlySet<number>>(new Set());
+  const [pendingTargets, setPendingTargets] = useState<readonly PendingOrderRequest[] | null>(null);
 
   const chains = useMemo(
     () =>
@@ -258,7 +259,15 @@ export function BookPage() {
       ) : null}
       {data.isPending ? <BookSkeleton /> : null}
       {snapshotAvailable && visiblePending.length > 0 ? (
-        <PendingBaskets requests={visiblePending} onCancel={setPendingTarget} />
+        <PendingBaskets
+          requests={visiblePending}
+          selected={pendingSelection}
+          writesHeldReason={writesHeldReason}
+          onToggle={(id) => setPendingSelection((current) => toggleNumber(current, id))}
+          onCancelSelected={() =>
+            setPendingTargets(visiblePending.filter((request) => pendingSelection.has(request.id)))
+          }
+        />
       ) : null}
       {snapshotAvailable && filters.scopes.size === 0 ? (
         <div className="book-empty-reason">
@@ -351,11 +360,14 @@ export function BookPage() {
         rows={mismatchRows}
         onClose={() => setMismatchOpen(false)}
       />
-      {pendingTarget ? (
+      {pendingTargets && pendingTargets.length > 0 ? (
         <PendingCancelDialog
-          request={pendingTarget}
+          requests={pendingTargets}
           writesHeldReason={writesHeldReason}
-          onClose={() => setPendingTarget(null)}
+          onClose={() => {
+            setPendingTargets(null);
+            setPendingSelection(new Set());
+          }}
         />
       ) : null}
     </div>
@@ -785,20 +797,56 @@ function Stat({
 
 function PendingBaskets({
   requests,
-  onCancel,
+  selected,
+  writesHeldReason,
+  onToggle,
+  onCancelSelected,
 }: {
   requests: readonly PendingOrderRequest[];
-  onCancel: (request: PendingOrderRequest) => void;
+  selected: ReadonlySet<number>;
+  writesHeldReason: string | null;
+  onToggle: (id: number) => void;
+  onCancelSelected: () => void;
 }) {
+  const selectedHere = requests.filter((request) => selected.has(request.id));
+  const bots = new Set(selectedHere.map((request) => request.botId));
   return (
     <section className="pending-baskets" aria-label="Queued order baskets">
       <header>
         <span className="kicker">waiting · queued requests</span>
         <span className="muted">baskets have no chain until they fire</span>
+        <span className="pending-grow" />
+        {selectedHere.length > 0 ? (
+          <>
+            <span className="muted">
+              {plural(selectedHere.length, 'basket')} selected
+              {bots.size > 1 ? ` · ${plural(bots.size, 'call')}, one per bot` : ''}
+            </span>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={Boolean(writesHeldReason)}
+              title={writesHeldReason ?? undefined}
+              onClick={onCancelSelected}
+            >
+              cancel selected
+            </button>
+          </>
+        ) : (
+          <span className="muted">select a basket to call it off</span>
+        )}
       </header>
       {requests.map((request) => (
         <div className="pending-basket" key={request.id}>
           <span className="pending-spine" />
+          <label className="pending-select">
+            <input
+              type="checkbox"
+              checked={selected.has(request.id)}
+              onChange={() => onToggle(request.id)}
+              aria-label={`Select queued request ${request.id}`}
+            />
+          </label>
           <div className="pending-basket-summary">
             <strong>{request.direction} batch</strong>
             <span>
@@ -833,9 +881,6 @@ function PendingBaskets({
             )}
           </div>
           <span className="pending-grow" />
-          <button type="button" className="btn btn-ghost" onClick={() => onCancel(request)}>
-            cancel
-          </button>
         </div>
       ))}
     </section>
@@ -849,11 +894,11 @@ function pendingTimingCopy(spec: ScheduleSpec | undefined): string {
 }
 
 function PendingCancelDialog({
-  request,
+  requests,
   writesHeldReason,
   onClose,
 }: {
-  request: PendingOrderRequest;
+  requests: readonly PendingOrderRequest[];
   writesHeldReason: string | null;
   onClose: () => void;
 }) {
@@ -862,78 +907,71 @@ function PendingCancelDialog({
   writesHeldRef.current = writesHeldReason;
   const [step, setStep] = useState<'confirm' | 'sending' | 'result'>('confirm');
   const [results, setResults] = useState<ActionResult[]>([]);
+  // The endpoint names exactly one bot, so a selection spanning bots is one
+  // call per bot, itemized in the order they will be made.
+  const byBot = groupRequestsByBot(requests);
+
   const submit = async () => {
     if (writesHeldRef.current) return;
     setStep('sending');
-    try {
-      const response = await bistApi.cancelPendingOrderRequests(request.botId, [request.id]);
-      const outcome = response.results.find((row) => row.id === request.id)?.outcome;
-      if (outcome === 'canceled' || outcome === 'gone') {
-        queryClient.setQueriesData<PendingOrderRequest[]>(
-          { queryKey: bistKeys.pendingRequests('*') },
-          (rows) => rows?.filter((row) => row.id !== request.id),
+    const collected: ActionResult[] = [];
+    for (const [botId, group] of byBot) {
+      try {
+        const response = await bistApi.cancelPendingOrderRequests(
+          botId,
+          group.map((request) => request.id),
         );
-        if (outcome === 'gone') {
-          void queryClient.invalidateQueries({ queryKey: bistKeys.activeOrders('*') });
-        }
-      }
-      setResults([
-        {
-          id: String(request.id),
-          label: `Queued request ${request.id}`,
-          tone:
-            outcome === 'canceled'
-              ? 'landed'
-              : outcome === 'gone' || outcome === undefined
-                ? 'unknown'
-                : 'refused',
-          word: outcome === 'canceled' ? 'Removed' : undefined,
-          detail:
-            outcome === 'canceled'
-              ? 'Canceled before any order reached the exchange.'
-              : outcome === 'gone'
-                ? 'It was on screen a moment ago, so it fired. The next refresh will show its orders under their own ids.'
-                : outcome === 'wrongBot'
-                  ? 'The server says this request belongs to another bot. This viewer made no second attempt.'
-                  : 'The reply omitted this request id, so the outcome is unknown. Do not submit the cancellation again.',
-        },
-      ]);
-    } catch (error) {
-      const apiError = asBistApiError(error);
-      setResults([
-        apiError.queued
-          ? {
-              id: String(request.id),
-              label: `Queued request ${request.id}`,
-              tone: 'accepted',
-              word: 'Queued',
-              detail: `${apiError.message} The server owns this cancellation for replay; do not submit it again.`,
+        for (const request of group) {
+          const outcome = response.results.find((row) => row.id === request.id)?.outcome;
+          if (outcome === 'canceled' || outcome === 'gone') {
+            queryClient.setQueriesData<PendingOrderRequest[]>(
+              { queryKey: bistKeys.pendingRequests('*') },
+              (rows) => rows?.filter((row) => row.id !== request.id),
+            );
+            if (outcome === 'gone') {
+              void queryClient.invalidateQueries({ queryKey: bistKeys.activeOrders('*') });
             }
-          : {
-              id: String(request.id),
-              label: `Queued request ${request.id}`,
-              tone:
-                apiError.mayHaveReachedExchange ||
-                apiError.kind === 'unknown' ||
-                apiError.kind === 'protocol'
-                  ? 'unknown'
-                  : 'refused',
-              detail: `${apiError.message} This viewer did not retry the call.`,
-            },
-      ]);
+          }
+          collected.push(pendingOutcomeResult(request, outcome));
+        }
+      } catch (error) {
+        const apiError = asBistApiError(error);
+        for (const request of group) collected.push(pendingErrorResult(request, apiError));
+      }
     }
+    setResults(collected);
     setStep('result');
   };
+
   return (
     <Modal
       open
-      title={`Cancel queued request ${request.id}`}
+      title={
+        requests.length === 1
+          ? `Cancel queued request ${requests[0]!.id}`
+          : `Cancel ${plural(requests.length, 'queued request')}`
+      }
       onClose={onClose}
       closeBlocked={step === 'sending'}
     >
       {step === 'confirm' ? (
         <>
-          <p>Cancel this whole {request.direction} basket before it sizes or sends any stock.</p>
+          <p>
+            Call {requests.length === 1 ? 'this basket' : 'these baskets'} off before anything is
+            sized or sent. A basket the server has already replayed answers{' '}
+            <span className="book-inline-value">gone</span>, and its orders are then in the active
+            list under their own ids.
+          </p>
+          <ol className="confirm-calls">
+            {[...byBot.entries()].map(([botId, group], index) => (
+              <li key={botId}>
+                <strong>{index + 1} · CancelPendingOrderRequests</strong>
+                <span>
+                  {botId} · {group.map((request) => `req ${request.id}`).join(', ')}
+                </span>
+              </li>
+            ))}
+          </ol>
           {writesHeldReason ? <p className="form-block-reason">{writesHeldReason}</p> : null}
           <div className="dialog-actions">
             <button type="button" className="btn btn-secondary" onClick={onClose}>
@@ -945,7 +983,7 @@ function PendingCancelDialog({
               disabled={Boolean(writesHeldReason)}
               onClick={() => void submit()}
             >
-              Cancel request
+              {requests.length === 1 ? 'Cancel request' : `Cancel ${requests.length} requests`}
             </button>
           </div>
         </>
@@ -970,6 +1008,67 @@ function PendingCancelDialog({
       ) : null}
     </Modal>
   );
+}
+
+export function groupRequestsByBot(
+  requests: readonly PendingOrderRequest[],
+): Map<string, PendingOrderRequest[]> {
+  const byBot = new Map<string, PendingOrderRequest[]>();
+  for (const request of requests) {
+    const group = byBot.get(request.botId) ?? [];
+    group.push(request);
+    byBot.set(request.botId, group);
+  }
+  return byBot;
+}
+
+function pendingOutcomeResult(
+  request: PendingOrderRequest,
+  outcome: 'canceled' | 'gone' | 'wrongBot' | undefined,
+): ActionResult {
+  return {
+    id: String(request.id),
+    label: `Queued request ${request.id}`,
+    tone:
+      outcome === 'canceled'
+        ? 'landed'
+        : outcome === 'gone' || outcome === undefined
+          ? 'unknown'
+          : 'refused',
+    word: outcome === 'canceled' ? 'Removed' : outcome === 'gone' ? 'Gone' : undefined,
+    detail:
+      outcome === 'canceled'
+        ? 'Canceled before any order reached the exchange.'
+        : outcome === 'gone'
+          ? 'It was on screen a moment ago, so it fired. The next refresh will show its orders under their own ids.'
+          : outcome === 'wrongBot'
+            ? 'The server says this request belongs to another bot. This viewer made no second attempt.'
+            : 'The reply omitted this request id, so the outcome is unknown. Do not submit the cancellation again.',
+  };
+}
+
+function pendingErrorResult(
+  request: PendingOrderRequest,
+  apiError: ReturnType<typeof asBistApiError>,
+): ActionResult {
+  if (apiError.queued) {
+    return {
+      id: String(request.id),
+      label: `Queued request ${request.id}`,
+      tone: 'accepted',
+      word: 'Queued',
+      detail: `${apiError.message} The server owns this cancellation for replay; do not submit it again.`,
+    };
+  }
+  return {
+    id: String(request.id),
+    label: `Queued request ${request.id}`,
+    tone:
+      apiError.mayHaveReachedExchange || apiError.kind === 'unknown' || apiError.kind === 'protocol'
+        ? 'unknown'
+        : 'refused',
+    detail: `${apiError.message} This viewer did not retry the call.`,
+  };
 }
 
 function MismatchDialog({
@@ -1028,6 +1127,13 @@ function BookSkeleton() {
       <span />
     </div>
   );
+}
+
+function toggleNumber(values: ReadonlySet<number>, value: number): ReadonlySet<number> {
+  const next = new Set(values);
+  if (next.has(value)) next.delete(value);
+  else next.add(value);
+  return next;
 }
 
 function toggleValue(values: ReadonlySet<string>, value: string): ReadonlySet<string> {

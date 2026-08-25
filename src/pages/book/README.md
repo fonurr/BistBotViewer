@@ -10,6 +10,11 @@ is dropped as soon as the toolbar is used, so the URL never fights the state it 
 `BookFilters` owns additive scopes and the bot, account, symbol, and batch-range controls.
 Account selection uses the stored account and brokerage together; matching account numbers at
 different brokerages remain separate filters.
+Queued baskets carry per-row selection. `CancelPendingOrderRequests` names one bot, so a
+selection spanning bots becomes one call per bot, itemized in the confirm step in the order they
+will be made, and every id gets its own outcome — `canceled`, `gone` and `wrongBot` are each
+rendered as themselves.
+
 `BookGrid` owns chain grouping and row vocabulary. `OrderDialog` is the only place from this
 page that performs writes; it keeps the view → form/confirm → sending → result sequence and
 never retries a write automatically.
