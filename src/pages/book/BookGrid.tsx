@@ -21,6 +21,7 @@ import {
   unrealizedPnl,
 } from '../../domain/orders';
 import { statusClass } from '../../domain/status';
+import { useMinuteClock } from '../../components/useMinuteClock';
 import { bookRowPresentation } from './rowPresentation';
 import type { BookFilterState } from './types';
 import { orderActionsForRow, type OrderDialogAction } from './orderActions';
@@ -55,6 +56,7 @@ const columnLabels = [
 ];
 
 export function BookGrid(props: BookGridProps) {
+  const now = useMinuteClock();
   const botById = new Map(props.bots.map((bot) => [bot.id, bot]));
   const accountById = new Map(props.accounts.map((account) => [account.accountId, account]));
   const groups = groupChains(props.chains);
@@ -118,7 +120,13 @@ export function BookGrid(props: BookGridProps) {
                   <span className="book-bot-rule" />
                 </header>
                 {botGroup.chains.map((chain) => (
-                  <ChainRows {...props} chain={chain} pnlState={pnlState} key={chain.key} />
+                  <ChainRows
+                    {...props}
+                    chain={chain}
+                    pnlState={pnlState}
+                    now={now}
+                    key={chain.key}
+                  />
                 ))}
               </section>
             );
@@ -129,7 +137,9 @@ export function BookGrid(props: BookGridProps) {
   );
 }
 
-function ChainRows(props: BookGridProps & { chain: BookChain; pnlState: FilledPnlState }) {
+function ChainRows(
+  props: BookGridProps & { chain: BookChain; pnlState: FilledPnlState; now: number },
+) {
   const { chain } = props;
   const nonCanceledRows = chain.rows.filter(
     (row) => row.source !== 'canceled' && rowVisible(row, props.filters),
@@ -153,6 +163,7 @@ function ChainRows(props: BookGridProps & { chain: BookChain; pnlState: FilledPn
           pnlState={props.pnlState}
           pricesTrustworthy={props.pricesTrustworthy}
           writesHeldReason={props.writesHeldReason}
+          now={props.now}
           onOpenChain={props.onOpenChain}
         />
       ))}
@@ -169,6 +180,7 @@ function ChainRows(props: BookGridProps & { chain: BookChain; pnlState: FilledPn
                   pnlState={props.pnlState}
                   pricesTrustworthy={props.pricesTrustworthy}
                   writesHeldReason={props.writesHeldReason}
+                  now={props.now}
                   onOpenChain={props.onOpenChain}
                 />
               ))
@@ -193,6 +205,7 @@ function BookRow({
   pnlState,
   pricesTrustworthy,
   writesHeldReason,
+  now,
   onOpenChain,
 }: {
   row: BookChainRow;
@@ -202,6 +215,7 @@ function BookRow({
   pnlState: FilledPnlState;
   pricesTrustworthy: boolean;
   writesHeldReason: string | null;
+  now: number;
   onOpenChain: BookGridProps['onOpenChain'];
 }) {
   const quote = quotes.get(row.symbol);
@@ -217,7 +231,7 @@ function BookRow({
           averagePrice: row.averagePrice,
           type: displayType,
         });
-  const status = bookRowPresentation(row, chain);
+  const status = bookRowPresentation(row, chain, now);
   const actionButtons = orderActionsForRow(row, chain);
   const capturedPrice = displayType === 'market' && row.orderPrice !== null;
   const pnlTrusted = pnlFigure?.marketBased !== true || pricesTrustworthy;

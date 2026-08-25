@@ -14,7 +14,11 @@ export interface BookRowPresentation {
   role: StatusRole;
 }
 
-export function bookRowPresentation(row: BookChainRow, chain: BookChain): BookRowPresentation {
+export function bookRowPresentation(
+  row: BookChainRow,
+  chain: BookChain,
+  now = Date.now(),
+): BookRowPresentation {
   if (row.source === 'position') {
     return chain.hasNoClosingOrder
       ? { label: 'Position · no closing order', role: 'dead' }
@@ -32,7 +36,7 @@ export function bookRowPresentation(row: BookChainRow, chain: BookChain): BookRo
   let label = displayActiveOrderStatus(row.raw);
   let detail: string | undefined;
   if (row.source === 'scheduled' && row.scheduledTime !== null) {
-    label = `${label} · ${formatScheduledDistance(row.scheduledTime)}`;
+    label = `${label} · ${formatScheduledDistance(row.scheduledTime, now)}`;
   }
   if (row.cancelInFlight && row.raw.cancelSource) {
     label = `${displayActiveOrderStatus(row.raw)} · cancel in flight`;
