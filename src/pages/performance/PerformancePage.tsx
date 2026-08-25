@@ -12,6 +12,7 @@ import {
   type PerformanceMetric,
   type PerformanceReport,
 } from '../../domain/performance';
+import { FilterPopover, PopoverHeading, PopoverScrim } from '../../components/FilterPopover';
 import { accountIdentityKey } from '../../domain/accounts';
 import {
   formatDateKey,
@@ -61,6 +62,7 @@ export function PerformancePage() {
   const [rangeFrom, setRangeFrom] = useState(shiftDate(today, -14));
   const [rangeTo, setRangeTo] = useState(today);
   const [selectedAccountKey, setSelectedAccountKey] = useState('*');
+  const [openFilter, setOpenFilter] = useState<string | null>(null);
   const [symbolInput, setSymbolInput] = useState('');
   const sourceReady = !data.isPending && data.error === null;
 
@@ -196,11 +198,13 @@ export function PerformancePage() {
     [bounds.from, bounds.to, data.canceledOrders, scopedBot, selectedAccountKey, symbols],
   );
 
-  const clearBot = () => {
+  const scopeToBot = (botId: string | null) => {
     const next = new URLSearchParams(searchParams);
-    next.delete('bot');
+    if (botId === null) next.delete('bot');
+    else next.set('bot', botId);
     setSearchParams(next, { replace: true });
   };
+  const clearBot = () => scopeToBot(null);
 
   return (
     <div className="performance-page page-pad">
@@ -258,41 +262,78 @@ export function PerformancePage() {
               {formatDateKey(bounds.from)} → {formatDateKey(bounds.to)}
             </span>
           )}
-          <select
-            className="input performance-select"
-            value={scopedBot ?? '*'}
-            onChange={(event) => {
-              const next = new URLSearchParams(searchParams);
-              if (event.target.value === '*') next.delete('bot');
-              else next.set('bot', event.target.value);
-              setSearchParams(next, { replace: true });
-            }}
-            aria-label="Bot performance filter"
+          <FilterPopover
+            name="bots"
+            label={scopedBot === null ? 'All bots' : '1 bot'}
+            open={openFilter === 'bots'}
+            setOpen={setOpenFilter}
           >
-            <option value="*">All bots</option>
+            <PopoverHeading
+              label="one bot, or the whole fleet"
+              action="all"
+              onAction={() => {
+                scopeToBot(null);
+                setOpenFilter(null);
+              }}
+            />
+            <p className="filter-help">
+              Scoping recomputes every figure and the curve's axis. The by-bot and by-symbol tables
+              are cross-comparisons, so they leave while one bot is selected.
+            </p>
             {data.bots.map((bot) => (
-              <option value={bot.id} key={bot.id}>
-                {bot.id}
-              </option>
+              <label className="filter-option" key={bot.id}>
+                <input
+                  type="radio"
+                  name="performance-bot"
+                  checked={scopedBot === bot.id}
+                  onChange={() => {
+                    scopeToBot(bot.id);
+                    setOpenFilter(null);
+                  }}
+                />
+                <span>{bot.id}</span>
+              </label>
             ))}
-          </select>
-          <select
-            className="input performance-select"
-            value={selectedAccountKey}
-            onChange={(event) => setSelectedAccountKey(event.target.value)}
-            aria-label="Account performance filter"
+          </FilterPopover>
+          <FilterPopover
+            name="accounts"
+            label={selectedAccountKey === '*' ? 'All accounts' : '1 account'}
+            open={openFilter === 'accounts'}
+            setOpen={setOpenFilter}
           >
-            <option value="*">All accounts</option>
-            {data.accounts.map((account) => (
-              <option
-                value={accountIdentityKey(account.accountId, account.brokerageId)}
-                key={accountIdentityKey(account.accountId, account.brokerageId)}
-              >
-                {account.accountId} · {account.brokerageId}
-                {account.owner ? ` · ${account.owner}` : ''}
-              </option>
-            ))}
-          </select>
+            <PopoverHeading
+              label="accounts"
+              action="all"
+              onAction={() => {
+                setSelectedAccountKey('*');
+                setOpenFilter(null);
+              }}
+            />
+            <p className="filter-help">
+              A closed trade is attributed by the account stored on it, not by where its bot routes
+              today.
+            </p>
+            {data.accounts.map((account) => {
+              const key = accountIdentityKey(account.accountId, account.brokerageId);
+              return (
+                <label className="filter-option" key={key}>
+                  <input
+                    type="radio"
+                    name="performance-account"
+                    checked={selectedAccountKey === key}
+                    onChange={() => {
+                      setSelectedAccountKey(key);
+                      setOpenFilter(null);
+                    }}
+                  />
+                  <span>
+                    {account.accountId} · {account.brokerageId}
+                    {account.owner ? <span className="muted"> · {account.owner}</span> : null}
+                  </span>
+                </label>
+              );
+            })}
+          </FilterPopover>
           <input
             className="input performance-symbols"
             value={symbolInput}
@@ -307,6 +348,7 @@ export function PerformancePage() {
           ) : null}
           <span className="performance-toolbar-spacer" />
           <WindowCoverage report={report} />
+          {openFilter ? <PopoverScrim onClose={() => setOpenFilter(null)} /> : null}
         </div>
       ) : null}
       {data.error ? (

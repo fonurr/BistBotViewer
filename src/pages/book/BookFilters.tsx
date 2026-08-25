@@ -1,7 +1,7 @@
-import { CaretDown } from '@phosphor-icons/react';
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 
 import type { Account, Bot } from '../../bistApi/types';
+import { FilterPopover, PopoverHeading, PopoverScrim } from '../../components/FilterPopover';
 import { accountIdentityKey } from '../../domain/accounts';
 import type { BookChain, BookScope } from '../../domain/chains';
 import { formatDateKey, plural } from '../../domain/format';
@@ -23,8 +23,6 @@ interface BookFiltersProps {
   onOpenMismatch: () => void;
 }
 
-type PopoverName = 'bots' | 'accounts' | 'symbols' | 'dates';
-
 const scopes: Array<{ key: BookScope; label: string }> = [
   { key: 'waiting', label: 'Waiting' },
   { key: 'positions', label: 'Positions' },
@@ -34,7 +32,7 @@ const scopes: Array<{ key: BookScope; label: string }> = [
 
 export function BookFilters(props: BookFiltersProps) {
   const { filters, onChange } = props;
-  const [open, setOpen] = useState<PopoverName | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
   const [symbolQuery, setSymbolQuery] = useState('');
   const symbolInputRef = useRef<HTMLInputElement>(null);
   const accountByKey = useMemo(
@@ -418,95 +416,8 @@ export function BookFilters(props: BookFiltersProps) {
           </button>
         ) : null}
       </div>
-      {open ? (
-        <button
-          className="popover-scrim"
-          type="button"
-          aria-label="Close filter"
-          onClick={() => setOpen(null)}
-        />
-      ) : null}
+      {open ? <PopoverScrim onClose={() => setOpen(null)} /> : null}
     </>
-  );
-}
-
-interface FilterPopoverProps {
-  name: PopoverName;
-  label: string;
-  open: boolean;
-  setOpen: (name: PopoverName | null) => void;
-  children: ReactNode;
-  align?: 'left' | 'right';
-  className?: string;
-  onEscape?: () => boolean;
-}
-
-function FilterPopover({
-  name,
-  label,
-  open,
-  setOpen,
-  children,
-  align = 'left',
-  className = '',
-  onEscape,
-}: FilterPopoverProps) {
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const closeAndReturnFocus = () => {
-    setOpen(null);
-    requestAnimationFrame(() => triggerRef.current?.focus());
-  };
-  return (
-    <div
-      className={`filter-control ${className}`}
-      onKeyDown={(event) => {
-        if (event.key !== 'Escape') return;
-        event.stopPropagation();
-        if (!onEscape || onEscape()) closeAndReturnFocus();
-      }}
-    >
-      <button
-        ref={triggerRef}
-        type="button"
-        className="input filter-trigger"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={() => setOpen(open ? null : name)}
-      >
-        {label}
-        <CaretDown size={11} aria-hidden="true" />
-      </button>
-      {open ? (
-        <div
-          className={`card elev-lg filter-popover filter-popover-${align}`}
-          role="dialog"
-          aria-label={`${label} filter`}
-        >
-          {children}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function PopoverHeading({
-  label,
-  action,
-  onAction,
-}: {
-  label: string;
-  action?: string;
-  onAction?: () => void;
-}) {
-  return (
-    <div className="filter-heading">
-      <span>{label}</span>
-      {action ? (
-        <button type="button" className="btn btn-ghost" onClick={onAction}>
-          {action}
-        </button>
-      ) : null}
-    </div>
   );
 }
 

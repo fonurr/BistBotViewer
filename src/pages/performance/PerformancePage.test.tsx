@@ -185,18 +185,15 @@ describe('Performance scope and unavailable values', () => {
 
     renderPerformance();
 
-    const accountFilter = await screen.findByRole('combobox', {
-      name: 'Account performance filter',
-    });
-    const first = within(accountFilter).getByRole('option', {
-      name: 'ACC-1 · BRK-1 · Fixture Owner',
-    }) as HTMLOptionElement;
-    const second = within(accountFilter).getByRole('option', {
-      name: 'ACC-1 · BRK-2 · Second Owner',
-    }) as HTMLOptionElement;
-    expect(first.value).not.toBe(second.value);
+    await user.click(await screen.findByRole('button', { name: 'All accounts' }));
+    const accountFilter = screen.getByRole('dialog', { name: /accounts filter/i });
+    // Matching account numbers at different brokerages stay distinct choices.
+    const first = within(accountFilter).getByRole('radio', { name: /ACC-1.*BRK-1.*Fixture Owner/ });
+    const second = within(accountFilter).getByRole('radio', { name: /ACC-1.*BRK-2.*Second Owner/ });
+    expect(first).not.toBe(second);
 
-    await user.selectOptions(accountFilter, second);
+    await user.click(second);
+    expect(await screen.findByRole('button', { name: '1 account' })).toBeVisible();
 
     await screen.findByText(/· 1 trade$/);
     const accountSection = screen.getByText('by account').closest('section');

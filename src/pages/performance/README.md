@@ -14,5 +14,6 @@ or full holiday remains in totals and is bucketed by that observed date; it is n
 being learned outside a trading session. Missing current-session closing bars are polled so a bar
 written later can replace an earlier unavailable metric.
 
-The page is read-only. A bot-card deep link uses `?bot=<id>` and recomputes the whole report;
+Bot and account scope use the shared `components/FilterPopover`, so the Book and this page carry
+one filter-control shape. The page is read-only. A bot-card deep link uses `?bot=<id>` and recomputes the whole report;
 fleet comparison tables disappear for that single-bot scope.
