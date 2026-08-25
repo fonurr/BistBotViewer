@@ -8,7 +8,7 @@ import { asBistApiError } from '../../bistApi/errors';
 import type { Bot, BotBudget } from '../../bistApi/types';
 import { Modal } from '../../components/Modal';
 import { ResultList, type ActionResult } from '../../components/ResultList';
-import { formatNumber } from '../../domain/format';
+import { formatNumber, plural } from '../../domain/format';
 import {
   committedForBudget,
   sameBotConfiguration,
@@ -220,7 +220,11 @@ export function BotStatusDialog({ bot, counts, budget, onClose }: BotStatusDialo
         ]);
         setResultNote(
           freshSummary.rowCounts.positions > 0
-            ? `${freshSummary.rowCounts.positions} open positions remain. The bot can still sell, but a human now owns their exits.`
+            ? `${plural(freshSummary.rowCounts.positions, 'open position')} ${
+                freshSummary.rowCounts.positions === 1 ? 'remains' : 'remain'
+              }. The bot can still sell, but a human now owns ${
+                freshSummary.rowCounts.positions === 1 ? 'its exit' : 'their exits'
+              }.`
             : 'The record and its existing rows remain; new buys are blocked.',
         );
       } else {
@@ -320,7 +324,9 @@ export function BotStatusDialog({ bot, counts, budget, onClose }: BotStatusDialo
               <p className="status-warn">
                 It cannot buy, but it can still sell.{' '}
                 {snapshotCounts.positions > 0
-                  ? `${snapshotCounts.positions} open positions will have nobody managing their exits.`
+                  ? `${plural(snapshotCounts.positions, 'open position')} will have nobody managing ${
+                      snapshotCounts.positions === 1 ? 'its exit' : 'their exits'
+                    }.`
                   : 'Its remaining live rows stay attached to this record.'}
                 {snapshotCounts.closedTrades === 0
                   ? ' If every remaining live row clears before ConfigureBot is processed, the same API call deletes the now-empty record and its canceled history; confirming accepts that outcome too.'
@@ -437,12 +443,22 @@ function statusExplanation(action: BotStatusAction, counts: BotRowCounts): strin
     return 'Active orders, scheduled orders, positions, closed trades, and queued baskets are all zero.';
   }
   if (action === 'deactivate') {
-    return `The server keeps a bot with persistent rows. Those rows total ${counts.activeOrders + counts.scheduledOrders + counts.positions + counts.closedTrades}, so active: false deactivates it; ${counts.pendingRequests} queued baskets keep their id.`;
+    const persistent =
+      counts.activeOrders + counts.scheduledOrders + counts.positions + counts.closedTrades;
+    const baskets =
+      counts.pendingRequests === 0
+        ? ''
+        : ` ${plural(counts.pendingRequests, 'queued basket')} ${
+            counts.pendingRequests === 1 ? 'keeps' : 'keep'
+          } this id.`;
+    return `The server keeps a bot with persistent rows. Those rows total ${persistent}, so active: false deactivates it rather than deleting it.${baskets}`;
   }
   if (action === 'reactivate') {
     return 'A fresh snapshot must still find this inactive record before the app sends active: true; otherwise the upsert could recreate it.';
   }
-  return `${counts.pendingRequests} queued basket${counts.pendingRequests === 1 ? '' : 's'} still use this id and may replay before any later batch.`;
+  return `${plural(counts.pendingRequests, 'queued basket')} still ${
+    counts.pendingRequests === 1 ? 'uses' : 'use'
+  } this id and may replay before any later batch.`;
 }
 
 function unresolvedResult(
