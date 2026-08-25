@@ -33,6 +33,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   runtime.writesHeldReason = null;
   Object.values(api).forEach((mock) => mock.mockReset());
 });
@@ -493,6 +494,23 @@ describe('OrderDialog copy', () => {
       screen.getByText(/Sellable by hand: 60 of 100 — the resting limit sell claims 40/),
     ).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Sell THYAO' })).toBeVisible();
+  });
+
+  it('states how early a fire now goes before it asks for assent', () => {
+    vi.setSystemTime(new Date('2026-08-25T09:00:00.000Z'));
+    const scheduled = makeActiveOrder({
+      status: 'Scheduled',
+      matriksOrderId: null,
+      orderTime: null,
+      sentTime: null,
+      scheduledTime: Date.parse('2026-08-25T11:14:00.000Z'),
+      whenType: 'BeforeClose',
+    });
+    const chain = chainFor({ activeOrders: [scheduled] });
+    renderDialog(chain, { kind: 'fire', row: chain.activeRows[0]! });
+
+    expect(screen.getByText(/It goes 2h 14m early/)).toBeVisible();
+    expect(screen.getByRole('heading', { name: /Fire now buy AKBNK · confirm/ })).toBeVisible();
   });
 
   it('excludes an edited sell from the claims it reports against itself', () => {

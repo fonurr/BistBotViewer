@@ -17,12 +17,15 @@ import type {
   SendOrdersRequest,
 } from '../../bistApi/types';
 import { Modal } from '../../components/Modal';
+import { useMinuteClock } from '../../components/useMinuteClock';
 import { ResultList, type ActionResult } from '../../components/ResultList';
 import type { BookCanceledOrderRow, BookChain } from '../../domain/chains';
 import {
+  formatCompactDuration,
   formatDateKey,
   formatNumber,
   formatQuantity,
+  formatTime,
   parseTurkishNumber,
   plural,
   toIstanbulDateKey,
@@ -777,8 +780,9 @@ function ActionConfirm({
         {action.row.direction} {action.row.symbol} ·{' '}
         {action.row.quantity === null
           ? 'quantity resolves from the position at fire'
-          : `${formatQuantity(action.row.quantity)} shares`}
+          : plural(action.row.quantity, 'share')}
       </p>
+      {action.kind === 'fire' ? <EarlyByLine scheduledTime={action.row.scheduledTime} /> : null}
       <ol className="confirm-calls">
         <li>
           <strong>1 · CancelOrders</strong>
@@ -821,6 +825,32 @@ function ActionConfirm({
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * SPEC 4 asks the `fire now` confirm to state how early the order goes. The
+ * scheduled instant alone is not that statement — the distance from now is
+ * the fact that decides whether a human meant to do this.
+ */
+function EarlyByLine({ scheduledTime }: { scheduledTime: number | null }) {
+  const now = useMinuteClock();
+  if (scheduledTime === null) {
+    return (
+      <p className="dialog-note status-warn">
+        This row carries no resolved fire time, so how early it goes cannot be stated.
+      </p>
+    );
+  }
+  const early = scheduledTime - now;
+  return (
+    <p className="dialog-note">
+      {early <= 0
+        ? `It was due at ${formatTime(scheduledTime)} and has not gone out yet.`
+        : `It goes ${formatCompactDuration(early)} early — the schedule holds it until ${formatTime(
+            scheduledTime,
+          )}.`}
+    </p>
   );
 }
 
