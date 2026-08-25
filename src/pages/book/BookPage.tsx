@@ -16,6 +16,7 @@ import {
   formatNumber,
   formatPercentage,
   formatSignedNumber,
+  plural,
 } from '../../domain/format';
 import {
   committedAmount,
@@ -141,7 +142,7 @@ export function BookPage() {
             ? 'loading'
             : data.error
               ? 'snapshot unavailable'
-              : `${data.bots.length} bots, ${data.accounts.length} accounts`}
+              : `${plural(data.bots.length, 'bot')}, ${plural(data.accounts.length, 'account')}`}
         </span>
       </header>
       {interruptRows.length > 0 ? <FeedInterrupt rows={interruptRows} /> : null}
@@ -501,18 +502,24 @@ function summarizeScopes(
   return {
     waiting: {
       count: waitingChains.length,
-      detail: `${waitingChains.reduce(
-        (total, chain) => total + chain.activeRows.filter((row) => row.isWaiting).length,
-        0,
-      )} executable rows${pending.length ? ` · ${pending.length} queued baskets` : ''}`,
+      detail: `${plural(
+        waitingChains.reduce(
+          (total, chain) => total + chain.activeRows.filter((row) => row.isWaiting).length,
+          0,
+        ),
+        'executable row',
+      )}${pending.length ? ` · ${plural(pending.length, 'queued basket')}` : ''}`,
       aggregate: 'can still execute',
       tone: 'status-wait',
     },
     positions: {
       count: positionChains.length,
-      detail: `${filledState.exposures
-        .filter((exposure) => exposure.source === 'position')
-        .reduce((total, exposure) => total + exposure.quantity, 0)} held shares`,
+      detail: plural(
+        filledState.exposures
+          .filter((exposure) => exposure.source === 'position')
+          .reduce((total, exposure) => total + exposure.quantity, 0),
+        'held share',
+      ),
       aggregate: everyPositionPriceKnown
         ? `${formatSignedNumber(positionPnl)} unrealized${pricesTrustworthy ? '' : ' · last known'}`
         : 'unrealized not available',
@@ -525,13 +532,16 @@ function summarizeScopes(
     },
     trades: {
       count: tradeChains.length,
-      detail: `${trades.size} closed round trips · gross`,
+      detail: `${plural(trades.size, 'closed round trip')} · gross`,
       aggregate: formatSignedNumber(realized),
       tone: realized >= 0 ? 'number-positive' : 'number-negative',
     },
     canceled: {
       count: canceledChains.length,
-      detail: `${canceledChains.reduce((total, chain) => total + chain.canceledRows.length, 0)} gone order legs`,
+      detail: plural(
+        canceledChains.reduce((total, chain) => total + chain.canceledRows.length, 0),
+        'gone order leg',
+      ),
       aggregate: 'historical only',
       tone: 'status-dead',
     },
@@ -552,7 +562,7 @@ function ScopeSummaries({
           <div className="book-scope-summary" key={scope}>
             <span className="kicker">{scope}</span>
             <span>
-              {summaries[scope].count} chains · {summaries[scope].detail}
+              {plural(summaries[scope].count, 'chain')} · {summaries[scope].detail}
             </span>
             <strong className={summaries[scope].tone}>{summaries[scope].aggregate}</strong>
             <i />
@@ -570,7 +580,9 @@ function StatStrip({ summary, pendingCount }: { summary: BookSummary; pendingCou
       <Stat
         label="visible"
         accent
-        value={`${summary.chains} chains · ${summary.orders} orders${pendingCount ? ` · ${pendingCount} queued` : ''}`}
+        value={`${plural(summary.chains, 'chain')} · ${plural(summary.orders, 'order')}${
+          pendingCount ? ` · ${plural(pendingCount, 'queued basket')}` : ''
+        }`}
       />
       <Stat
         label="realized"
@@ -663,7 +675,7 @@ function PendingBaskets({
             <span>
               req {request.id} ·{' '}
               {request.request
-                ? `${request.request.stocks.length} stocks, fires as one`
+                ? `${plural(request.request.stocks.length, 'stock')}, fires as one`
                 : 'request contents unavailable'}
             </span>
             <span className="status-wait">
@@ -925,13 +937,13 @@ function filterChips(filters: BookFilterState, botCount: number, accountCount: n
   if (filters.botIds !== null && filters.botIds.size !== botCount)
     chips.push({
       key: 'bots',
-      label: `${filters.botIds.size} bots`,
+      label: plural(filters.botIds.size, 'bot'),
       clear: (current) => ({ ...current, botIds: null }),
     });
   if (filters.accountIds !== null && filters.accountIds.size !== accountCount)
     chips.push({
       key: 'accounts',
-      label: `${filters.accountIds.size} accounts`,
+      label: plural(filters.accountIds.size, 'account'),
       clear: (current) => ({ ...current, accountIds: null }),
     });
   if (filters.symbols.size > 0)

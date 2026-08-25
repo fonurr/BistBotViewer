@@ -6,6 +6,7 @@ import {
   formatRowTime,
   formatSignedNumber,
   parseTurkishNumber,
+  plural,
   toIstanbulDateKey,
 } from './format';
 
@@ -38,5 +39,18 @@ describe('Turkish presentation formatting', () => {
     expect(parseTurkishNumber('100.000')).toBe(100_000);
     expect(parseTurkishNumber('38.16')).toBeNull();
     expect(parseTurkishNumber('')).toBeNull();
+  });
+});
+
+describe('plural', () => {
+  it('keeps the singular noun at exactly one', () => {
+    expect(plural(1, 'chain')).toBe('1 chain');
+    expect(plural(1, 'batch', 'batches')).toBe('1 batch');
+  });
+
+  it('uses the plural noun at every other count, zero included', () => {
+    expect(plural(0, 'chain')).toBe('0 chains');
+    expect(plural(2, 'chain')).toBe('2 chains');
+    expect(plural(1_500, 'held share')).toBe('1.500 held shares');
   });
 });

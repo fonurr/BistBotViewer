@@ -198,7 +198,7 @@ describe('Performance scope and unavailable values', () => {
 
     await user.selectOptions(accountFilter, second);
 
-    await screen.findByText(/· 1 trades$/);
+    await screen.findByText(/· 1 trade$/);
     const accountSection = screen.getByText('by account').closest('section');
     expect(accountSection).not.toBeNull();
     expect(within(accountSection!).getByRole('cell', { name: 'BRK-2' })).toBeInTheDocument();

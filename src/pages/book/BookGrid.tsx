@@ -10,6 +10,7 @@ import {
   formatRowTime,
   formatSignedNumber,
   formatNumber,
+  plural,
 } from '../../domain/format';
 import {
   deriveFilledPnlState,
@@ -94,7 +95,7 @@ export function BookGrid(props: BookGridProps) {
               {dateGroup.date === 'unknown' ? 'Date unknown' : formatDateKey(dateGroup.date)}
             </span>
             <span className="kicker">batch</span>
-            <span className="muted">{dateGroup.chains.length} chains</span>
+            <span className="muted">{plural(dateGroup.chains.length, 'chain')}</span>
           </header>
           {dateGroup.bots.map((botGroup) => {
             const bot = botById.get(botGroup.botId);
@@ -174,7 +175,7 @@ function ChainRows(props: BookGridProps & { chain: BookChain; pnlState: FilledPn
             : null}
           <div className="canceled-tail-summary">
             <button type="button" onClick={() => props.onToggleCanceledChain(chain.key)}>
-              {visibleCanceled ? 'hide' : 'show'} · {canceledRows.length} canceled
+              {visibleCanceled ? 'hide' : 'show'} · {plural(canceledRows.length, 'canceled order')}
             </button>
             <CanceledTailNote chain={chain} />
           </div>

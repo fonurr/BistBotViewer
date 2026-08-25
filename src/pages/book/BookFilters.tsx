@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNod
 import type { Account, Bot } from '../../bistApi/types';
 import { accountIdentityKey } from '../../domain/accounts';
 import type { BookChain, BookScope } from '../../domain/chains';
-import { formatDateKey } from '../../domain/format';
+import { formatDateKey, plural } from '../../domain/format';
 import type { BookFilterState } from './types';
 
 interface BookFiltersProps {
@@ -142,7 +142,7 @@ export function BookFilters(props: BookFiltersProps) {
     'accounts',
   );
   const symbolLabel =
-    filters.symbols.size === 0 ? 'All symbols' : `${filters.symbols.size} symbols`;
+    filters.symbols.size === 0 ? 'All symbols' : plural(filters.symbols.size, 'symbol');
   const dateLabel =
     filters.batchFrom === null && filters.batchTo === null
       ? 'Every batch'
@@ -325,7 +325,9 @@ export function BookFilters(props: BookFiltersProps) {
             }
           >
             <span>Last 5 sessions</span>
-            <span className="filter-count">{Math.min(5, batchDates.length)} batches</span>
+            <span className="filter-count">
+              {plural(Math.min(5, batchDates.length), 'batch', 'batches')}
+            </span>
           </button>
           <button
             type="button"
@@ -335,7 +337,7 @@ export function BookFilters(props: BookFiltersProps) {
             }
           >
             <span>Everything</span>
-            <span className="filter-count">{batchDates.length} batches</span>
+            <span className="filter-count">{plural(batchDates.length, 'batch', 'batches')}</span>
           </button>
           <div className="date-fields">
             <label className="field">
@@ -379,7 +381,9 @@ export function BookFilters(props: BookFiltersProps) {
         {(props.noClosingOrderCount > 0 || props.mismatchCount > 0) && (
           <div className="human-banner" role="status">
             <span className="human-total">
-              {props.noClosingOrderCount + props.mismatchCount} need a human
+              {props.noClosingOrderCount + props.mismatchCount === 1
+                ? '1 needs a human'
+                : `${props.noClosingOrderCount + props.mismatchCount} need a human`}
             </span>
             {props.noClosingOrderCount > 0 ? (
               <button type="button" onClick={setNoExit} aria-pressed={filters.noClosingOrder}>
@@ -402,12 +406,12 @@ export function BookFilters(props: BookFiltersProps) {
             onClick={props.onToggleCanceled}
           >
             {props.canceledVisible
-              ? `${props.canceledCount} canceled orders shown${
+              ? `${plural(props.canceledCount, 'canceled order')} shown${
                   props.manualClosedChains
-                    ? ` · ${props.manualClosedChains} chains closed by hand`
+                    ? ` · ${plural(props.manualClosedChains, 'chain')} closed by hand`
                     : ''
                 }`
-              : `${props.canceledCount} canceled orders hidden${
+              : `${plural(props.canceledCount, 'canceled order')} hidden${
                   props.manualOpenLegs ? ` · ${props.manualOpenLegs} shown by hand` : ''
                 }`}
           </button>

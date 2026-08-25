@@ -9,6 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 
+import { plural } from '../../domain/format';
 import { logClient } from '../../bistApi/logClient';
 import type {
   LogExtent,
@@ -1102,7 +1103,7 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
                       {view.loadMoreError
                         ? view.loadMoreError
                         : canLoadMore
-                          ? `asks for the next ${nextPageCount} rows before the last ones shown, inside the same days — it never widens the range`
+                          ? `asks for the next ${plural(nextPageCount, 'row')} before the last ones shown, inside the same days — it never widens the range`
                           : totalCount > 0
                             ? 'every row in these days is loaded'
                             : ''}
@@ -1183,8 +1184,8 @@ function EmptyLogState({
   if (search.trim() && loadedCount > 0) {
     return (
       <p className="logs-empty" role="status">
-        No loaded row matches “{search.trim()}”. Search checks the {loadedCount} rows loaded in
-        these days.
+        No loaded row matches “{search.trim()}”. Search checks the {plural(loadedCount, 'row')}{' '}
+        loaded in these days.
       </p>
     );
   }

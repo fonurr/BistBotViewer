@@ -18,6 +18,7 @@ import {
   formatNumber,
   formatPercentage,
   formatSignedNumber,
+  plural,
   toIstanbulDateKey,
 } from '../../domain/format';
 import { committedAmount } from '../../domain/orders';
@@ -210,7 +211,7 @@ export function PerformancePage() {
           {scopedBot
             ? ` · ${scopedBot}`
             : sourceReady
-              ? ` · ${report.summary.tradeCount} trades`
+              ? ` · ${plural(report.summary.tradeCount, 'trade')}`
               : data.isPending
                 ? ' · loading'
                 : ' · unavailable'}
@@ -400,7 +401,7 @@ export function shouldPollClosingBars(
 }
 
 function budgetScopeCopy(botCount: number, botScoped: boolean, accountScoped: boolean): string {
-  const count = `${botCount} ${botCount === 1 ? 'bot' : 'bots'}`;
+  const count = plural(botCount, 'bot');
   const scope = accountScoped ? 'bot/account scope' : botScoped ? 'bot scope' : 'fleet scope';
   return `${count} · ${scope}; window and symbol filters do not change these limits`;
 }
@@ -736,8 +737,9 @@ function UnavailableSlippage({ report }: { report: PerformanceReport }) {
             <span className="kicker">{label}</span>
             <strong className="status-warn">not available</strong>
             <small>
-              ClosedTrades stores prices but not order type; {report.summary.tradeCount} trades
-              cannot be split without inventing which prices were sent.
+              ClosedTrades stores prices but not order type;{' '}
+              {plural(report.summary.tradeCount, 'trade')} cannot be split without inventing which
+              prices were sent.
             </small>
           </div>
         ))}
@@ -883,10 +885,10 @@ function Limitations({ report }: { report: PerformanceReport }) {
         <h3>Acknowledgement, not fill time</h3>
         <p>
           Trades are assigned to the Istanbul date when this server learned of the close.{' '}
-          {report.exclusions.missingCloseAcknowledgementCount} rows lacked even that boundary and
-          were excluded. {report.exclusions.nonBusinessAcknowledgementCount} were learned on a
-          weekend or full holiday; they remain included on that observed acknowledgement date
-          because the fill may have happened earlier.
+          {plural(report.exclusions.missingCloseAcknowledgementCount, 'row')} lacked even that
+          boundary and were excluded. {report.exclusions.nonBusinessAcknowledgementCount} were
+          learned on a weekend or full holiday; they remain included on that observed
+          acknowledgement date because the fill may have happened earlier.
         </p>
       </article>
       <article className="card">
@@ -894,7 +896,11 @@ function Limitations({ report }: { report: PerformanceReport }) {
         <h3>{report.window.calendarVerified ? 'Calendar covered' : 'Session count unavailable'}</h3>
         <p>
           {report.window.calendarVerified
-            ? `The holiday rows cover this range; ${metricText(report.window.tradingDayCount)} trading days are represented.`
+            ? `The holiday rows cover this range; ${
+                report.window.tradingDayCount.available
+                  ? plural(report.window.tradingDayCount.value, 'trading day')
+                  : 'an unavailable number of trading days'
+              } are represented.`
             : 'An empty or partial holiday list cannot prove every absent weekday traded. The report shows observed dates without asserting a session count.'}
         </p>
       </article>
@@ -912,7 +918,7 @@ function WindowCoverage({ report }: { report: PerformanceReport }) {
       }
     >
       {report.window.tradingDayCount.available
-        ? `${formatNumber(report.window.tradingDayCount.value, 0)} trading days · holidays applied`
+        ? `${plural(report.window.tradingDayCount.value, 'trading day')} · holidays applied`
         : 'trading-day count unavailable · holiday coverage incomplete'}
     </span>
   );

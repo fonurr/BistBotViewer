@@ -128,3 +128,11 @@ export function parseTurkishNumber(raw: string): number | null {
   const value = Number(normalized);
   return Number.isFinite(value) ? value : null;
 }
+
+/**
+ * Counted labels read as prose, so a count of one takes the singular noun.
+ * `plural(1, 'chain')` is `1 chain`; `plural(0, 'chain')` is `0 chains`.
+ */
+export function plural(count: number, one: string, many = `${one}s`): string {
+  return `${formatQuantity(count)} ${count === 1 ? one : many}`;
+}

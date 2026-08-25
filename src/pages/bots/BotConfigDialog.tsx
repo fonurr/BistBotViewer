@@ -15,7 +15,7 @@ import type {
 } from '../../bistApi/types';
 import { Modal } from '../../components/Modal';
 import { ResultList, type ActionResult } from '../../components/ResultList';
-import { formatNumber } from '../../domain/format';
+import { formatNumber, plural } from '../../domain/format';
 import { committedAmount } from '../../domain/orders';
 import {
   botFormFor,
@@ -191,7 +191,10 @@ export function BotConfigDialog({
         if (freshOrders.length > 0 || freshPositions.length > 0) {
           notSent(
             `Move ${bot.id}`,
-            `The fresh row check found ${freshOrders.length} active or scheduled orders and ${freshPositions.length} positions. The server would reject an account change.`,
+            `The fresh row check found ${plural(
+              freshOrders.length,
+              'active or scheduled order',
+            )} and ${plural(freshPositions.length, 'position')}. The server would reject an account change.`,
           );
           return;
         }
@@ -398,10 +401,11 @@ export function BotConfigDialog({
               </datalist>
               {accountLocked ? (
                 <p className="bots-field-note">
-                  Locked because this bot has {botOrders.length} active or scheduled orders and{' '}
-                  {botPositions.length} positions, plus {botPendingRequests.length} queued baskets.
-                  Existing rows are never rerouted, and queued baskets must be canceled before an
-                  account change.
+                  Locked because this bot has{' '}
+                  {plural(botOrders.length, 'active or scheduled order')} and{' '}
+                  {plural(botPositions.length, 'position')}, plus{' '}
+                  {plural(botPendingRequests.length, 'queued basket')}. Existing rows are never
+                  rerouted, and queued baskets must be canceled before an account change.
                 </p>
               ) : null}
             </fieldset>

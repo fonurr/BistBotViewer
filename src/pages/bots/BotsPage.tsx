@@ -10,6 +10,7 @@ import {
   formatNumber,
   formatPercentage,
   formatSignedNumber,
+  plural,
 } from '../../domain/format';
 import { committedAmount, deriveFilledPnlState, realizedPnl } from '../../domain/orders';
 import { BotConfigDialog, type BotConfigMode } from './BotConfigDialog';
@@ -209,7 +210,9 @@ export function BotsPage() {
             ? 'loading fleet'
             : data.error
               ? 'fleet unavailable'
-              : `${data.bots.length} bots · ${data.bots.filter((bot) => bot.active).length} active`}
+              : `${plural(data.bots.length, 'bot')} · ${
+                  data.bots.filter((bot) => bot.active).length
+                } active`}
         </span>
       </header>
 
@@ -548,9 +551,8 @@ function BotCard({
           ) : null}
           {state === 'deactivated' && summary.openPositions > 0 ? (
             <div className="bots-card-notice bots-card-notice-dead">
-              Still holds {summary.openPositions} position
-              {summary.openPositions === 1 ? '' : 's'}. It cannot buy, but it can still sell, and
-              nobody is managing the exit.
+              Still holds {plural(summary.openPositions, 'position')}. It cannot buy, but it can
+              still sell, and nobody is managing the exit.
             </div>
           ) : null}
 
@@ -564,7 +566,10 @@ function BotCard({
                 <BotMetric label="buys">
                   <span
                     className="bots-count-shape"
-                    aria-label={`${summary.openBuys} open buys, ${summary.scheduledBuys} scheduled buys`}
+                    aria-label={`${plural(summary.openBuys, 'open buy')}, ${plural(
+                      summary.scheduledBuys,
+                      'scheduled buy',
+                    )}`}
                   >
                     <span className="status-live">{summary.openBuys}</span>
                     <span className="muted">/</span>
@@ -574,7 +579,10 @@ function BotCard({
                 <BotMetric label="positions">
                   <span
                     className="bots-count-shape"
-                    aria-label={`${summary.openPositions} positions, ${summary.openSells} open sells, ${summary.scheduledSells} scheduled sells`}
+                    aria-label={`${plural(summary.openPositions, 'position')}, ${plural(
+                      summary.openSells,
+                      'open sell',
+                    )}, ${plural(summary.scheduledSells, 'scheduled sell')}`}
                   >
                     <span className="status-fill">{summary.openPositions}</span>
                     <span className="muted">/</span>
