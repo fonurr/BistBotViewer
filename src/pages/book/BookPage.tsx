@@ -10,7 +10,7 @@ import type { Bot, ErrorRow, PendingOrderRequest, ScheduleSpec } from '../../bis
 import { Modal } from '../../components/Modal';
 import { ResultList, type ActionResult } from '../../components/ResultList';
 import { accountIdentityKey } from '../../domain/accounts';
-import { buildBookChains, type BookChain } from '../../domain/chains';
+import { buildBookChains, type BookChain, type BookScope } from '../../domain/chains';
 import {
   formatDate,
   formatNumber,
@@ -125,6 +125,15 @@ export function BookPage() {
   const chips = filterChips(filters, data.bots.length, data.accounts.length);
   const genuineEmpty = chains.length === 0 && data.pendingRequests.length === 0;
   const filteredEmpty = !genuineEmpty && visibleChains.length === 0 && visiblePending.length === 0;
+  const emptyCulprits = useMemo(
+    () =>
+      filteredEmpty
+        ? narrowingsThatEmptiedTheBook(chains, filters, (chain) =>
+            accountKeyForBot(botById.get(chain.botId)),
+          )
+        : [],
+    [botById, chains, filters, filteredEmpty],
+  );
   const resolvedOpenChain = useMemo(() => resolveOpenChain(chains, openChain), [chains, openChain]);
 
   const clearFilters = () => setFilters(defaultBookFilters);
@@ -235,11 +244,29 @@ export function BookPage() {
         <div className="book-empty-filter">
           <strong>No chains match this filter.</strong>
           <p>
-            The loaded snapshot has data, but the current scopes and filters exclude every chain.
+            {emptyCulprits.length === 0
+              ? `The loaded snapshot holds ${plural(chains.length, 'chain')}, and no one filter explains the gap — it takes the whole combination to exclude every one of them.`
+              : emptyCulprits.length === 1
+                ? `${emptyCulprits[0]!.sentence} Clearing it brings ${plural(emptyCulprits[0]!.restored, 'chain')} back.`
+                : `Clearing any one of these brings chains back: ${emptyCulprits
+                    .map((culprit) => culprit.phrase)
+                    .join(', ')}.`}
           </p>
-          <button type="button" className="btn btn-secondary" onClick={clearFilters}>
-            Clear the filter
-          </button>
+          <div className="book-empty-actions">
+            {emptyCulprits.map((culprit) => (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                key={culprit.key}
+                onClick={() => setFilters(culprit.clear(filters))}
+              >
+                clear {culprit.phrase}
+              </button>
+            ))}
+            <button type="button" className="btn btn-secondary" onClick={clearFilters}>
+              Clear every filter
+            </button>
+          </div>
         </div>
       ) : null}
       {snapshotAvailable && filters.scopes.size > 0 && visibleChains.length > 0 ? (
@@ -346,6 +373,82 @@ function resolveOpenChain(chains: readonly BookChain[], state: OpenChainState | 
     action = { kind: 'fire', row, ...shared };
   }
   return { chain, action };
+}
+
+interface BookNarrowing {
+  key: string;
+  /** The chip-sized name, for a button that clears exactly this one. */
+  phrase: string;
+  /** The whole sentence, for the case where this narrowing is the only culprit. */
+  sentence: string;
+  restored: number;
+  clear: (current: BookFilterState) => BookFilterState;
+}
+
+/**
+ * Names the filter that emptied the view rather than saying "some filter did".
+ * A blank table with no reason is a bug (SCREEN-MAP), and the useful reason is
+ * which narrowing, cleared on its own, would bring chains back. Several can
+ * qualify at once, and none qualifies when only the combination excludes
+ * everything — both cases get their own sentence rather than a guess.
+ */
+export function narrowingsThatEmptiedTheBook(
+  chains: readonly BookChain[],
+  filters: BookFilterState,
+  accountKeyFor: (chain: BookChain) => string | null,
+): BookNarrowing[] {
+  const candidates: Array<Omit<BookNarrowing, 'restored'>> = [];
+  if (filters.scopes.size > 0 && filters.scopes.size < 4) {
+    candidates.push({
+      key: 'scopes',
+      phrase: 'the scope selection',
+      sentence: `The selected ${plural(filters.scopes.size, 'scope')} exclude every loaded chain.`,
+      clear: (current) => ({
+        ...current,
+        scopes: new Set<BookScope>(['waiting', 'positions', 'trades', 'canceled']),
+      }),
+    });
+  }
+  if (filters.botIds !== null) {
+    candidates.push({
+      key: 'bots',
+      phrase: 'the bot filter',
+      sentence: `The ${plural(filters.botIds.size, 'selected bot')} have no chain in this view.`,
+      clear: (current) => ({ ...current, botIds: null }),
+    });
+  }
+  if (filters.accountIds !== null) {
+    candidates.push({
+      key: 'accounts',
+      phrase: 'the account filter',
+      sentence: `The ${plural(filters.accountIds.size, 'selected account')} have no chain in this view.`,
+      clear: (current) => ({ ...current, accountIds: null }),
+    });
+  }
+  if (filters.symbols.size > 0) {
+    candidates.push({
+      key: 'symbols',
+      phrase: 'the symbol filter',
+      sentence: `${[...filters.symbols].join(', ')} has no chain in this view.`,
+      clear: (current) => ({ ...current, symbols: new Set<string>() }),
+    });
+  }
+  if (filters.batchFrom !== null || filters.batchTo !== null) {
+    candidates.push({
+      key: 'dates',
+      phrase: 'the batch range',
+      sentence: 'No chain opened inside the selected batch range.',
+      clear: (current) => ({ ...current, batchFrom: null, batchTo: null }),
+    });
+  }
+
+  return candidates.flatMap((candidate) => {
+    const relaxed = candidate.clear(filters);
+    const restored = chains.filter((chain) =>
+      chainMatches(chain, relaxed, accountKeyFor(chain)),
+    ).length;
+    return restored > 0 ? [{ ...candidate, restored }] : [];
+  });
 }
 
 function chainMatches(

@@ -72,8 +72,9 @@ test.describe('The Book safety smoke', () => {
     await expect(page.getByRole('dialog', { name: /bots filter/ })).toHaveCount(0);
 
     await expect(page.getByText('No chains match this filter.')).toBeVisible();
+    await expect(page.locator('.book-empty-filter')).toContainText('bot filter');
     await expect(page.locator('.book-grid-wrap')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Clear the filter' }).click();
+    await page.getByRole('button', { name: 'clear the bot filter' }).click();
     await expect(page.locator('.book-grid-wrap')).toBeVisible();
     await expect(page.getByRole('article', { name: 'AKBNK chain' })).toBeVisible();
   });

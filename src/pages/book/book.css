@@ -599,6 +599,14 @@
   max-width: 580px;
 }
 
+.book-empty-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+}
+
 .book-empty-filter strong {
   color: var(--color-text);
   font-size: 14px;
