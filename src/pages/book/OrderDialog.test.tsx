@@ -471,6 +471,52 @@ describe('OrderDialog write safety', () => {
   });
 });
 
+describe('OrderDialog copy', () => {
+  it('names the orders that claim the shares the sell form cannot have', () => {
+    const chain = chainFor({
+      positions: [makePosition()],
+      activeOrders: [
+        makeActiveOrder({
+          id: 102,
+          clientOrderId: 'client-thyao-sell-1',
+          matriksOrderId: 'mx-thyao-sell-1',
+          symbol: 'THYAO',
+          direction: 'sell',
+          orderQuantity: 40,
+          chainId: 'chain-thyao',
+        }),
+      ],
+    });
+    renderDialog(chain, { kind: 'sell', row: chain.positionRows[0]! });
+
+    expect(
+      screen.getByText(/Sellable by hand: 60 of 100 — the resting limit sell claims 40/),
+    ).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Sell THYAO' })).toBeVisible();
+  });
+
+  it('excludes an edited sell from the claims it reports against itself', () => {
+    const chain = chainFor({
+      positions: [makePosition()],
+      activeOrders: [
+        makeActiveOrder({
+          id: 102,
+          clientOrderId: 'client-thyao-sell-1',
+          matriksOrderId: 'mx-thyao-sell-1',
+          symbol: 'THYAO',
+          direction: 'sell',
+          orderQuantity: 40,
+          chainId: 'chain-thyao',
+        }),
+      ],
+    });
+    renderDialog(chain, { kind: 'edit', row: chain.activeRows[0]! });
+
+    expect(screen.getByText(/Sellable by hand: 100 of 100\./)).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Edit sell THYAO' })).toBeVisible();
+  });
+});
+
 function renderDialog(chain: BookChain, action: OrderDialogAction): RenderResult {
   return renderWithClient(dialogElement(chain, action));
 }

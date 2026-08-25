@@ -20,9 +20,11 @@ import { Modal } from '../../components/Modal';
 import { ResultList, type ActionResult } from '../../components/ResultList';
 import type { BookCanceledOrderRow, BookChain } from '../../domain/chains';
 import {
+  formatDateKey,
   formatNumber,
   formatQuantity,
   parseTurkishNumber,
+  plural,
   toIstanbulDateKey,
 } from '../../domain/format';
 import { effectivePerPositionCap, reservedBuyCost } from '../../domain/orders';
@@ -429,7 +431,9 @@ function ChainView({
     <div className="chain-dialog-view">
       <div className="chain-dialog-meta">
         <span>{chain.botId}</span>
-        <span>{chain.batchDate ?? 'batch date unknown'}</span>
+        <span>
+          {chain.batchDate === null ? 'batch date unknown' : formatDateKey(chain.batchDate)}
+        </span>
         <span>{chain.chainId ? `chain …${chain.chainId.slice(-8)}` : 'chain link unknown'}</span>
       </div>
       {chain.rows.map((row) => {
@@ -1045,15 +1049,46 @@ function boundCopy(
   if (actionDirection(action) === 'sell') {
     const current = sellCeiling(action, chain, false);
     const projected = sellCeiling(action, chain, true);
-    const availability =
+    const held = chain.positionQuantity;
+    const headline =
+      held === null
+        ? `Available to this order: ${plural(current, 'share')}`
+        : `Sellable by hand: ${formatQuantity(current)} of ${formatQuantity(held)}`;
+    const schedule =
       current === projected
-        ? `${formatQuantity(current)} shares`
-        : `${formatQuantity(current)} shares now; ${formatQuantity(projected)} for a schedule after pending buys`;
-    return `Available to this order: ${availability}. Active and scheduled sells, including cancels in flight, keep their claim until cancellation is confirmed.`;
+        ? ''
+        : ` · ${formatQuantity(projected)} for a schedule after pending buys`;
+    const claims = sellClaimCopy(action, chain);
+    return `${headline}${schedule}${claims}. A cancel in flight keeps its claim until the cancellation is confirmed.`;
   }
   if (!budget)
     return 'A buy is bounded by the bot budget and effective per-position cap; those figures are not available yet.';
   return `Available bot budget: ${formatNumber(budget.remainingBotBudget)}. Effective per-position cap: ${formatNumber(effectivePerPositionCap(budget))}. Market buys reserve 10% extra per share.`;
+}
+
+/**
+ * SPEC 6: say what decides the number. "30 of 120" alone leaves the reader
+ * hunting the chain for the orders holding the other 90, so the claimants are
+ * named here — the edited order excluded, because its own claim does not
+ * count against itself.
+ */
+function sellClaimCopy(
+  action: Exclude<OrderDialogAction, { kind: 'cancel' | 'fire' }>,
+  chain: BookChain,
+): string {
+  const editedKey = action.kind === 'edit' ? action.row.key : null;
+  const claims = chain.rows.flatMap((row) => {
+    if (row.source !== 'active' && row.source !== 'scheduled') return [];
+    if (row.direction !== 'sell' || !row.isWaiting || row.key === editedKey) return [];
+    const kind = row.source === 'scheduled' ? 'scheduled' : 'resting';
+    const type = row.orderType ? `${row.orderType} ` : '';
+    return [
+      row.quantity === null
+        ? `the ${kind} ${type}sell claims the whole position`
+        : `the ${kind} ${type}sell claims ${formatQuantity(row.quantity)}`,
+    ];
+  });
+  return claims.length === 0 ? '' : ` — ${claims.join(', ')}`;
 }
 
 function sellCeiling(
@@ -1582,7 +1617,10 @@ function rpcName(kind: OrderDialogAction['kind']): string {
   return kind === 'edit' ? 'EditOrders' : kind === 'cancel' ? 'CancelOrders' : 'SendOrders';
 }
 function actionLabel(action: OrderDialogAction): string {
-  return `${action.kind === 'fire' ? 'Fire' : action.kind} ${actionDirection(action)} ${action.row.symbol}`;
+  // `sell` already names the side, so repeating it read "sell sell THYAO".
+  if (action.kind === 'sell') return `sell ${action.row.symbol}`;
+  const word = action.kind === 'fire' ? 'fire now' : action.kind;
+  return `${word} ${actionDirection(action)} ${action.row.symbol}`;
 }
 
 function actionDirection(action: OrderDialogAction): 'buy' | 'sell' {
@@ -1590,9 +1628,12 @@ function actionDirection(action: OrderDialogAction): 'buy' | 'sell' {
 }
 function dialogTitle(chain: BookChain, action: OrderDialogAction | undefined, step: Step): string {
   if (!action) return `${chain.symbol} · chain`;
-  if (step === 'sending') return `Sending · ${actionLabel(action)}`;
-  if (step === 'result') return `Result · ${actionLabel(action)}`;
-  return `${actionLabel(action)} · ${step}`;
+  const label = actionLabel(action);
+  if (step === 'sending') return `Sending · ${label}`;
+  if (step === 'result') return `Result · ${label}`;
+  const sentence = label.charAt(0).toUpperCase() + label.slice(1);
+  // A form is visibly a form; only the confirm step needs to name itself.
+  return step === 'confirm' ? `${sentence} · confirm` : sentence;
 }
 
 function markCancelInFlight(queryClient: ReturnType<typeof useQueryClient>, clientOrderId: string) {
