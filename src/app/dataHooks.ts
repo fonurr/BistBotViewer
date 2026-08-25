@@ -2,13 +2,36 @@ import { useQueries, useQuery } from '@tanstack/react-query';
 import { useEffect, useId } from 'react';
 
 import { bistApi } from '../bistApi/client';
-import type { Bot, BotBudget } from '../bistApi/types';
+import type { Bot, BotBudget, ErrorRow } from '../bistApi/types';
 import { priceApi } from '../priceApi/client';
 import type { PriceFeedState, Quote } from '../priceApi/types';
 import { bistKeys, priceKeys } from './queryKeys';
 import { useViewerRuntime, type PriceHealth } from './ViewerRuntime';
 
 const allBots = '*' as const;
+
+const ESCALATION_WINDOW_MS = 24 * 60 * 60 * 1_000;
+
+/** The two stored types SPEC 5 requires to interrupt rather than sit in the log. */
+const INTERRUPTING_TYPES: ReadonlySet<ErrorRow['type']> = new Set([
+  'AccountFeedSilent',
+  'AccountNotFound',
+]);
+
+const escalationQuery = {
+  queryKey: bistKeys.errors('recent-escalations'),
+  queryFn: () => bistApi.getErrors({ since: Date.now() - ESCALATION_WINDOW_MS, limit: 200 }),
+} as const;
+
+/**
+ * `AccountFeedSilent` means the lists look healthy while fills and cancels
+ * happen unseen, so it has to reach whoever is looking, whichever page that
+ * is. This shares the Book's cache entry, so the shell adds no second read.
+ */
+export function useInterruptingErrors(): ErrorRow[] {
+  const errors = useQuery(escalationQuery);
+  return (errors.data ?? []).filter((row) => INTERRUPTING_TYPES.has(row.type));
+}
 
 export function useBookData() {
   const results = useQueries({
@@ -36,10 +59,7 @@ export function useBookData() {
         queryFn: () => bistApi.getPendingOrderRequests(allBots),
       },
       { queryKey: bistKeys.holidays, queryFn: bistApi.getHolidays },
-      {
-        queryKey: bistKeys.errors('recent-escalations'),
-        queryFn: () => bistApi.getErrors({ since: Date.now() - 24 * 60 * 60 * 1_000, limit: 200 }),
-      },
+      escalationQuery,
     ],
   });
 

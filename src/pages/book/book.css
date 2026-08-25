@@ -617,26 +617,6 @@
 }
 
 .read-error,
-.feed-interrupt {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-4);
-  margin-bottom: var(--space-4);
-  padding: var(--space-4);
-  border: 1px solid color-mix(in srgb, var(--st-warn) 40%, transparent);
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--st-warn) 10%, transparent);
-  color: var(--st-warn);
-  font-size: var(--font-leg);
-}
-
-.feed-interrupt {
-  border-color: color-mix(in srgb, var(--st-dead) 40%, transparent);
-  background: var(--st-dead-t);
-  color: var(--st-dead);
-}
-
 .book-skeleton {
   display: grid;
   gap: var(--space-3);

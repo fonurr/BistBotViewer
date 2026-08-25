@@ -1,4 +1,4 @@
-import { FIXTURE_NOW_MS } from '../../src/test/fixtures';
+import { FIXTURE_NOW_MS, makeBookReadFixture, makeErrorRow } from '../../src/test/fixtures';
 import { expect, makeBrowserScenario, test } from './safeHarness';
 
 test.describe('Bots fleet smoke', () => {
@@ -16,7 +16,7 @@ test.describe('Bots fleet smoke', () => {
     const card = page.locator('article.bots-card').filter({ hasText: 'bot-alpha' });
     await expect(card).toBeVisible();
     await expect(card).toContainText('ACC-1 · BRK-1');
-    await expect(card.getByLabel('1 positions, 0 open sells, 0 scheduled sells')).toBeVisible();
+    await expect(card.getByLabel('1 position, 0 open sells, 0 scheduled sells')).toBeVisible();
     await expect(page.getByText(/prices live · orders updated/i)).toBeVisible();
 
     const accountTrigger = page.getByRole('button', { name: /^All accounts/ });
@@ -30,6 +30,19 @@ test.describe('Bots fleet smoke', () => {
     await expect(page).toHaveURL(/\/performance\?bot=bot-alpha$/);
     await expect(page.getByRole('heading', { name: 'Performance' })).toBeVisible();
     await expect(page.getByText('bot-alpha').last()).toBeVisible();
+  });
+
+  test('interrupts with a silent account feed away from the Book', async ({ page, safeBridge }) => {
+    safeBridge.useScenario(
+      makeBrowserScenario({ bist: { ...makeBookReadFixture(), errors: [makeErrorRow()] } }),
+    );
+    await page.goto('/bots');
+    await safeBridge.stream.open();
+
+    const interrupt = page.locator('.feed-interrupt');
+    await expect(interrupt).toBeVisible();
+    await expect(interrupt).toContainText('AccountFeedSilent');
+    await expect(interrupt).toContainText('fills or cancels are happening unseen');
   });
 
   test('shows a recoverable empty filter without issuing a write', async ({ page, safeBridge }) => {

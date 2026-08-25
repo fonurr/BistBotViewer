@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { formatRelativeAge, formatTime } from '../domain/format';
+import { useInterruptingErrors } from '../app/dataHooks';
 import { useViewerRuntime } from '../app/ViewerRuntime';
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -95,9 +96,26 @@ export function AppShell({ children }: { children: ReactNode }) {
           </p>
         </aside>
       ) : null}
+      <FeedInterrupt />
       <main>{children}</main>
       <ToastRegion />
     </div>
+  );
+}
+
+function FeedInterrupt() {
+  const rows = useInterruptingErrors();
+  if (rows.length === 0) return null;
+  const latest = [...rows].sort((left, right) => right.time - left.time)[0]!;
+  return (
+    <aside className="feed-interrupt" role="alert">
+      <strong>{latest.type}</strong>
+      <span>{latest.information}</span>
+      <span className="muted">
+        The account lists may look healthy while fills or cancels are happening unseen. Check the
+        terminal before acting.
+      </span>
+    </aside>
   );
 }
 

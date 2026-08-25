@@ -184,6 +184,19 @@ export function makeQuote(overrides: Partial<Quote> = {}): Quote {
   };
 }
 
+export function makeErrorRow(overrides: Partial<ErrorRow> = {}): ErrorRow {
+  return {
+    id: 900,
+    time: FIXTURE_NOW_MS - 60_000,
+    type: 'AccountFeedSilent',
+    information: 'ACC-1 answers from a cache it stopped updating.',
+    accountId: 'ACC-1',
+    brokerageId: 'BRK-1',
+    context: null,
+    ...overrides,
+  };
+}
+
 export function makeBookReadFixture(): BistReadFixture {
   const bot = makeBot();
   return {

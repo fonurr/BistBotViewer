@@ -84,9 +84,6 @@ export function BookPage() {
       : runtime.writesHeldReason;
   const noClosingOrderCount = chains.filter((chain) => chain.hasNoClosingOrder).length;
   const mismatchRows = data.errors.filter((row) => row.type === 'OrderAccountMismatch');
-  const interruptRows = data.errors.filter(
-    (row) => row.type === 'AccountFeedSilent' || row.type === 'AccountNotFound',
-  );
 
   const visibleChains = useMemo(
     () =>
@@ -145,7 +142,6 @@ export function BookPage() {
               : `${plural(data.bots.length, 'bot')}, ${plural(data.accounts.length, 'account')}`}
         </span>
       </header>
-      {interruptRows.length > 0 ? <FeedInterrupt rows={interruptRows} /> : null}
       {data.error ? (
         <div className="read-error" role="alert">
           <strong>The order snapshot is incomplete.</strong>
@@ -899,20 +895,6 @@ function MismatchDialog({
         </button>
       </div>
     </Modal>
-  );
-}
-
-function FeedInterrupt({ rows }: { rows: readonly ErrorRow[] }) {
-  const latest = [...rows].sort((left, right) => right.time - left.time)[0];
-  return (
-    <aside className="feed-interrupt" role="alert">
-      <strong>{latest.type}</strong>
-      <span>{latest.information}</span>
-      <span className="muted">
-        The account lists may look healthy while fills or cancels are happening unseen. Check the
-        terminal before acting.
-      </span>
-    </aside>
   );
 }
 
