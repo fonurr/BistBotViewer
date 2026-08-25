@@ -1,0 +1,6 @@
+initial design handoff/
+dist/
+node_modules/
+playwright-report/
+test-results/
+coverage/

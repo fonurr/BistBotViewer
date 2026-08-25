@@ -1,0 +1,275 @@
+.performance-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.performance-toolbar .seg-opt {
+  font-size: var(--font-leg);
+}
+
+.performance-date-range {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--mut);
+}
+
+.performance-date-range .input {
+  width: 136px;
+  min-height: 32px;
+  height: 32px;
+  font-size: var(--font-small);
+}
+
+.performance-toolbar .performance-window-label,
+.performance-toolbar .performance-select,
+.performance-toolbar .performance-symbols {
+  width: auto;
+  min-height: 32px;
+  height: 32px;
+  padding: 0 10px;
+  font-size: var(--font-leg);
+}
+
+.performance-symbols {
+  width: 160px;
+}
+
+.scoped-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.performance-toolbar-spacer {
+  flex: 1;
+}
+
+.window-coverage {
+  font-size: var(--font-small);
+}
+
+.performance-strip {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+  padding: var(--space-4) 0 var(--space-6);
+}
+
+.performance-stat {
+  display: grid;
+  gap: 1px;
+}
+
+.performance-stat strong {
+  font-size: 19px;
+  font-weight: 500;
+}
+
+.performance-stat small {
+  font-size: var(--font-meta);
+}
+
+.performance-section-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-8) 0 var(--space-3);
+  font-size: var(--font-meta);
+}
+
+.performance-section-heading i {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, var(--color-divider) calc(100% - 64px), transparent);
+}
+
+.curve-wrap svg {
+  display: block;
+  width: 100%;
+  height: 210px;
+  overflow: visible;
+}
+
+.curve-wrap text {
+  fill: var(--mut);
+  font-family: var(--font-body);
+  font-size: 9.5px;
+}
+
+.curve-rule {
+  stroke: var(--color-divider);
+  stroke-width: 1;
+  opacity: 0.6;
+}
+
+.curve-area {
+  fill: color-mix(in srgb, var(--color-accent) 16%, transparent);
+}
+
+.curve-line {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.curve-loss {
+  fill: var(--color-bg);
+  stroke: var(--st-dead);
+  stroke-width: 1.5;
+}
+
+.curve-end {
+  fill: var(--color-accent);
+}
+
+.curve-caption {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  color: var(--mut);
+  font-size: var(--font-meta);
+}
+
+.curve-caption i {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 4px;
+  border: 1px solid var(--st-dead);
+  border-radius: 50%;
+}
+
+.performance-table th:not(:first-child),
+.performance-table td:not(:first-child) {
+  text-align: right;
+}
+
+.performance-table th,
+.performance-table td {
+  font-size: var(--font-leg);
+}
+
+.performance-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-top: var(--space-8);
+}
+
+.performance-card {
+  position: relative;
+  flex: 1;
+  min-width: 340px;
+  padding: var(--space-6);
+  overflow: hidden;
+}
+
+.performance-card::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: currentColor;
+  content: '';
+}
+
+.performance-card-warn {
+  color: var(--st-warn);
+}
+
+.performance-card-dead {
+  color: var(--st-dead);
+}
+
+.performance-card h3,
+.limitations h3 {
+  margin: var(--space-2) 0 var(--space-4);
+  color: var(--color-text);
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.performance-card p,
+.limitations p {
+  color: var(--mut);
+  font-size: var(--font-meta);
+  line-height: 1.55;
+}
+
+.metric-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid currentColor;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  font-size: var(--font-row);
+}
+
+.metric-line strong {
+  width: 30px;
+}
+
+.slippage-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-4);
+}
+
+.unavailable-metric {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-left: 3px solid var(--st-warn);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--st-warn) 10%, transparent);
+}
+
+.unavailable-metric strong {
+  font-size: 22px;
+  font-weight: 500;
+}
+
+.unavailable-metric small {
+  color: var(--mut);
+  font-size: var(--font-meta);
+}
+
+.limitations {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+  margin-top: var(--space-8);
+}
+
+.limitations .card {
+  padding: var(--space-6);
+}
+
+.performance-skeleton {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.performance-skeleton span {
+  height: 82px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(
+    90deg,
+    var(--color-neutral-900),
+    var(--color-neutral-800),
+    var(--color-neutral-900)
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shift 1.4s ease-in-out infinite;
+}

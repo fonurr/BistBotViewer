@@ -1,0 +1,1671 @@
+import { useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState } from 'react';
+
+import { useViewerRuntime } from '../../app/ViewerRuntime';
+import { bistKeys } from '../../app/queryKeys';
+import { bistApi } from '../../bistApi/client';
+import { asBistApiError } from '../../bistApi/errors';
+import type {
+  ActiveOrder,
+  Bot,
+  BotBudget,
+  CanceledOrder,
+  Holiday,
+  OrderType,
+  ScheduleSpec,
+  ScheduleType,
+  SendOrdersRequest,
+} from '../../bistApi/types';
+import { Modal } from '../../components/Modal';
+import { ResultList, type ActionResult } from '../../components/ResultList';
+import type { BookCanceledOrderRow, BookChain } from '../../domain/chains';
+import {
+  formatNumber,
+  formatQuantity,
+  parseTurkishNumber,
+  toIstanbulDateKey,
+} from '../../domain/format';
+import { effectivePerPositionCap, reservedBuyCost } from '../../domain/orders';
+import { resolveSchedule } from '../../domain/schedule';
+import { statusClass } from '../../domain/status';
+import { orderActionsForRow, type OrderDialogAction } from './orderActions';
+import { bookRowPresentation } from './rowPresentation';
+
+export type { OrderDialogAction } from './orderActions';
+
+interface OrderDialogProps {
+  open: boolean;
+  chain: BookChain;
+  initialAction?: OrderDialogAction;
+  bot: Bot | undefined;
+  budget: BotBudget | undefined;
+  holidays: readonly Holiday[];
+  writesHeldReason?: string | null;
+  onClose: () => void;
+}
+
+type Step = 'view' | 'form' | 'confirm' | 'sending' | 'result';
+
+interface Draft {
+  type: OrderType;
+  price: string;
+  quantity: string;
+  scheduled: boolean;
+  day: string;
+  scheduleType: ScheduleType;
+  diff: string;
+  cancelAtFloor: boolean;
+  resendMode: 'same' | 'change';
+  keepClose: boolean;
+  changeSchedule: boolean;
+}
+
+export function OrderDialog({
+  open,
+  chain,
+  initialAction,
+  bot,
+  budget,
+  holidays,
+  writesHeldReason: pageWritesHeldReason = null,
+  onClose,
+}: OrderDialogProps) {
+  const runtime = useViewerRuntime();
+  const queryClient = useQueryClient();
+  const [action, setAction] = useState<OrderDialogAction | undefined>(initialAction);
+  const [step, setStep] = useState<Step>(initialAction ? actionStep(initialAction) : 'view');
+  const [draft, setDraft] = useState<Draft>(() => draftFor(initialAction, chain));
+  const [results, setResults] = useState<ActionResult[]>([]);
+  const [resultTitle, setResultTitle] = useState<string | null>(null);
+
+  const writesHeldReason = pageWritesHeldReason ?? runtime.writesHeldReason;
+  const writesHeldRef = useRef(writesHeldReason);
+  writesHeldRef.current = writesHeldReason;
+
+  useEffect(() => {
+    if (!action || step === 'sending' || step === 'result') return;
+    const freshRow =
+      chain.rows.find((row) => row.key === action.row.key) ??
+      (action.row.clientOrderId === null
+        ? undefined
+        : chain.rows.find((row) => row.clientOrderId === action.row.clientOrderId));
+    if (freshRow === action.row) return;
+    const freshAction = freshRow
+      ? orderActionsForRow(freshRow, chain).find((candidate) => candidate.kind === action.kind)
+      : undefined;
+    if (freshRow && freshAction && sameActionRowState(action.row, freshRow)) {
+      setAction(freshAction);
+      return;
+    }
+    setAction(freshAction);
+    setDraft(draftFor(freshAction, chain));
+    setResults([]);
+    setResultTitle(null);
+    setStep(freshAction ? actionStep(freshAction) : 'view');
+  }, [action, chain, step]);
+
+  const validation = useMemo(
+    () => validateDraft(action, draft, chain, bot, budget, holidays),
+    [action, bot, budget, chain, draft, holidays],
+  );
+  const heldReason = writesHeldReason ?? action?.disabledReason ?? null;
+  const blockedReason = heldReason ?? validation.error;
+
+  const chooseAction = (next: OrderDialogAction) => {
+    setAction(next);
+    setDraft(draftFor(next, chain));
+    setStep(actionStep(next));
+  };
+
+  const finishWithError = (label: string, error: unknown) => {
+    const apiError = asBistApiError(error);
+    if (apiError.queued) {
+      setResultTitle('Queued for replay');
+      setResults([queuedResult('request', label, apiError)]);
+      setStep('result');
+      return;
+    }
+    const unknown =
+      apiError.mayHaveReachedExchange ||
+      apiError.kind === 'unknown' ||
+      apiError.kind === 'protocol';
+    setResultTitle(unknown ? 'Outcome unknown' : 'Request refused');
+    setResults([
+      {
+        id: 'request',
+        label,
+        tone: unknown ? 'unknown' : 'refused',
+        detail: unknown
+          ? `${apiError.message} Whether it reached the exchange cannot be known; do not send it again.`
+          : `${apiError.message} This viewer did not retry the call.`,
+      },
+    ]);
+    setStep('result');
+  };
+
+  const submit = async () => {
+    if (!action || blockedReason || writesHeldRef.current) return;
+    setStep('sending');
+    try {
+      if (action.kind === 'cancel') {
+        if (action.row.source === 'scheduled') {
+          let freshScheduled: ActiveOrder | undefined;
+          try {
+            const freshRows = await bistApi.getActiveOrders(chain.botId);
+            const freshRow = freshRows.find(
+              (row) => row.clientOrderId === action.row.raw.clientOrderId,
+            );
+            freshScheduled = freshRow?.status === 'Scheduled' ? freshRow : undefined;
+            if (!freshScheduled) {
+              setResultTitle('Schedule changed');
+              setResults([
+                {
+                  id: action.row.key,
+                  label: `Remove scheduled ${action.row.direction} ${action.row.symbol}`,
+                  tone: 'not-sent',
+                  detail: freshRow
+                    ? 'A fresh snapshot shows this row is no longer scheduled. CancelOrders was not called.'
+                    : 'A fresh snapshot no longer contains this scheduled row. CancelOrders was not called.',
+                },
+              ]);
+              setStep('result');
+              return;
+            }
+          } catch (error) {
+            const apiError = asBistApiError(error);
+            setResultTitle('Schedule not canceled');
+            setResults([
+              {
+                id: action.row.key,
+                label: `Remove scheduled ${action.row.direction} ${action.row.symbol}`,
+                tone: 'not-sent',
+                detail: `${apiError.message} The fresh safety read failed, so CancelOrders was not called.`,
+              },
+            ]);
+            setStep('result');
+            return;
+          }
+
+          if (writesHeldRef.current) {
+            setResultTitle('Schedule not canceled');
+            setResults([
+              {
+                id: action.row.key,
+                label: `Remove scheduled ${action.row.direction} ${action.row.symbol}`,
+                tone: 'not-sent',
+                detail: `${writesHeldRef.current} The stream changed during the safety read, so CancelOrders was not called.`,
+              },
+            ]);
+            setStep('result');
+            return;
+          }
+
+          await bistApi.cancelOrders(chain.botId, [freshScheduled.clientOrderId]);
+          invalidateBotBudget(queryClient, chain.botId);
+          const confirmation = await confirmScheduledRemoval(
+            chain.botId,
+            freshScheduled.clientOrderId,
+          );
+          if (confirmation.kind === 'removed') {
+            recordConfirmedScheduleRemoval(queryClient, confirmation.row);
+            setResultTitle('Schedule removed');
+            setResults([
+              {
+                id: action.row.key,
+                label: `Remove scheduled ${action.row.direction} ${action.row.symbol}`,
+                tone: 'landed',
+                word: 'Removed',
+                detail:
+                  'A fresh canceled-row read confirms it was removed before reaching the exchange.',
+              },
+            ]);
+          } else if (confirmation.kind === 'active') {
+            setResultTitle('Cancel accepted');
+            setResults([
+              {
+                id: action.row.key,
+                label: `Cancel ${action.row.direction} ${action.row.symbol}`,
+                tone: 'accepted',
+                detail:
+                  'The row fired before cancellation completed. The cancel was accepted against the live order, which remains until a refresh confirms its terminal state.',
+              },
+            ]);
+          } else if (confirmation.kind === 'unsafe-canceled') {
+            recordCanceledOrder(queryClient, confirmation.row);
+            setResultTitle('Pre-exchange removal unproven');
+            setResults([
+              {
+                id: action.row.key,
+                label: `Cancel ${action.row.direction} ${action.row.symbol}`,
+                tone: 'unknown',
+                word: 'Not proved',
+                detail:
+                  'The canceled record does not prove this row stayed off the exchange. Any fill exposure must be read from the refreshed position.',
+              },
+            ]);
+          } else {
+            setResultTitle('Removal unconfirmed');
+            setResults([
+              {
+                id: action.row.key,
+                label: `Remove scheduled ${action.row.direction} ${action.row.symbol}`,
+                tone: 'accepted',
+                detail:
+                  'CancelOrders returned, but the fresh reads could not prove a pre-exchange removal. Do not submit the cancellation again.',
+              },
+            ]);
+          }
+          setStep('result');
+          return;
+        }
+
+        await bistApi.cancelOrders(chain.botId, [action.row.raw.clientOrderId]);
+        invalidateBotBudget(queryClient, chain.botId);
+        markCancelInFlight(queryClient, action.row.raw.clientOrderId);
+        setResults([
+          {
+            id: action.row.key,
+            label: `Cancel ${action.row.direction} ${action.row.symbol}`,
+            tone: 'accepted',
+            detail:
+              'The request was accepted. The live row remains until a refresh confirms it is gone.',
+          },
+        ]);
+        setResultTitle('Cancel accepted');
+        setStep('result');
+        return;
+      }
+
+      if (action.kind === 'fire') {
+        await fireScheduled(
+          action,
+          chain,
+          queryClient,
+          setResults,
+          setResultTitle,
+          () => writesHeldRef.current,
+        );
+        setStep('result');
+        return;
+      }
+
+      if (action.kind === 'edit') {
+        const request = buildEditRequest(action, draft, chain);
+        await bistApi.editOrders(request);
+        invalidateBotBudget(queryClient, chain.botId);
+        const scheduledEdit = action.row.source === 'scheduled';
+        setResults([
+          {
+            id: action.row.key,
+            label: `Edit ${action.row.direction} ${action.row.symbol}`,
+            tone: scheduledEdit ? 'landed' : 'accepted',
+            detail: scheduledEdit
+              ? 'The server confirmed the local scheduled row was updated.'
+              : 'The server accepted the exchange edit. The live row remains at its previous confirmed values until a refresh reports the result.',
+          },
+        ]);
+        setResultTitle(scheduledEdit ? 'Schedule updated' : 'Edit accepted');
+        setStep('result');
+        return;
+      }
+
+      const request = buildSendRequest(action, draft, chain);
+      const response = await bistApi.sendOrders(request);
+      invalidateBotBudget(queryClient, chain.botId);
+      const sent = response.toOrder.find((row) => row.symbol === action.row.symbol);
+      const skipped = response.skippedList.find((row) => row.symbol === action.row.symbol);
+      const label =
+        action.kind === 'sell' ? `Sell ${action.row.symbol}` : `Resend ${action.row.symbol}`;
+      if (sent) {
+        setResults([
+          {
+            id: action.row.key,
+            label,
+            tone: 'landed',
+            detail:
+              action.kind === 'resend'
+                ? 'A fresh order was created with its own client id and its own chain. The canceled chain stays closed.'
+                : `A fresh sell for ${formatQuantity(sent.quantity ?? validation.quantity ?? 0)} shares was created as a new chain.`,
+          },
+        ]);
+        setResultTitle(action.kind === 'sell' ? 'Sell created' : 'Fresh order created');
+      } else if (skipped) {
+        setResults([
+          {
+            id: action.row.key,
+            label,
+            tone: 'refused',
+            detail:
+              skipped.reason ??
+              'The server guard refused this symbol before confirming a new order.',
+          },
+        ]);
+        setResultTitle('Order not created');
+      } else {
+        setResults([
+          {
+            id: action.row.key,
+            label,
+            tone: 'unknown',
+            detail:
+              'The successful reply named this symbol in neither the created nor skipped list. Its outcome is unknown; do not send it again.',
+          },
+        ]);
+        setResultTitle('Outcome unknown');
+      }
+      setStep('result');
+    } catch (error) {
+      finishWithError(actionLabel(action), error);
+    }
+  };
+
+  const title = dialogTitle(chain, action, step);
+
+  return (
+    <Modal
+      open={open}
+      title={title}
+      onClose={onClose}
+      closeBlocked={step === 'sending'}
+      wide={step === 'view'}
+    >
+      {step === 'view' ? (
+        <ChainView
+          chain={chain}
+          onAction={chooseAction}
+          writesHeldReason={writesHeldReason}
+          onClose={onClose}
+        />
+      ) : null}
+      {step === 'form' && action && action.kind !== 'cancel' && action.kind !== 'fire' ? (
+        <ActionForm
+          action={action}
+          chain={chain}
+          draft={draft}
+          setDraft={setDraft}
+          validation={validation}
+          blockedReason={blockedReason}
+          onClose={onClose}
+          onSubmit={() => void submit()}
+        />
+      ) : null}
+      {step === 'confirm' && action && (action.kind === 'cancel' || action.kind === 'fire') ? (
+        <ActionConfirm
+          action={action}
+          chain={chain}
+          blockedReason={blockedReason}
+          onClose={onClose}
+          onSubmit={() => void submit()}
+        />
+      ) : null}
+      {step === 'sending' && action ? <SendingState action={action} /> : null}
+      {step === 'result' ? (
+        <>
+          {resultTitle ? <h3 className="result-title">{resultTitle}</h3> : null}
+          <ResultList results={results} />
+          <div className="dialog-actions">
+            <button type="button" className="btn btn-secondary" onClick={onClose}>
+              Done
+            </button>
+          </div>
+        </>
+      ) : null}
+    </Modal>
+  );
+}
+
+function ChainView({
+  chain,
+  onAction,
+  writesHeldReason,
+  onClose,
+}: {
+  chain: BookChain;
+  onAction: (action: OrderDialogAction) => void;
+  writesHeldReason: string | null;
+  onClose: () => void;
+}) {
+  return (
+    <div className="chain-dialog-view">
+      <div className="chain-dialog-meta">
+        <span>{chain.botId}</span>
+        <span>{chain.batchDate ?? 'batch date unknown'}</span>
+        <span>{chain.chainId ? `chain …${chain.chainId.slice(-8)}` : 'chain link unknown'}</span>
+      </div>
+      {chain.rows.map((row) => {
+        const actions = orderActionsForRow(row, chain);
+        const presentation = bookRowPresentation(row, chain);
+        return (
+          <div className="chain-dialog-row" key={row.key}>
+            <span className={`chain-dialog-spine ${statusClass(presentation.role)}`} />
+            <div>
+              <strong>{row.symbol}</strong>
+              <span className="muted">
+                {' '}
+                · {row.clientOrderId ? `…${row.clientOrderId.slice(-8)}` : 'no client id'}
+              </span>
+              <div className="chain-dialog-row-detail">
+                {row.quantity === null ? 'auto' : formatQuantity(row.quantity)} · {row.direction}
+                {row.orderType ? ` ${row.orderType}` : ''} · {presentation.label}
+              </div>
+              {presentation.detail ? (
+                <div className={`chain-dialog-row-detail ${statusClass(presentation.role)}`}>
+                  {presentation.detail}
+                </div>
+              ) : null}
+            </div>
+            <div className="chain-dialog-actions">
+              {actions.map((action) => (
+                <button
+                  type="button"
+                  className={`btn btn-ghost${action.kind === 'fire' ? ' fire-action' : ''}`}
+                  disabled={Boolean(writesHeldReason) || action.disabled}
+                  title={writesHeldReason ?? action.disabledReason}
+                  onClick={() => onAction(action)}
+                  key={action.kind}
+                >
+                  {action.kind === 'fire' ? 'fire now' : action.kind}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+      {chain.sellableQuantity === 0 && chain.positionQuantity ? (
+        <p className="dialog-note">
+          All {formatQuantity(chain.positionQuantity)} held shares are claimed by active or
+          scheduled sells. Edit one of those orders to free shares.
+        </p>
+      ) : null}
+      {writesHeldReason ? (
+        <p className="form-block-reason status-dead">{writesHeldReason}</p>
+      ) : null}
+      <div className="dialog-actions">
+        <button type="button" className="btn btn-secondary" onClick={onClose}>
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ActionForm({
+  action,
+  chain,
+  draft,
+  setDraft,
+  validation,
+  blockedReason,
+  onClose,
+  onSubmit,
+}: {
+  action: Exclude<OrderDialogAction, { kind: 'cancel' | 'fire' }>;
+  chain: BookChain;
+  draft: Draft;
+  setDraft: (draft: Draft) => void;
+  validation: Validation;
+  blockedReason: string | null;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  const isResend = action.kind === 'resend';
+  const direction = actionDirection(action);
+  const sameModeUnavailable =
+    action.kind === 'resend' ? resendSameUnavailableReason(action, chain) : null;
+  const linkedClose =
+    action.kind === 'resend' && action.row.direction === 'buy'
+      ? linkedReversingSell(action.row, chain)
+      : undefined;
+  const canBlankQuantity =
+    (isResend && action.row.direction === 'buy' && draft.resendMode === 'change') ||
+    (action.kind === 'edit' &&
+      action.row.source === 'scheduled' &&
+      action.row.direction === 'sell');
+  const scheduledEdit = action.kind === 'edit' && action.row.source === 'scheduled';
+  return (
+    <div>
+      <p className="dialog-context">
+        {direction} {action.row.symbol} ·{' '}
+        {action.row.clientOrderId ? `…${action.row.clientOrderId.slice(-8)}` : 'fresh order'}
+      </p>
+      {isResend ? (
+        <>
+          <div className="stored-spec">
+            <span className="kicker">stored canceled order</span>
+            <strong>
+              {formatQuantity(action.row.quantity ?? 0)} shares ·{' '}
+              {action.row.orderType ?? action.row.intentType} ·{' '}
+              {action.row.orderPrice === null
+                ? 'no stored price'
+                : formatNumber(action.row.orderPrice)}
+            </strong>
+            <span className="muted">
+              {action.row.raw.matriksOrderId
+                ? 'The stored order had already been sent; using these stored fields sends the fresh order now.'
+                : 'The canceled-order read does not preserve the original fire-time spec.'}
+              {linkedClose
+                ? ' A linked reversing sell existed, but its reusable closeTime is not preserved.'
+                : ''}
+            </span>
+          </div>
+          <div className="seg form-mode" aria-label="Resend mode">
+            <label className="seg-opt">
+              <input
+                type="radio"
+                name="resend-mode"
+                disabled={Boolean(sameModeUnavailable)}
+                checked={draft.resendMode === 'same'}
+                onChange={() => setDraft({ ...draft, resendMode: 'same', scheduled: false })}
+              />
+              <span>Resend as it was</span>
+            </label>
+            <label className="seg-opt">
+              <input
+                type="radio"
+                name="resend-mode"
+                checked={draft.resendMode === 'change'}
+                onChange={() => setDraft({ ...draft, resendMode: 'change' })}
+              />
+              <span>Change it first</span>
+            </label>
+          </div>
+          {sameModeUnavailable ? (
+            <p className="form-block-reason">
+              {sameModeUnavailable} Use “Change it first” and choose the replacement timing
+              explicitly.
+            </p>
+          ) : null}
+        </>
+      ) : null}
+      <fieldset className="form-fields" disabled={isResend && draft.resendMode === 'same'}>
+        <label className="field">
+          <span>Type</span>
+          <select
+            className="input"
+            value={draft.type}
+            onChange={(event) => setDraft({ ...draft, type: event.target.value as OrderType })}
+          >
+            <option value="limit">limit</option>
+            <option value="market">market</option>
+          </select>
+        </label>
+        <label className="field">
+          <span>Price{draft.type === 'market' && direction === 'sell' ? ' (optional)' : ''}</span>
+          <input
+            className="input"
+            inputMode="decimal"
+            value={draft.price}
+            onChange={(event) => setDraft({ ...draft, price: event.target.value })}
+          />
+        </label>
+        <label className="field">
+          <span>Quantity{canBlankQuantity ? ' (optional)' : ''}</span>
+          <input
+            className="input"
+            inputMode="numeric"
+            value={draft.quantity}
+            onChange={(event) => setDraft({ ...draft, quantity: event.target.value })}
+          />
+        </label>
+      </fieldset>
+      {action.kind === 'edit' &&
+      action.row.source === 'scheduled' &&
+      action.row.direction === 'sell' ? (
+        <p className="dialog-note">
+          Leave quantity blank to keep “sell whatever the position holds at fire.” That schedule
+          continues to claim the whole position.
+        </p>
+      ) : null}
+      {action.kind !== 'edit' && !(isResend && draft.resendMode === 'same') ? (
+        <div className="seg form-mode" aria-label="Send timing">
+          <label className="seg-opt">
+            <input
+              type="radio"
+              name="timing"
+              checked={!draft.scheduled}
+              onChange={() => setDraft({ ...draft, scheduled: false })}
+            />
+            <span>Send now</span>
+          </label>
+          <label className="seg-opt">
+            <input
+              type="radio"
+              name="timing"
+              checked={draft.scheduled}
+              onChange={() => setDraft({ ...draft, scheduled: true })}
+            />
+            <span>Schedule it</span>
+          </label>
+        </div>
+      ) : null}
+      {scheduledEdit ? (
+        <label className="check-field">
+          <input
+            type="checkbox"
+            checked={draft.changeSchedule}
+            onChange={(event) => setDraft({ ...draft, changeSchedule: event.target.checked })}
+          />
+          Change the current resolved fire time
+          {action.row.scheduledTime
+            ? ` (${new Date(action.row.scheduledTime).toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })})`
+            : ''}
+        </label>
+      ) : null}
+      {(draft.scheduled && !scheduledEdit) || (scheduledEdit && draft.changeSchedule) ? (
+        <ScheduleFields draft={draft} setDraft={setDraft} />
+      ) : null}
+      {(scheduledEdit && action.row.direction === 'buy') ||
+      (isResend &&
+        action.row.direction === 'buy' &&
+        draft.resendMode === 'change' &&
+        draft.scheduled) ? (
+        <label className="check-field">
+          <input
+            type="checkbox"
+            checked={draft.cancelAtFloor}
+            onChange={(event) => setDraft({ ...draft, cancelAtFloor: event.target.checked })}
+          />
+          Cancel at the daily floor before it fires
+        </label>
+      ) : null}
+      {isResend && action.row.direction === 'buy' && draft.resendMode === 'change' ? (
+        <label className="check-field">
+          <input
+            type="checkbox"
+            checked={draft.keepClose}
+            onChange={(event) => setDraft({ ...draft, keepClose: event.target.checked })}
+          />
+          Create a linked reversing sell at BeforeClose −30m
+        </label>
+      ) : null}
+      <p className="bounding-copy">{validation.boundCopy}</p>
+      {isResend ? (
+        <p className="dialog-note">
+          This creates a new client id and a new chain. It does not revive or attach to the canceled
+          one.
+        </p>
+      ) : null}
+      {blockedReason ? <p className="form-block-reason">{blockedReason}</p> : null}
+      <div className="dialog-actions">
+        <button type="button" className="btn btn-secondary" onClick={onClose}>
+          Close
+        </button>
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={Boolean(blockedReason)}
+          onClick={onSubmit}
+        >
+          {action.kind === 'edit' ? 'Save' : action.kind}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ScheduleFields({ draft, setDraft }: { draft: Draft; setDraft: (draft: Draft) => void }) {
+  const needsDiff = draft.scheduleType === 'AfterOpen' || draft.scheduleType === 'BeforeClose';
+  return (
+    <fieldset className="schedule-fields">
+      <legend className="kicker">fire time</legend>
+      <label className="field">
+        <span>Day</span>
+        <input
+          className="input"
+          type="date"
+          value={draft.day}
+          onChange={(event) => setDraft({ ...draft, day: event.target.value })}
+        />
+      </label>
+      <label className="field">
+        <span>Moment</span>
+        <select
+          className="input"
+          value={draft.scheduleType}
+          onChange={(event) =>
+            setDraft({ ...draft, scheduleType: event.target.value as ScheduleType })
+          }
+        >
+          <option value="OpeningAuction">Opening auction</option>
+          <option value="AtOpen">At open</option>
+          <option value="AfterOpen">After open</option>
+          <option value="BeforeClose">Before close</option>
+          <option value="ClosingAuction">Closing auction</option>
+        </select>
+      </label>
+      {needsDiff ? (
+        <label className="field">
+          <span>Difference (minutes)</span>
+          <input
+            className="input"
+            inputMode="decimal"
+            value={draft.diff}
+            onChange={(event) => setDraft({ ...draft, diff: event.target.value })}
+          />
+        </label>
+      ) : null}
+    </fieldset>
+  );
+}
+
+function ActionConfirm({
+  action,
+  chain,
+  blockedReason,
+  onClose,
+  onSubmit,
+}: {
+  action: Extract<OrderDialogAction, { kind: 'cancel' | 'fire' }>;
+  chain: BookChain;
+  blockedReason: string | null;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  const linkedSell =
+    action.row.direction === 'buy' && action.row.source === 'scheduled'
+      ? chain.activeRows.find(
+          (row) => row.parentClientOrderId === action.row.clientOrderId && row.direction === 'sell',
+        )
+      : undefined;
+  return (
+    <div>
+      <p className="dialog-context">
+        {action.row.direction} {action.row.symbol} ·{' '}
+        {action.row.quantity === null
+          ? 'quantity resolves from the position at fire'
+          : `${formatQuantity(action.row.quantity)} shares`}
+      </p>
+      <ol className="confirm-calls">
+        <li>
+          <strong>1 · CancelOrders</strong>
+          <span>
+            {action.kind === 'fire'
+              ? 'Remove the scheduled row before creating anything new.'
+              : action.row.source === 'scheduled'
+                ? 'Remove the server-held schedule; nothing has reached the exchange.'
+                : 'Ask to cancel the live exchange order. An empty reply confirms only that the request was accepted.'}
+          </span>
+        </li>
+        {action.kind === 'fire' ? (
+          <li>
+            <strong>2 · SendOrders</strong>
+            <span>
+              Only after the scheduled cancel lands, create the same {action.row.direction}{' '}
+              immediately. Quantity and price resolve now; the new order gets its own id and chain.
+            </span>
+          </li>
+        ) : null}
+      </ol>
+      {linkedSell ? (
+        <p className="form-block-reason">
+          Canceling this scheduled buy also cancels its linked reversing sell …
+          {linkedSell.clientOrderId?.slice(-8)}.
+        </p>
+      ) : null}
+      {blockedReason ? <p className="form-block-reason">{blockedReason}</p> : null}
+      <div className="dialog-actions">
+        <button type="button" className="btn btn-secondary" onClick={onClose}>
+          Close
+        </button>
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={Boolean(blockedReason)}
+          onClick={onSubmit}
+        >
+          {action.kind === 'fire' ? 'Fire now' : 'Cancel order'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SendingState({ action }: { action: OrderDialogAction }) {
+  return (
+    <div className="sending-panel" aria-live="polite">
+      <div className="sending-previous">
+        <strong>{action.row.symbol}</strong>
+        <span>
+          {actionDirection(action)} ·{' '}
+          {action.row.quantity === null ? 'auto' : formatQuantity(action.row.quantity)} · previous
+          value
+        </span>
+      </div>
+      <div className="sending-call">
+        <span className="spinner" aria-hidden="true" />
+        <span>
+          {action.kind === 'fire'
+            ? 'CancelOrders, then SendOrders'
+            : `${rpcName(action.kind)} is waiting for the server`}
+        </span>
+      </div>
+      <p>
+        The row stays at its previous value until a readable reply or stream update confirms
+        something else.
+      </p>
+    </div>
+  );
+}
+
+interface Validation {
+  error: string | null;
+  boundCopy: string;
+  quantity: number | null;
+  price: number | null;
+}
+
+function validateDraft(
+  action: OrderDialogAction | undefined,
+  draft: Draft,
+  chain: BookChain,
+  bot: Bot | undefined,
+  budget: BotBudget | undefined,
+  holidays: readonly Holiday[],
+): Validation {
+  if (!action || action.kind === 'cancel' || action.kind === 'fire')
+    return { error: null, boundCopy: '', quantity: null, price: null };
+  const direction = actionDirection(action);
+  const price = parseTurkishNumber(draft.price);
+  const quantityValue = parseTurkishNumber(draft.quantity);
+  const quantity = quantityValue;
+  const allowBlankQuantity =
+    (action.kind === 'resend' && action.row.direction === 'buy' && draft.resendMode === 'change') ||
+    (action.kind === 'edit' &&
+      action.row.source === 'scheduled' &&
+      action.row.direction === 'sell');
+  const effectiveDraft =
+    action.kind === 'resend' && draft.resendMode === 'same' ? draftFor(action, chain) : draft;
+  const finalPrice =
+    action.kind === 'resend' && draft.resendMode === 'same' ? action.row.orderPrice : price;
+  const finalQuantity =
+    action.kind === 'resend' && draft.resendMode === 'same' ? action.row.quantity : quantity;
+  const priceRequired = effectiveDraft.type === 'limit' || direction === 'buy';
+  if (action.kind === 'resend' && draft.resendMode === 'same') {
+    const unavailableReason = resendSameUnavailableReason(action, chain);
+    if (unavailableReason) {
+      return {
+        error: unavailableReason,
+        boundCopy: boundCopy(action, chain, budget),
+        quantity: finalQuantity,
+        price: finalPrice,
+      };
+    }
+  }
+  if (priceRequired && (finalPrice === null || finalPrice <= 0))
+    return {
+      error: 'Enter a price greater than zero.',
+      boundCopy: boundCopy(action, chain, budget),
+      quantity: finalQuantity,
+      price: finalPrice,
+    };
+  if (!allowBlankQuantity && (finalQuantity === null || finalQuantity <= 0))
+    return {
+      error: 'Enter a whole quantity greater than zero.',
+      boundCopy: boundCopy(action, chain, budget),
+      quantity: finalQuantity,
+      price: finalPrice,
+    };
+  if (finalQuantity !== null && (!Number.isInteger(finalQuantity) || finalQuantity <= 0))
+    return {
+      error: 'Quantity must be a whole number greater than zero.',
+      boundCopy: boundCopy(action, chain, budget),
+      quantity: finalQuantity,
+      price: finalPrice,
+    };
+  if (direction === 'sell') {
+    const ceiling = sellCeiling(action, chain, effectiveDraft.scheduled);
+    if (finalQuantity !== null && finalQuantity > ceiling)
+      return {
+        error: `This asks for ${formatQuantity(finalQuantity)} shares, but only ${formatQuantity(ceiling)} are unclaimed.`,
+        boundCopy: boundCopy(action, chain, budget),
+        quantity: finalQuantity,
+        price: finalPrice,
+      };
+  } else {
+    if (!bot?.complete)
+      return {
+        error: 'This buy is held because the bot configuration is incomplete.',
+        boundCopy: boundCopy(action, chain, budget),
+        quantity: finalQuantity,
+        price: finalPrice,
+      };
+    if (!bot.active && action.kind !== 'edit')
+      return {
+        error: 'This buy is held because the bot is deactivated.',
+        boundCopy: boundCopy(action, chain, budget),
+        quantity: finalQuantity,
+        price: finalPrice,
+      };
+    if (!budget)
+      return {
+        error: 'The bot budget is unavailable, so this buy cannot be bounded safely.',
+        boundCopy: boundCopy(action, chain, budget),
+        quantity: finalQuantity,
+        price: finalPrice,
+      };
+    if (finalQuantity !== null && finalPrice !== null) {
+      const ownCommitment =
+        action.kind === 'edit' && action.row.orderPrice !== null && action.row.quantity !== null
+          ? reservedBuyCost(
+              action.row.quantity,
+              action.row.orderPrice,
+              action.row.orderType ?? action.row.intentType ?? 'limit',
+            )
+          : 0;
+      const ceiling = Math.min(
+        budget.remainingBotBudget + ownCommitment,
+        effectivePerPositionCap(budget),
+      );
+      const cost = reservedBuyCost(finalQuantity, finalPrice, effectiveDraft.type);
+      if (cost > ceiling)
+        return {
+          error: `This asks for ${formatNumber(cost)} and the effective available cap is ${formatNumber(ceiling)}.`,
+          boundCopy: boundCopy(action, chain, budget),
+          quantity: finalQuantity,
+          price: finalPrice,
+        };
+    }
+  }
+  const scheduleChanges =
+    action.kind === 'edit' && action.row.source === 'scheduled'
+      ? effectiveDraft.changeSchedule
+      : effectiveDraft.scheduled;
+  const resolvedSchedule = scheduleChanges
+    ? resolveDraftSchedule(effectiveDraft, holidays)
+    : undefined;
+  if (resolvedSchedule && !resolvedSchedule.ok)
+    return {
+      error: resolvedSchedule.error,
+      boundCopy: boundCopy(action, chain, budget),
+      quantity: finalQuantity,
+      price: finalPrice,
+    };
+  const effectiveWhenType =
+    action.kind === 'edit' && action.row.source === 'scheduled' && !effectiveDraft.changeSchedule
+      ? action.row.raw.whenType
+      : scheduleChanges
+        ? effectiveDraft.scheduleType
+        : null;
+  if (direction === 'buy' && effectiveDraft.cancelAtFloor && effectiveWhenType === 'OpeningAuction')
+    return {
+      error:
+        'Cancel at the daily floor cannot guard an Opening auction buy because no market price exists at 09:00.',
+      boundCopy: boundCopy(action, chain, budget),
+      quantity: finalQuantity,
+      price: finalPrice,
+    };
+  if (action.kind === 'edit' && action.row.source === 'scheduled' && resolvedSchedule?.ok) {
+    const orderingError = scheduledEditOrderingError(action, chain, resolvedSchedule.fireTime);
+    if (orderingError)
+      return {
+        error: orderingError,
+        boundCopy: boundCopy(action, chain, budget),
+        quantity: finalQuantity,
+        price: finalPrice,
+      };
+  }
+  if (action.kind === 'resend' && action.row.direction === 'buy' && effectiveDraft.keepClose) {
+    const closeDraft = {
+      ...effectiveDraft,
+      scheduled: true,
+      scheduleType: 'BeforeClose' as const,
+      diff: '30',
+    };
+    const resolvedClose = resolveDraftSchedule(closeDraft, holidays);
+    if (!resolvedClose.ok) {
+      return {
+        error: `The linked reversing sell is invalid: ${resolvedClose.error}`,
+        boundCopy: boundCopy(action, chain, budget),
+        quantity: finalQuantity,
+        price: finalPrice,
+      };
+    }
+    if (resolvedSchedule?.ok && resolvedSchedule.fireTime >= resolvedClose.fireTime) {
+      return {
+        error: 'The linked reversing sell must fire after the scheduled opening buy.',
+        boundCopy: boundCopy(action, chain, budget),
+        quantity: finalQuantity,
+        price: finalPrice,
+      };
+    }
+  }
+  return {
+    error: null,
+    boundCopy: boundCopy(action, chain, budget),
+    quantity: finalQuantity,
+    price: finalPrice,
+  };
+}
+
+function boundCopy(
+  action: Exclude<OrderDialogAction, { kind: 'cancel' | 'fire' }>,
+  chain: BookChain,
+  budget: BotBudget | undefined,
+): string {
+  if (actionDirection(action) === 'sell') {
+    const current = sellCeiling(action, chain, false);
+    const projected = sellCeiling(action, chain, true);
+    const availability =
+      current === projected
+        ? `${formatQuantity(current)} shares`
+        : `${formatQuantity(current)} shares now; ${formatQuantity(projected)} for a schedule after pending buys`;
+    return `Available to this order: ${availability}. Active and scheduled sells, including cancels in flight, keep their claim until cancellation is confirmed.`;
+  }
+  if (!budget)
+    return 'A buy is bounded by the bot budget and effective per-position cap; those figures are not available yet.';
+  return `Available bot budget: ${formatNumber(budget.remainingBotBudget)}. Effective per-position cap: ${formatNumber(effectivePerPositionCap(budget))}. Market buys reserve 10% extra per share.`;
+}
+
+function sellCeiling(
+  action: Exclude<OrderDialogAction, { kind: 'cancel' | 'fire' }>,
+  chain: BookChain,
+  scheduled = false,
+): number {
+  if (action.kind === 'edit' && action.row.direction === 'sell') {
+    return chain.sellEditCeilingByRowKey[action.row.key] ?? 0;
+  }
+  return scheduled ? (chain.projectedSellableQuantity ?? 0) : (chain.sellableQuantity ?? 0);
+}
+
+function resolveDraftSchedule(draft: Draft, holidays: readonly Holiday[]) {
+  const needsDiff = draft.scheduleType === 'AfterOpen' || draft.scheduleType === 'BeforeClose';
+  const diff = needsDiff ? parseTurkishNumber(draft.diff) : undefined;
+  return resolveSchedule(
+    {
+      day: draft.day,
+      type: draft.scheduleType,
+      ...(diff === null || diff === undefined ? {} : { diff }),
+    },
+    holidays,
+  );
+}
+
+function scheduledEditOrderingError(
+  action: Extract<OrderDialogAction, { kind: 'edit' }>,
+  chain: BookChain,
+  fireTime: number,
+): string | null {
+  if (action.row.source !== 'scheduled') return null;
+  if (action.row.direction === 'sell' && action.row.parentClientOrderId) {
+    const parent = chain.activeRows.find(
+      (row) => row.source === 'scheduled' && row.clientOrderId === action.row.parentClientOrderId,
+    );
+    if (parent && (parent.scheduledTime === null || fireTime <= parent.scheduledTime)) {
+      return 'The linked reversing sell must fire strictly after its still-scheduled opening buy.';
+    }
+  }
+  if (action.row.direction === 'buy') {
+    const children = chain.activeRows.filter(
+      (row) => row.source === 'scheduled' && row.parentClientOrderId === action.row.clientOrderId,
+    );
+    if (children.some((row) => row.scheduledTime === null || fireTime >= row.scheduledTime!)) {
+      return 'The scheduled opening buy must fire strictly before every linked reversing sell.';
+    }
+  }
+  return null;
+}
+
+function buildEditRequest(
+  action: Extract<OrderDialogAction, { kind: 'edit' }>,
+  draft: Draft,
+  chain: BookChain,
+) {
+  const validation = draftForRequest(action, draft);
+  return {
+    botId: chain.botId,
+    direction: action.row.direction,
+    type: validation.type,
+    orderIds: [action.row.raw.clientOrderId],
+    stocks: [
+      {
+        symbol: action.row.symbol,
+        orderId: action.row.raw.clientOrderId,
+        ...(validation.price === null ? {} : { price: validation.price }),
+        ...(validation.quantity === null ? {} : { quantity: validation.quantity }),
+        ...(action.row.source === 'scheduled' && validation.changeSchedule
+          ? { time: scheduleFromDraft(validation) }
+          : {}),
+        ...(action.row.source === 'scheduled' && action.row.direction === 'buy'
+          ? { cancelAtFloor: validation.cancelAtFloor }
+          : {}),
+      },
+    ],
+  };
+}
+
+function buildSendRequest(
+  action: Extract<OrderDialogAction, { kind: 'sell' | 'resend' }>,
+  draft: Draft,
+  chain: BookChain,
+): SendOrdersRequest {
+  const values =
+    action.kind === 'resend' && draft.resendMode === 'same'
+      ? draftForRequest(action, draftFor(action, chain))
+      : draftForRequest(action, draft);
+  const direction = actionDirection(action);
+  const stock = {
+    symbol: action.row.symbol,
+    ...(values.price === null ? {} : { price: values.price }),
+    ...(values.quantity === null ? {} : { quantity: values.quantity }),
+    ...(values.scheduled
+      ? direction === 'buy'
+        ? { openTime: scheduleFromDraft(values) }
+        : { closeTime: scheduleFromDraft(values) }
+      : {}),
+    ...(action.kind === 'resend' && action.row.direction === 'buy' && values.keepClose
+      ? { closeTime: { day: values.day, type: 'BeforeClose' as const, diff: 30 } }
+      : {}),
+    ...(direction === 'buy' && values.scheduled ? { cancelAtFloor: values.cancelAtFloor } : {}),
+  };
+  return {
+    botId: chain.botId,
+    direction,
+    type: values.type,
+    stocks: [stock],
+  };
+}
+
+async function fireScheduled(
+  action: Extract<OrderDialogAction, { kind: 'fire' }>,
+  chain: BookChain,
+  queryClient: ReturnType<typeof useQueryClient>,
+  setResults: (results: ActionResult[]) => void,
+  setResultTitle: (title: string) => void,
+  getWritesHeldReason: () => string | null,
+) {
+  const clientOrderId = action.row.raw.clientOrderId;
+  let freshScheduled: ActiveOrder;
+  try {
+    const freshRows = await bistApi.getActiveOrders(chain.botId);
+    const freshRow = freshRows.find((row) => row.clientOrderId === clientOrderId);
+    if (!freshRow || freshRow.status !== 'Scheduled') {
+      setResultTitle('Not fired');
+      setResults([
+        {
+          id: 'cancel',
+          label: `1 · Remove scheduled ${action.row.symbol}`,
+          tone: 'not-sent',
+          detail: freshRow
+            ? 'A fresh snapshot shows this row is no longer scheduled. CancelOrders was not called.'
+            : 'A fresh snapshot no longer contains this scheduled row. CancelOrders was not called.',
+        },
+        {
+          id: 'send',
+          label: `2 · Send ${action.row.symbol} now`,
+          tone: 'not-sent',
+          word: 'Not fired',
+          detail: 'The safety preflight did not prove a schedule that could be removed.',
+        },
+      ]);
+      return;
+    }
+    if (!sameScheduledFireTerms(action.row.raw, freshRow)) {
+      setResultTitle('Not fired · terms changed');
+      setResults([
+        {
+          id: 'cancel',
+          label: `1 · Remove scheduled ${action.row.symbol}`,
+          tone: 'not-sent',
+          detail:
+            'The scheduled side, symbol, type, price, quantity, timing, or guard changed after confirmation. Review the fresh row before firing it.',
+        },
+        {
+          id: 'send',
+          label: `2 · Send ${action.row.symbol} now`,
+          tone: 'not-sent',
+          word: 'Not fired',
+          detail: 'Neither write call was made.',
+        },
+      ]);
+      return;
+    }
+    freshScheduled = freshRow;
+  } catch (error) {
+    const apiError = asBistApiError(error);
+    setResultTitle('Not fired');
+    setResults([
+      {
+        id: 'cancel',
+        label: `1 · Remove scheduled ${action.row.symbol}`,
+        tone: 'not-sent',
+        detail: `${apiError.message} The fresh safety read failed, so CancelOrders was not called.`,
+      },
+      {
+        id: 'send',
+        label: `2 · Send ${action.row.symbol} now`,
+        tone: 'not-sent',
+        word: 'Not fired',
+        detail: 'No removal was attempted, so no replacement call was made.',
+      },
+    ]);
+    return;
+  }
+
+  const heldAfterPreflight = getWritesHeldReason();
+  if (heldAfterPreflight) {
+    setResultTitle('Not fired');
+    setResults([
+      {
+        id: 'cancel',
+        label: `1 · Remove scheduled ${action.row.symbol}`,
+        tone: 'not-sent',
+        detail: `${heldAfterPreflight} The stream changed during the safety read, so CancelOrders was not called.`,
+      },
+      {
+        id: 'send',
+        label: `2 · Send ${action.row.symbol} now`,
+        tone: 'not-sent',
+        word: 'Not fired',
+        detail: 'No schedule was removed and no replacement call was made.',
+      },
+    ]);
+    return;
+  }
+
+  try {
+    await bistApi.cancelOrders(chain.botId, [clientOrderId]);
+    invalidateBotBudget(queryClient, chain.botId);
+  } catch (error) {
+    const apiError = asBistApiError(error);
+    const cancelResult: ActionResult = apiError.queued
+      ? queuedResult('cancel', `1 · Remove scheduled ${action.row.symbol}`, apiError)
+      : {
+          id: 'cancel',
+          label: `1 · Remove scheduled ${action.row.symbol}`,
+          tone:
+            apiError.mayHaveReachedExchange ||
+            apiError.kind === 'unknown' ||
+            apiError.kind === 'protocol'
+              ? 'unknown'
+              : 'refused',
+          detail: `${apiError.message} The schedule was not confirmed removed, so no replacement was attempted.`,
+        };
+    setResultTitle(apiError.queued ? 'Waiting · removal queued' : 'Not fired');
+    setResults([
+      cancelResult,
+      {
+        id: 'send',
+        label: `2 · Send ${action.row.symbol} now`,
+        tone: 'not-sent',
+        word: 'Not fired',
+        detail: 'The first call did not confirm removal, so the fresh order was not attempted.',
+      },
+    ]);
+    return;
+  }
+
+  const confirmation = await confirmScheduledRemoval(chain.botId, clientOrderId);
+  if (confirmation.kind !== 'removed') {
+    if (confirmation.kind === 'unsafe-canceled') recordCanceledOrder(queryClient, confirmation.row);
+    setResultTitle('Not fired');
+    setResults([
+      {
+        id: 'cancel',
+        label: `1 · Remove scheduled ${action.row.symbol}`,
+        tone: confirmation.kind === 'active' ? 'accepted' : 'unknown',
+        word:
+          confirmation.kind === 'unsafe-canceled'
+            ? 'Not proved'
+            : confirmation.kind === 'unknown'
+              ? 'No answer'
+              : 'Accepted',
+        detail:
+          confirmation.kind === 'active'
+            ? 'The row fired before cancellation completed. The empty reply only accepts cancellation of that live order.'
+            : confirmation.kind === 'unsafe-canceled'
+              ? 'The canceled record does not prove this row stayed off the exchange, so fill exposure may have changed.'
+              : 'CancelOrders returned, but the fresh reads did not prove that this schedule was removed before reaching the exchange.',
+      },
+      {
+        id: 'send',
+        label: `2 · Send ${action.row.symbol} now`,
+        tone: 'not-sent',
+        word: 'Not fired',
+        detail:
+          'The original order was not proven safely removed, so this viewer did not create a replacement.',
+      },
+    ]);
+    return;
+  }
+  recordConfirmedScheduleRemoval(queryClient, confirmation.row);
+
+  const newlyHeld = getWritesHeldReason();
+  if (newlyHeld) {
+    setResultTitle('Half done · replacement held');
+    setResults([
+      removedScheduleResult(action.row.symbol),
+      {
+        id: 'send',
+        label: `2 · Send ${action.row.symbol} now`,
+        tone: 'not-sent',
+        word: 'Not fired',
+        detail: `${newlyHeld} The original schedule is already gone; no replacement call was made.`,
+      },
+    ]);
+    return;
+  }
+
+  try {
+    const request: SendOrdersRequest = {
+      botId: chain.botId,
+      direction: freshScheduled.direction,
+      type: freshScheduled.type ?? freshScheduled.intentType ?? 'limit',
+      stocks: [
+        {
+          symbol: freshScheduled.symbol,
+          ...(freshScheduled.orderPrice === null ? {} : { price: freshScheduled.orderPrice }),
+          ...(freshScheduled.orderQuantity === null
+            ? {}
+            : { quantity: freshScheduled.orderQuantity }),
+        },
+      ],
+    };
+    const response = await bistApi.sendOrders(request);
+    invalidateBotBudget(queryClient, chain.botId);
+    const sent = response.toOrder.some((row) => row.symbol === action.row.symbol);
+    const reason = response.skippedList.find((row) => row.symbol === action.row.symbol)?.reason;
+    const sendResult: ActionResult = sent
+      ? {
+          id: 'send',
+          label: `2 · Send ${action.row.symbol} now`,
+          tone: 'landed',
+          word: 'Sent now',
+          detail: 'A fresh order was created with its own id and chain.',
+        }
+      : reason
+        ? {
+            id: 'send',
+            label: `2 · Send ${action.row.symbol} now`,
+            tone: 'refused',
+            word: 'Not fired',
+            detail: `${reason} The schedule is gone and the server guard created no replacement.`,
+          }
+        : {
+            id: 'send',
+            label: `2 · Send ${action.row.symbol} now`,
+            tone: 'unknown',
+            detail:
+              'The reply named this symbol in neither result list. The schedule is gone and the replacement outcome is unknown; do not send it again.',
+          };
+    setResultTitle(sent ? 'Sent now' : 'Half done');
+    setResults([removedScheduleResult(action.row.symbol), sendResult]);
+  } catch (error) {
+    const apiError = asBistApiError(error);
+    setResultTitle(apiError.queued ? 'Half done · replacement queued' : 'Half done');
+    setResults([
+      removedScheduleResult(action.row.symbol),
+      apiError.queued
+        ? queuedResult('send', `2 · Send ${action.row.symbol} now`, apiError, true)
+        : {
+            id: 'send',
+            label: `2 · Send ${action.row.symbol} now`,
+            tone:
+              apiError.mayHaveReachedExchange ||
+              apiError.kind === 'unknown' ||
+              apiError.kind === 'protocol'
+                ? 'unknown'
+                : 'refused',
+            detail: `${apiError.message} The original schedule is already gone. This viewer did not retry the replacement.`,
+          },
+    ]);
+  }
+}
+
+function removedScheduleResult(symbol: string): ActionResult {
+  return {
+    id: 'cancel',
+    label: `1 · Remove scheduled ${symbol}`,
+    tone: 'landed',
+    word: 'Removed',
+    detail: 'The scheduled row is gone and will not come back.',
+  };
+}
+
+function queuedResult(
+  id: string,
+  label: string,
+  error: ReturnType<typeof asBistApiError>,
+  scheduleAlreadyRemoved = false,
+): ActionResult {
+  const retry =
+    error.retryAt === null
+      ? ''
+      : ` Next replay: ${new Date(error.retryAt).toLocaleString('tr-TR', {
+          timeZone: 'Europe/Istanbul',
+        })}.`;
+  const attempts =
+    error.attemptsLeft === null ? '' : ` ${error.attemptsLeft} replay attempts remain.`;
+  return {
+    id,
+    label,
+    tone: 'accepted',
+    word: 'Queued',
+    detail: `${error.message} The server owns this request and will replay it; do not send it again.${retry}${attempts}${
+      scheduleAlreadyRemoved ? ' The original schedule is already gone.' : ''
+    }`,
+  };
+}
+
+function draftForRequest(
+  action: Exclude<OrderDialogAction, { kind: 'cancel' | 'fire' }>,
+  draft: Draft,
+) {
+  return {
+    ...draft,
+    price: parseTurkishNumber(draft.price),
+    quantity: draft.quantity.trim() ? (parseTurkishNumber(draft.quantity) ?? 0) : null,
+  };
+}
+
+function scheduleFromDraft(draft: ReturnType<typeof draftForRequest>): ScheduleSpec {
+  const needsDiff = draft.scheduleType === 'AfterOpen' || draft.scheduleType === 'BeforeClose';
+  return {
+    day: draft.day,
+    type: draft.scheduleType,
+    ...(needsDiff ? { diff: parseTurkishNumber(draft.diff) ?? 0 } : {}),
+  };
+}
+
+function draftFor(action: OrderDialogAction | undefined, chain?: BookChain): Draft {
+  const today = toIstanbulDateKey(Date.now());
+  if (!action)
+    return {
+      type: 'limit',
+      price: '',
+      quantity: '',
+      scheduled: false,
+      day: today,
+      scheduleType: 'BeforeClose',
+      diff: '30',
+      cancelAtFloor: false,
+      resendMode: 'same',
+      keepClose: false,
+      changeSchedule: false,
+    };
+  return {
+    type: action.row.orderType ?? action.row.intentType ?? 'limit',
+    price: action.row.orderPrice === null ? '' : editableNumber(action.row.orderPrice),
+    quantity:
+      action.kind === 'sell'
+        ? String(chain?.sellableQuantity ?? action.row.quantity ?? '')
+        : action.row.quantity === null
+          ? ''
+          : String(action.row.quantity),
+    scheduled: action.kind === 'edit' && action.row.source === 'scheduled',
+    day:
+      action.kind === 'edit' && action.row.scheduledTime
+        ? toIstanbulDateKey(action.row.scheduledTime)
+        : today,
+    scheduleType: 'BeforeClose',
+    diff: '30',
+    cancelAtFloor: action.kind === 'edit' ? action.row.raw.cancelAtFloor : false,
+    resendMode:
+      action.kind === 'resend' && chain && resendSameUnavailableReason(action, chain)
+        ? 'change'
+        : 'same',
+    keepClose: false,
+    changeSchedule: false,
+  };
+}
+
+function editableNumber(value: number): string {
+  return String(value).replace('.', ',');
+}
+
+function linkedReversingSell(row: BookCanceledOrderRow, chain: BookChain) {
+  if (row.clientOrderId === null) return undefined;
+  return chain.rows.find(
+    (candidate) =>
+      candidate.direction === 'sell' && candidate.parentClientOrderId === row.clientOrderId,
+  );
+}
+
+function resendSameUnavailableReason(
+  action: Extract<OrderDialogAction, { kind: 'resend' }>,
+  chain: BookChain,
+): string | null {
+  if (action.row.direction === 'buy' && linkedReversingSell(action.row, chain)) {
+    return 'The original buy carried a linked reversing sell, but GetCanceledOrders does not preserve its closeTime, so it cannot be recreated verbatim.';
+  }
+  if (!action.row.raw.matriksOrderId) {
+    return 'The original order has no confirmed exchange id and its fire-time spec is not present in GetCanceledOrders, so its timing cannot be recreated verbatim.';
+  }
+  return null;
+}
+
+function sameActionRowState(
+  left: BookChain['rows'][number],
+  right: BookChain['rows'][number],
+): boolean {
+  const leftCancelAtFloor =
+    left.source === 'active' || left.source === 'scheduled' ? left.raw.cancelAtFloor : null;
+  const rightCancelAtFloor =
+    right.source === 'active' || right.source === 'scheduled' ? right.raw.cancelAtFloor : null;
+  return (
+    left.key === right.key &&
+    left.source === right.source &&
+    left.status === right.status &&
+    left.direction === right.direction &&
+    left.quantity === right.quantity &&
+    left.filledQuantity === right.filledQuantity &&
+    left.canceledQuantity === right.canceledQuantity &&
+    left.orderType === right.orderType &&
+    left.intentType === right.intentType &&
+    left.orderPrice === right.orderPrice &&
+    left.averagePrice === right.averagePrice &&
+    left.scheduledTime === right.scheduledTime &&
+    left.cancelInFlight === right.cancelInFlight &&
+    leftCancelAtFloor === rightCancelAtFloor
+  );
+}
+
+function sameScheduledFireTerms(left: ActiveOrder, right: ActiveOrder): boolean {
+  return (
+    left.clientOrderId === right.clientOrderId &&
+    left.botId === right.botId &&
+    left.symbol === right.symbol &&
+    left.direction === right.direction &&
+    left.type === right.type &&
+    left.orderPrice === right.orderPrice &&
+    left.orderQuantity === right.orderQuantity &&
+    left.timeInForce === right.timeInForce &&
+    left.cancelAtFloor === right.cancelAtFloor &&
+    (left.scheduledTime ?? null) === (right.scheduledTime ?? null) &&
+    (left.whenType ?? null) === (right.whenType ?? null)
+  );
+}
+
+function actionStep(action: OrderDialogAction): Step {
+  return action.kind === 'cancel' || action.kind === 'fire' ? 'confirm' : 'form';
+}
+function rpcName(kind: OrderDialogAction['kind']): string {
+  return kind === 'edit' ? 'EditOrders' : kind === 'cancel' ? 'CancelOrders' : 'SendOrders';
+}
+function actionLabel(action: OrderDialogAction): string {
+  return `${action.kind === 'fire' ? 'Fire' : action.kind} ${actionDirection(action)} ${action.row.symbol}`;
+}
+
+function actionDirection(action: OrderDialogAction): 'buy' | 'sell' {
+  return action.kind === 'sell' ? 'sell' : action.row.direction;
+}
+function dialogTitle(chain: BookChain, action: OrderDialogAction | undefined, step: Step): string {
+  if (!action) return `${chain.symbol} · chain`;
+  if (step === 'sending') return `Sending · ${actionLabel(action)}`;
+  if (step === 'result') return `Result · ${actionLabel(action)}`;
+  return `${actionLabel(action)} · ${step}`;
+}
+
+function markCancelInFlight(queryClient: ReturnType<typeof useQueryClient>, clientOrderId: string) {
+  queryClient.setQueriesData<ActiveOrder[]>({ queryKey: ['bist', 'activeOrders'] }, (rows) =>
+    rows?.map((row) =>
+      row.clientOrderId === clientOrderId ? { ...row, cancelSource: 'bot' } : row,
+    ),
+  );
+}
+
+type ScheduledRemovalConfirmation =
+  | { kind: 'removed'; row: CanceledOrder }
+  | { kind: 'active'; row: ActiveOrder }
+  | { kind: 'unsafe-canceled'; row: CanceledOrder }
+  | { kind: 'unknown' };
+
+async function confirmScheduledRemoval(
+  botId: string,
+  clientOrderId: string,
+): Promise<ScheduledRemovalConfirmation> {
+  try {
+    const [activeRows, canceledRows] = await Promise.all([
+      bistApi.getActiveOrders(botId),
+      bistApi.getCanceledOrders(botId),
+    ]);
+    const active = activeRows.find((row) => row.clientOrderId === clientOrderId);
+    const canceled = canceledRows.find((row) => row.clientOrderId === clientOrderId);
+    if (canceled && !active && provesPreExchangeScheduledRemoval(canceled)) {
+      return { kind: 'removed', row: canceled };
+    }
+    if (active) return { kind: 'active', row: active };
+    if (canceled) return { kind: 'unsafe-canceled', row: canceled };
+    return { kind: 'unknown' };
+  } catch {
+    return { kind: 'unknown' };
+  }
+}
+
+function provesPreExchangeScheduledRemoval(row: CanceledOrder): boolean {
+  return (
+    row.clientOrderId !== null &&
+    row.clientOrderId.length > 0 &&
+    row.status === 'CanceledByBot' &&
+    row.matriksOrderId === null &&
+    row.matriksOrderId2 === null &&
+    row.orderTime === null &&
+    row.sentTime === null
+  );
+}
+
+function removeActiveOrder(queryClient: ReturnType<typeof useQueryClient>, clientOrderId: string) {
+  queryClient.setQueriesData<ActiveOrder[]>({ queryKey: ['bist', 'activeOrders'] }, (rows) =>
+    rows?.filter((row) => row.clientOrderId !== clientOrderId),
+  );
+}
+
+function recordCanceledOrder(
+  queryClient: ReturnType<typeof useQueryClient>,
+  canceled: CanceledOrder,
+) {
+  queryClient.setQueryData<CanceledOrder[]>(bistKeys.canceledOrders('*'), (rows) =>
+    rows ? [...rows.filter((row) => row.clientOrderId !== canceled.clientOrderId), canceled] : rows,
+  );
+}
+
+function recordConfirmedScheduleRemoval(
+  queryClient: ReturnType<typeof useQueryClient>,
+  canceled: CanceledOrder,
+) {
+  if (canceled.clientOrderId !== null) removeActiveOrder(queryClient, canceled.clientOrderId);
+  recordCanceledOrder(queryClient, canceled);
+}
+
+function invalidateBotBudget(queryClient: ReturnType<typeof useQueryClient>, botId: string): void {
+  void queryClient.invalidateQueries({ queryKey: bistKeys.budget(botId), exact: true });
+}

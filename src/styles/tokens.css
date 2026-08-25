@@ -1,0 +1,59 @@
+:root {
+  --color-accent: #5c9fd9;
+  --color-accent-100: #f2f7fe;
+  --color-accent-200: #dfedfc;
+  --color-accent-300: #c0dcf8;
+  --color-accent-400: #93c3f0;
+  --color-accent-500: #5c9fd9;
+  --color-accent-600: #4180b8;
+  --color-accent-700: #31628e;
+  --color-accent-800: #274a67;
+  --color-accent-900: #1e3346;
+
+  --st-live: #59c98f;
+  --st-wait: #d9b063;
+  --st-dead: #f0918a;
+  --st-warn: #e8a56b;
+  --st-fill: #e9e9ed;
+  --st-done: color-mix(in srgb, var(--color-text) 34%, transparent);
+  --st-live-t: color-mix(in srgb, var(--st-live) 13%, transparent);
+  --st-wait-t: color-mix(in srgb, var(--st-wait) 13%, transparent);
+  --st-dead-t: color-mix(in srgb, var(--st-dead) 12%, transparent);
+
+  /* TOKENS.md names these roles but omits values; these are the handoff reference values. */
+  --side-buy: #8fc9ac;
+  --side-sell: #e0a8a2;
+
+  --mut: color-mix(in srgb, var(--color-text) 70%, transparent);
+  --fade-rule: linear-gradient(
+    to right,
+    transparent,
+    var(--color-divider) 48px,
+    var(--color-divider) calc(100% - 48px),
+    transparent
+  );
+  --font-kicker: 10px;
+  --font-meta: 11.5px;
+  --font-small: 12px;
+  --font-leg: 12.5px;
+  --font-row: 13px;
+  --font-card-title: 20px;
+  --font-figure: 20px;
+  --book-grid: 3px 100px 46px 84px 70px 70px 62px 112px 78px 78px 1fr 148px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes row-flash {
+  0%,
+  100% {
+    background: transparent;
+  }
+  30% {
+    background: color-mix(in srgb, var(--st-live) 22%, transparent);
+  }
+}
