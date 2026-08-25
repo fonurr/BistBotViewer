@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import { useBookData, useBotBudgets, useFleetPrices } from '../../app/dataHooks';
 import { bistKeys } from '../../app/queryKeys';
@@ -46,6 +47,7 @@ interface OpenChainState {
 export function BookPage() {
   const data = useBookData();
   const runtime = useViewerRuntime();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [filters, setFilters] = useState<BookFilterState>(defaultBookFilters);
   const [showCanceled, setShowCanceled] = useState(false);
   const [canceledOverrides, setCanceledOverrides] = useState<ReadonlySet<string>>(new Set());
@@ -136,7 +138,31 @@ export function BookPage() {
   );
   const resolvedOpenChain = useMemo(() => resolveOpenChain(chains, openChain), [chains, openChain]);
 
-  const clearFilters = () => setFilters(defaultBookFilters);
+  // A bot card's `Open book` arrives as ?bot=<id>. The deep link seeds the bot
+  // filter once; from then on the toolbar owns it, so any hand-made change
+  // drops the parameter rather than fighting the state it seeded.
+  const scopedBot = searchParams.get('bot');
+  const appliedScope = useRef<string | null>(null);
+  useEffect(() => {
+    if (scopedBot === appliedScope.current) return;
+    appliedScope.current = scopedBot;
+    setFilters((current) => ({
+      ...current,
+      botIds: scopedBot === null ? null : new Set([scopedBot]),
+      noClosingOrder: false,
+    }));
+  }, [scopedBot]);
+
+  const applyFilters = (next: BookFilterState) => {
+    setFilters(next);
+    if (searchParams.has('bot')) {
+      const params = new URLSearchParams(searchParams);
+      params.delete('bot');
+      appliedScope.current = null;
+      setSearchParams(params, { replace: true });
+    }
+  };
+  const clearFilters = () => applyFilters(defaultBookFilters);
 
   return (
     <div className="book-page page-pad">
@@ -170,7 +196,7 @@ export function BookPage() {
       ) : null}
       <BookFilters
         filters={filters}
-        onChange={setFilters}
+        onChange={applyFilters}
         bots={data.bots}
         accounts={data.accounts}
         chains={chains}
@@ -202,7 +228,7 @@ export function BookPage() {
               type="button"
               className="tag tag-outline"
               key={chip.key}
-              onClick={() => setFilters(chip.clear(filters))}
+              onClick={() => applyFilters(chip.clear(filters))}
             >
               {chip.label} <span>×</span>
             </button>
@@ -258,7 +284,7 @@ export function BookPage() {
                 type="button"
                 className="btn btn-ghost"
                 key={culprit.key}
-                onClick={() => setFilters(culprit.clear(filters))}
+                onClick={() => applyFilters(culprit.clear(filters))}
               >
                 clear {culprit.phrase}
               </button>

@@ -12,6 +12,9 @@ fleet table read succeeds; an incomplete read is rendered as unavailable, never 
 Unrealized P&L is all-or-nothing: the producer and every required quote must be live and carry a
 price. Description text is displayed unchanged and is also the bot-name tooltip.
 
+`Open book` and `Performance` both deep-link with `?bot=<id>`: the Book opens narrowed to that
+bot, and Performance recomputes for it.
+
 `BotConfigDialog` owns Add, Edit, and Finish setup. Add rejects duplicate and reserved ids; Edit
 sends only dirty fields. Account routing is locked while active, scheduled, or position rows
 exist. The form distinguishes an unset email list from a deliberately empty array, submits the

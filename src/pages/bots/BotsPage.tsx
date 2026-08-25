@@ -626,7 +626,7 @@ function BotCard({
         </div>
 
         <div className="bots-card-actions">
-          <Link className="btn btn-secondary" to="/book">
+          <Link className="btn btn-secondary" to={`/book?bot=${encodeURIComponent(bot.id)}`}>
             Open book
           </Link>
           <Link className="btn btn-secondary" to={`/performance?bot=${encodeURIComponent(bot.id)}`}>

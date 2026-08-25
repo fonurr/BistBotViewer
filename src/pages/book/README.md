@@ -4,6 +4,9 @@ The Book is the primary operational surface. `BookPage` loads one global snapsho
 typed boundaries, builds chains strictly from `chainId`, filters them client-side, and renders
 the fixed desktop grid. Null chain links stay independent.
 
+A bot card's `Open book` arrives as `?bot=<id>`. The parameter seeds the bot filter once and
+is dropped as soon as the toolbar is used, so the URL never fights the state it seeded.
+
 `BookFilters` owns additive scopes and the bot, account, symbol, and batch-range controls.
 Account selection uses the stored account and brokerage together; matching account numbers at
 different brokerages remain separate filters.
