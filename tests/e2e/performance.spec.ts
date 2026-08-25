@@ -20,7 +20,7 @@ test('keeps unprovable Performance metrics unavailable instead of rendering zero
   await safeBridge.stream.open();
 
   await expect(page.getByRole('heading', { name: 'Performance' })).toBeVisible();
-  await expect(page.getByText(/closed round trips only, gross.*1 trades/i)).toBeVisible();
+  await expect(page.getByText(/closed round trips only, gross.*1 trade/i)).toBeVisible();
 
   const exitTiming = page.locator('.performance-card').filter({ hasText: 'exit timing' });
   await expect(
