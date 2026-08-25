@@ -349,6 +349,7 @@ export function BotsPage() {
           <FleetStat
             label="fleet realized"
             value={snapshotAvailable ? money(fleet.realized) : 'not available'}
+            unavailable={!snapshotAvailable}
             signed={snapshotAvailable ? fleet.realized : null}
             detail={
               snapshotAvailable && fleet.realizedPercentage !== null
@@ -368,6 +369,7 @@ export function BotsPage() {
                     : money(fleet.unrealized.value)
             }
             signed={fleet.unrealized.value}
+            unavailable={!snapshotAvailable}
             untrusted={!pricesLoading && fleet.unrealized.value === null}
             detail={!pricesLoading && fleet.unrealized.value === null ? priceReason : null}
           />
@@ -382,6 +384,7 @@ export function BotsPage() {
                     ? `${formatNumber(fleet.committed, 0)} · complete bots only`
                     : formatNumber(fleet.committed, 0)
             }
+            unavailable={!snapshotAvailable || !fleet.allCompleteBudgetsKnown}
           />
         </section>
       ) : null}
@@ -707,6 +710,7 @@ function FleetStat({
   accent = false,
   signed = null,
   untrusted = false,
+  unavailable = false,
 }: {
   label: string;
   value: string;
@@ -714,18 +718,30 @@ function FleetStat({
   accent?: boolean;
   signed?: number | null;
   untrusted?: boolean;
+  unavailable?: boolean;
 }) {
   return (
     <div className="bots-fleet-stat">
       <span className={`kicker${accent ? ' bots-accent-kicker' : ''}`}>{label}</span>
       <strong
-        className={`${signed === null ? '' : numberTone(signed)}${untrusted ? ' number-untrusted' : ''}`}
+        className={
+          // TOKENS rule 9: an uncomputable figure is warn ink, not a plain absence.
+          unavailable
+            ? 'status-warn'
+            : `${signed === null ? '' : numberTone(signed)}${untrusted ? ' number-untrusted' : ''}`
+        }
       >
         {value}
       </strong>
       {detail ? (
         <small
-          className={untrusted ? 'status-warn' : signed === null ? 'muted' : numberTone(signed)}
+          className={
+            untrusted || unavailable
+              ? 'status-warn'
+              : signed === null
+                ? 'muted'
+                : numberTone(signed)
+          }
         >
           {detail}
         </small>

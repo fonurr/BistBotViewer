@@ -599,6 +599,7 @@ function StatStrip({ summary, pendingCount }: { summary: BookSummary; pendingCou
             : 'not available'
         }
         signed={summary.marketFiguresTrusted ? summary.unrealized : undefined}
+        unavailable={!summary.unrealizedKnown}
         className={trustClass}
       />
       <Stat
@@ -611,6 +612,7 @@ function StatStrip({ summary, pendingCount }: { summary: BookSummary; pendingCou
               }`
         }
         signed={summary.marketFiguresTrusted ? (summary.total ?? undefined) : undefined}
+        unavailable={summary.total === null}
         className={trustClass}
       />
       <Stat
@@ -622,10 +624,12 @@ function StatStrip({ summary, pendingCount }: { summary: BookSummary; pendingCou
                 summary.committedCompleteOnly ? ' · complete bots only' : ''
               }`
         }
+        unavailable={summary.committed === null}
       />
       <Stat
         label="avg slip"
         value={summary.avgSlip === null ? 'not available' : formatPercentage(summary.avgSlip)}
+        unavailable={summary.avgSlip === null}
       />
     </div>
   );
@@ -636,20 +640,29 @@ function Stat({
   value,
   accent,
   signed,
+  unavailable = false,
   className = '',
 }: {
   label: string;
   value: string;
   accent?: boolean;
   signed?: number;
+  unavailable?: boolean;
   className?: string;
 }) {
-  const signedClass =
-    signed === undefined ? '' : signed >= 0 ? ' number-positive' : ' number-negative';
+  // TOKENS rule 9: a figure the viewer could not compute is warn ink, never a
+  // plain-text absence that reads like an ordinary value.
+  const signedClass = unavailable
+    ? ' status-warn'
+    : signed === undefined
+      ? ''
+      : signed >= 0
+        ? ' number-positive'
+        : ' number-negative';
   return (
     <div className="book-stat">
       <span className={`kicker${accent ? ' accent-kicker' : ''}`}>{label}</span>
-      <strong className={`${signedClass}${className}`}>{value}</strong>
+      <strong className={`${signedClass}${unavailable ? '' : className}`}>{value}</strong>
     </div>
   );
 }
