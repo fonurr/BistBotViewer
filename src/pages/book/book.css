@@ -158,6 +158,9 @@
 }
 
 .pending-baskets {
+  /* Each basket is its own tinted block; without a gap two of them read as one. */
+  display: grid;
+  gap: var(--space-2);
   padding: var(--space-6) 0 var(--space-3);
 }
 
