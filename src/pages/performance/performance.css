@@ -273,3 +273,9 @@
   background-size: 200% 100%;
   animation: skeleton-shift 1.4s ease-in-out infinite;
 }
+
+.slippage-reason {
+  margin: var(--space-4) 0 0;
+  font-size: var(--font-small);
+  text-wrap: pretty;
+}

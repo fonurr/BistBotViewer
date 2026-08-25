@@ -37,7 +37,9 @@ test('keeps unprovable Performance metrics unavailable instead of rendering zero
     'not available',
     'not available',
   ]);
-  await expect(slippage).toContainText('cannot be split without inventing which prices were sent');
+  await expect(page.locator('.slippage-reason')).toContainText(
+    'cannot be split across these four without inventing which prices were sent',
+  );
 
   const symbolSection = page
     .locator('section.performance-section')

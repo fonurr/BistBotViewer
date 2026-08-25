@@ -756,14 +756,15 @@ function UnavailableSlippage({ report }: { report: PerformanceReport }) {
           <div className="unavailable-metric" key={label}>
             <span className="kicker">{label}</span>
             <strong className="status-warn">not available</strong>
-            <small>
-              ClosedTrades stores prices but not order type;{' '}
-              {plural(report.summary.tradeCount, 'trade')} cannot be split without inventing which
-              prices were sent.
-            </small>
           </div>
         ))}
       </div>
+      {/* A reason is said once, by the section that owns it. */}
+      <p className="slippage-reason status-warn">
+        ClosedTrades stores prices but not order type, so the{' '}
+        {plural(report.summary.tradeCount, 'trade')} in this window cannot be split across these
+        four without inventing which prices were sent.
+      </p>
     </section>
   );
 }
