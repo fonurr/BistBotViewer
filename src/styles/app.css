@@ -238,6 +238,40 @@ a:hover {
   animation: spin 0.8s linear infinite;
 }
 
+/*
+ * The degraded-read panel. It is shared by the Book and Performance, so it
+ * lives with the shell rather than in whichever page stylesheet happens to
+ * have been loaded first.
+ */
+.read-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  margin-bottom: var(--space-6);
+  padding: var(--space-4) var(--space-6);
+  border: 1px solid color-mix(in srgb, var(--st-warn) 45%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--st-warn) 10%, transparent);
+}
+
+.read-error strong {
+  display: block;
+  color: var(--st-warn);
+  font-size: var(--font-row);
+}
+
+.read-error > span {
+  flex: 1 1 320px;
+  color: var(--mut);
+  font-size: var(--font-small);
+}
+
+.read-error .btn {
+  flex: 0 0 auto;
+}
+
 .feed-interrupt {
   display: flex;
   align-items: center;

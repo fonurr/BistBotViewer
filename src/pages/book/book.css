@@ -624,7 +624,6 @@
   font-size: var(--font-meta);
 }
 
-.read-error,
 .book-skeleton {
   display: grid;
   gap: var(--space-3);
