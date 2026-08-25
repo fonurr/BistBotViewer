@@ -1,0 +1,1 @@
+This folder is only for initiating the project and what it says shouldn't be considered as facts after the project is build, if there is other parts of the code or readme's suggesting otherwise
