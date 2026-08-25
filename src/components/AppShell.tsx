@@ -60,7 +60,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           <NavLink to="/performance">Performance</NavLink>
         </nav>
         <div className="viewer-nav-status">
-          <div className={`freshness ${freshness.className}`} aria-live="polite">
+          <div
+            className={`freshness ${freshness.className}${runtime.refreshing ? ' is-refreshing' : ''}`}
+            aria-live="polite"
+          >
             <span className="freshness-dot" aria-hidden="true" />
             {freshness.copy}
           </div>

@@ -228,6 +228,19 @@ a:hover {
   padding: 5px;
 }
 
+/*
+ * SPEC 1: while a refresh is in flight the label and the control are both
+ * disabled and dimmed, so neither reads as a live figure or an available act.
+ */
+.freshness.is-refreshing,
+.header-icon:disabled {
+  opacity: 0.55;
+}
+
+.header-icon:disabled {
+  cursor: default;
+}
+
 .header-logs {
   padding: 5px 11px;
   gap: 7px;
