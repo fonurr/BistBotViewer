@@ -521,6 +521,18 @@
   font-weight: 400;
 }
 
+/*
+ * The untrusted-price label is required (TOKENS rule 2) but does not fit on
+ * the figure's own line: at the p&l column's width it used to run out under
+ * the ord time column. It takes a second line inside the same cell instead,
+ * the way the status cell carries its own second line.
+ */
+.book-pnl .pnl-note {
+  display: block;
+  color: var(--mut);
+  line-height: 1.2;
+}
+
 .book-time {
   font-size: var(--font-meta);
   white-space: nowrap;

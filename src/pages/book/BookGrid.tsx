@@ -292,7 +292,7 @@ function BookRow({
           <>
             {formatSignedNumber(pnl)}
             {pnlPercent === null ? null : <small> ({formatPercentage(pnlPercent)})</small>}
-            {pnlTrusted ? null : <small> · last known</small>}
+            {pnlTrusted ? null : <small className="pnl-note">last known</small>}
           </>
         )}
       </div>
