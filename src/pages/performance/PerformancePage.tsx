@@ -515,14 +515,20 @@ function PerformanceCurve({ report }: { report: PerformanceReport }) {
   const top = 18;
   const bottom = 180;
   const points = series.map((day, index) => ({
-    x: series.length === 1 ? right : left + (index / (series.length - 1)) * (right - left),
+    x:
+      series.length === 1
+        ? (left + right) / 2
+        : left + (index / (series.length - 1)) * (right - left),
     y: bottom - ((day.cumulativeGrossPnl - min) / span) * (bottom - top),
     day,
   }));
-  const line = points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(' ');
-  const area = points.length
-    ? `${left},${bottom} ${line} ${points.at(-1)?.x ?? right},${bottom}`
+  // One observed day is a point, not a slope. Drawing a ramp from the left edge
+  // would show a rise across days the window does not contain.
+  const drawsPath = points.length > 1;
+  const line = drawsPath
+    ? points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(' ')
     : '';
+  const area = drawsPath ? `${left},${bottom} ${line} ${points.at(-1)!.x},${bottom}` : '';
   return (
     <section className="performance-section">
       <SectionHeading
@@ -557,7 +563,13 @@ function PerformanceCurve({ report }: { report: PerformanceReport }) {
         </svg>
         <div className="curve-caption">
           <span>
-            <i /> days that gave gross P&amp;L back
+            {points.length === 1 ? (
+              'one observed day · no curve to draw'
+            ) : (
+              <>
+                <i /> days that gave gross P&amp;L back
+              </>
+            )}
           </span>
           <span>not a portfolio value — no balance history exists to draw one</span>
         </div>

@@ -267,6 +267,43 @@ describe('Performance scope and unavailable values', () => {
   });
 });
 
+describe('Performance curve honesty', () => {
+  it('draws a single observed day as a point rather than a rise across the window', async () => {
+    renderPerformance();
+    await screen.findByText('cumulative realized');
+
+    const curve = document.querySelector('.curve-wrap')!;
+    expect(curve.querySelector('polyline')).toBeNull();
+    expect(curve.querySelector('polygon')).toBeNull();
+    expect(curve.querySelector('circle.curve-end')).not.toBeNull();
+    expect(screen.getByText('one observed day · no curve to draw')).toBeVisible();
+  });
+
+  it('draws the path once a second day exists', async () => {
+    useFixture({
+      ...makePerformanceReadFixture(),
+      closedTrades: [
+        makeClosedTrade(),
+        makeClosedTrade({
+          id: 302,
+          positionId: 'position-thyao-second',
+          chainId: 'chain-thyao-second',
+          clientOpenOrderId: 'client-thyao-second-open',
+          clientCloseOrderId: 'client-thyao-second-close',
+          closeExecuteTime: Date.parse('2026-08-24T15:00:00+03:00'),
+          closeOrderTime: Date.parse('2026-08-24T14:59:00+03:00'),
+        }),
+      ],
+    });
+    renderPerformance();
+    await screen.findByText('cumulative realized');
+
+    const curve = document.querySelector('.curve-wrap')!;
+    expect(curve.querySelector('polyline')).not.toBeNull();
+    expect(screen.queryByText('one observed day · no curve to draw')).not.toBeInTheDocument();
+  });
+});
+
 function renderPerformance(entry = '/performance') {
   const queryClient = new QueryClient({
     defaultOptions: {
