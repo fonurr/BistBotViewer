@@ -150,6 +150,10 @@ port its markup. The sibling contracts `../MatriksOrder/API.md` and
 design intent. Where the shipped code or a module README contradicts the handoff, the code is the
 current truth.
 
+## Git workflow
+
+Agents work directly on `main`. Commit when a task is done; never push.
+
 ## Configuration
 
 Copy `.env.example` to `.env.local` only when sibling URLs or database locations differ. Every
