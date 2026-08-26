@@ -902,7 +902,7 @@ function ActionForm({
             checked={draft.cancelAtFloor}
             onChange={(event) => setDraft({ ...draft, cancelAtFloor: event.target.checked })}
           />
-          Cancel at the daily floor before it fires
+          cancelAtFloor — drop this buy if it fires at the daily floor
         </label>
       ) : null}
       {isResend && action.row.direction === 'buy' && draft.resendMode === 'change' ? (
@@ -1311,7 +1311,11 @@ function boundCopy(
         ? ''
         : ` · ${formatQuantity(projected)} for a schedule after pending buys`;
     const claims = sellClaimCopy(action, chain);
-    return `${headline}${schedule}${claims}. A cancel in flight keeps its claim until the cancellation is confirmed.`;
+    return (
+      `${headline}${schedule}${claims}. A cancel in flight keeps its claim until the ` +
+      'cancellation is confirmed. The four budget caps are buy-only, so none of them apply ' +
+      'here — a sell is bounded by what the position has left after the orders already on it.'
+    );
   }
   if (!budget)
     return 'A buy is bounded by the bot budget and effective per-position cap; those figures are not available yet.';

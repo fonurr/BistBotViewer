@@ -249,9 +249,8 @@ export function BookPage() {
         <div className="no-exit-heading">
           <strong>No closing order</strong>
           <span className="kicker">every bot · every account · every batch</span>
-          <span className="muted">
-            held shares and waiting buys whose only exit is already gone
-          </span>
+          {/* The two shapes are different problems, so the line counts them apart. */}
+          <span className="muted">{noExitSentence(visibleChains)}</span>
         </div>
       ) : null}
       {data.isPending ? <BookSkeleton /> : null}
@@ -1042,6 +1041,9 @@ function MismatchDialog({
         The viewer cannot tell which account really holds these shares. Check the MatriksIQ terminal
         before acting on the position.
       </p>
+      <p className="dialog-note">
+        These fields are everything the server saved — the viewer adds nothing and guesses nothing.
+      </p>
       <div className="mismatch-list">
         {rows.map((row) => (
           <dl key={row.id}>
@@ -1099,6 +1101,21 @@ function toggleValue(values: ReadonlySet<string>, value: string): ReadonlySet<st
   return next;
 }
 
+/**
+ * `2 positions holding shares with nothing set to sell them, and 1 waiting buy
+ * whose exit is already gone` — a held position and an unguarded buy are not
+ * the same problem, so the heading states each count rather than one total.
+ */
+function noExitSentence(chains: readonly BookChain[]): string {
+  const held = chains.filter((chain) => chain.positionRows.length > 0).length;
+  const waiting = chains.length - held;
+  const heldPart = `${plural(held, 'position')} holding shares with nothing set to sell them`;
+  const waitingPart = `${plural(waiting, 'waiting buy', 'waiting buys')} whose exit is already gone`;
+  if (held === 0) return waitingPart;
+  if (waiting === 0) return heldPart;
+  return `${heldPart}, and ${waitingPart}`;
+}
+
 function filterChips(filters: BookFilterState, botCount: number, accountCount: number) {
   const chips: Array<{
     key: string;
@@ -1123,11 +1140,17 @@ function filterChips(filters: BookFilterState, botCount: number, accountCount: n
       label: plural(filters.accountIds.size, 'account'),
       clear: (current) => ({ ...current, accountIds: null }),
     });
-  if (filters.symbols.size > 0)
+  // One chip per symbol, never a joined list: a chip is the control that
+  // removes what it names, and `AKBNK, GARAN ×` can only drop both at once.
+  for (const symbol of [...filters.symbols].sort())
     chips.push({
-      key: 'symbols',
-      label: [...filters.symbols].join(', '),
-      clear: (current) => ({ ...current, symbols: new Set() }),
+      key: `symbol:${symbol}`,
+      label: symbol,
+      clear: (current) => {
+        const symbols = new Set(current.symbols);
+        symbols.delete(symbol);
+        return { ...current, symbols };
+      },
     });
   if (filters.batchFrom || filters.batchTo)
     chips.push({

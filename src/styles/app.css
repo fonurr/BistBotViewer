@@ -104,6 +104,23 @@ a:hover {
   animation: spin 0.8s linear infinite;
 }
 
+/*
+ * Nocturne rings each selected segment with an inset 1px accent, which reads
+ * as four separate buttons once more than one is on. The Book's scopes are
+ * additive, so a selected option takes a flat accent tint instead and the
+ * group keeps its single outline; the divider beside a selection warms with it.
+ */
+.seg-opt:has(input:checked) {
+  color: var(--color-accent-200);
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  box-shadow: none;
+}
+
+.seg-opt:has(input:checked) + .seg-opt,
+.seg-opt:has(input:checked):not(:first-child) {
+  border-left-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+}
+
 .kicker {
   color: var(--mut);
   font-size: var(--font-kicker);

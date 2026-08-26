@@ -196,7 +196,8 @@ export function BookFilters(props: BookFiltersProps) {
             </label>
           ))}
           <p className="filter-help">
-            Hiding a bot hides its chains, never the needs-a-human count above.
+            Hiding a bot hides its chains, never the red count above — a position with no exit needs
+            a human whether its bot is in view or not.
           </p>
         </FilterPopover>
         <FilterPopover
@@ -206,6 +207,10 @@ export function BookFilters(props: BookFiltersProps) {
           setOpen={setOpen}
         >
           <PopoverHeading label="accounts" />
+          <p className="filter-help">
+            One chain sits under one account. The mismatch in the red banner is a chain whose orders
+            name two — it shows under both.
+          </p>
           {props.accounts.map((account) => {
             const key = accountIdentityKey(account.accountId, account.brokerageId);
             return (
@@ -383,7 +388,10 @@ export function BookFilters(props: BookFiltersProps) {
               />
             </label>
           </div>
-          <p className="filter-help">These are batch dates, not calendar days.</p>
+          <p className="filter-help">
+            These are batch dates, not calendar days — a session where no bot ran has no batch and
+            simply is not in the list.
+          </p>
         </FilterPopover>
         <span className="book-toolbar-spacer" />
         {props.noClosingOrderCount > 0 || props.mismatchCount > 0 ? (
