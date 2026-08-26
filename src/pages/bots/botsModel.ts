@@ -7,6 +7,7 @@ import type {
   PendingOrderRequest,
   Position,
 } from '../../bistApi/types';
+import { isWaitingOrderStatus } from '../../domain/chains';
 import { parseTurkishNumber } from '../../domain/format';
 import {
   committedAmount,
@@ -71,6 +72,11 @@ export interface BotFormContext {
 export interface BotFormValidation {
   request: ConfigureBotRequest | null;
   blockReason: string | null;
+  /**
+   * True when the only thing stopping the write is that the form still matches
+   * the stored record. Nothing is wrong, so the reason is not drawn as a fault.
+   */
+  unchanged: boolean;
   missingFields: string[];
   changedFields: string[];
 }
@@ -104,6 +110,11 @@ export function summarizeBot(
   const botTrades = closedTrades.filter((row) => row.botId === botId);
   const botPendingRequests = pendingRequests.filter((row) => row.botId === botId);
   const isScheduled = (row: ActiveOrder) => row.status === 'Scheduled';
+  // The card's buys and sells are the live counts, so only a row that can still
+  // execute belongs in them; a terminal row still sitting in GetActiveOrders is
+  // not an open order. rowCounts below stays a raw row count, because it is what
+  // decides delete versus deactivate (SPEC 4).
+  const isOpen = (row: ActiveOrder) => !isScheduled(row) && isWaitingOrderStatus(row.status);
   const filledState = deriveFilledPnlState(botPositions, botOrders, botTrades);
   const closedRealized = botTrades.reduce(
     (sum, row) => sum + realizedPnl(row.quantity, row.averageOpenPrice, row.averageClosePrice),
@@ -123,10 +134,10 @@ export function summarizeBot(
 
   return {
     botId,
-    openBuys: botOrders.filter((row) => row.direction === 'buy' && !isScheduled(row)).length,
+    openBuys: botOrders.filter((row) => row.direction === 'buy' && isOpen(row)).length,
     scheduledBuys: botOrders.filter((row) => row.direction === 'buy' && isScheduled(row)).length,
     openPositions: botPositions.length,
-    openSells: botOrders.filter((row) => row.direction === 'sell' && !isScheduled(row)).length,
+    openSells: botOrders.filter((row) => row.direction === 'sell' && isOpen(row)).length,
     scheduledSells: botOrders.filter((row) => row.direction === 'sell' && isScheduled(row)).length,
     closedTrades: botTrades.length,
     realized,
@@ -296,7 +307,7 @@ export function validateBotForm(form: BotFormState, context: BotFormContext): Bo
     limitPerPosition === null ||
     limitPercentagePerPosition === null
   ) {
-    return { request: null, blockReason, missingFields, changedFields: [] };
+    return { request: null, blockReason, unchanged: false, missingFields, changedFields: [] };
   }
 
   const request: ConfigureBotRequest = { id };
@@ -364,13 +375,32 @@ export function validateBotForm(form: BotFormState, context: BotFormContext): Bo
   if (original && changedFields.length === 0) {
     return {
       request: null,
-      blockReason: 'Nothing has changed.',
+      blockReason: 'Nothing has changed yet, so there is nothing to send.',
+      unchanged: true,
       missingFields,
       changedFields,
     };
   }
 
-  return { request, blockReason: null, missingFields, changedFields };
+  return { request, blockReason: null, unchanged: false, missingFields, changedFields };
+}
+
+/**
+ * `API.md`: effective per-stock cap = min(limitPerPosition, portfolioValue x
+ * limitPercentagePerPosition / 100). Neither number alone predicts the order
+ * size, so the form has to state the one that actually binds (SPEC 7).
+ */
+export function effectivePerPositionCap(
+  limitPerPosition: number | null,
+  limitPercentagePerPosition: number | null,
+  portfolioValue: number | null,
+): { value: number; bound: 'tl' | 'percentage' } | null {
+  if (limitPerPosition === null || limitPercentagePerPosition === null) return null;
+  if (portfolioValue === null || !Number.isFinite(portfolioValue)) return null;
+  const fromPercentage = (portfolioValue * limitPercentagePerPosition) / 100;
+  return fromPercentage < limitPerPosition
+    ? { value: fromPercentage, bound: 'percentage' }
+    : { value: limitPerPosition, bound: 'tl' };
 }
 
 export function committedForBudget(budget: BotBudget | undefined): number | null {

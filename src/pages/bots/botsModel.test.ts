@@ -5,6 +5,7 @@ import type { Quote } from '../../priceApi/types';
 import {
   botFormFor,
   calculateUnrealized,
+  effectivePerPositionCap,
   getBotCardState,
   newBotForm,
   requestMatchesCreatedBot,
@@ -46,6 +47,32 @@ describe('Bots page model', () => {
         closedTrades: 2,
       },
     });
+  });
+
+  it('keeps a terminal row out of the card"s open counts but inside the row counts', () => {
+    const orders = [
+      order({ id: 1, direction: 'buy', status: 'New' }),
+      order({ id: 2, direction: 'buy', status: 'Rejected' }),
+      order({ id: 3, direction: 'sell', status: 'Filled' }),
+    ];
+    const summary = summarizeBot('alpha', orders, [], []);
+
+    // The card says what can still execute; the row counts decide delete vs deactivate.
+    expect(summary).toMatchObject({ openBuys: 1, openSells: 0 });
+    expect(summary.rowCounts.activeOrders).toBe(3);
+  });
+
+  it('names the side that binds the effective per-stock cap', () => {
+    expect(effectivePerPositionCap(20_000, 100, 1_000_000)).toEqual({
+      value: 20_000,
+      bound: 'tl',
+    });
+    expect(effectivePerPositionCap(20_000, 1, 1_000_000)).toEqual({
+      value: 10_000,
+      bound: 'percentage',
+    });
+    // Without a portfolio value neither figure predicts the order size.
+    expect(effectivePerPositionCap(20_000, 100, null)).toBeNull();
   });
 
   it('makes unrealized all-or-nothing across feed and required quotes', () => {

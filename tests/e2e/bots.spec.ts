@@ -26,11 +26,14 @@ test.describe('Bots fleet smoke', () => {
     await expect(card.getByLabel('1 position, 0 open sells, 0 scheduled sells')).toBeVisible();
     await expect(page.getByText(/prices live · orders updated/i)).toBeVisible();
 
+    // The toolbar uses the Book's shared filter popover, so it is named for its
+    // trigger and closes on Escape with focus back where it started.
     const accountTrigger = page.getByRole('button', { name: /^All accounts/ });
+    const accountPopover = page.getByRole('dialog', { name: 'All accounts filter' });
     await accountTrigger.click();
-    await expect(page.getByRole('dialog', { name: 'Filter bots by account' })).toBeVisible();
+    await expect(accountPopover).toBeVisible();
     await page.keyboard.press('Escape');
-    await expect(page.getByRole('dialog', { name: 'Filter bots by account' })).toHaveCount(0);
+    await expect(accountPopover).toHaveCount(0);
     await expect(accountTrigger).toBeFocused();
 
     await card.getByRole('link', { name: 'Performance' }).click();

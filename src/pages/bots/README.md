@@ -7,7 +7,12 @@ incomplete bots, and are limited to bots visible under the current filters. A ca
 withheld while invalidated, refetching, stale, or failed. Live quotes are requested for every
 visible Position and partially filled exposure.
 
-Cards use the server's `complete` flag for health. Counts and P&L are derived only after every
+The toolbar's account dropdown is the Book's shared `FilterPopover`, so Escape, click-away and
+focus return behave identically on both pages.
+
+Cards use the server's `complete` flag for health. The `buys` and `positions` counts are **live**
+counts — only rows that can still execute — while `BotRowCounts` stays a raw row count, because
+that is what decides delete versus deactivate. Counts and P&L are derived only after every
 fleet table read succeeds; an incomplete read is rendered as unavailable, never as a false zero.
 Unrealized P&L is all-or-nothing: the producer and every required quote must be live and carry a
 price. Description text is displayed unchanged and is also the bot-name tooltip.
@@ -15,7 +20,11 @@ price. Description text is displayed unchanged and is also the bot-name tooltip.
 `Open book` and `Performance` both deep-link with `?bot=<id>`: the Book opens narrowed to that
 bot, and Performance recomputes for it.
 
-`BotConfigDialog` owns Add, Edit, and Finish setup. Add rejects duplicate and reserved ids; Edit
+`BotConfigDialog` owns Add, Edit, and Finish setup. The limits fieldset resolves the arithmetic
+rather than only describing it: the effective per-stock cap
+(`min(limitPerPosition, portfolioValue × limitPercentagePerPosition/100)`) with the side that
+binds, committed money against the limit currently typed, and a warning when a per-stock cap above
+the total cap can never bind. A form that still matches the stored record is muted, not a fault. Add rejects duplicate and reserved ids; Edit
 sends only dirty fields. Account routing is locked while active, scheduled, or position rows
 exist. The form distinguishes an unset email list from a deliberately empty array, submits the
 forbidden-stock list whole, and continuously checks limits against the latest known commitment.

@@ -43,36 +43,6 @@
   width: calc(var(--space-8) * 7);
 }
 
-.bots-account-filter {
-  position: relative;
-}
-
-.bots-account-trigger {
-  min-width: calc(var(--space-8) * 4);
-  justify-content: space-between;
-}
-
-.bots-account-popover {
-  position: absolute;
-  z-index: 50;
-  top: calc(100% + var(--space-2));
-  left: 0;
-  display: grid;
-  width: calc(var(--space-8) * 9);
-  gap: var(--space-2);
-  padding: var(--space-4);
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-lg);
-}
-
-.bots-account-popover > p {
-  margin: 0 0 var(--space-2);
-  color: var(--mut);
-  font-size: var(--font-small);
-}
-
 .bots-account-choice {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -535,6 +505,11 @@
   min-height: var(--space-8);
   padding: var(--space-1) var(--space-2);
   text-transform: uppercase;
+}
+
+/* The value is uppercased on the way in; the prompt is not a symbol. */
+.bots-chip-input::placeholder {
+  text-transform: none;
 }
 
 .bots-empty-chip-copy {

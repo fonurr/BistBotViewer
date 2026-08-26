@@ -269,6 +269,80 @@ describe('bot ConfigureBot dialogs', () => {
   });
 });
 
+describe('the bot record form states the arithmetic that bounds it', () => {
+  it('resolves the effective per-stock cap and the committed figure against the typed limit', () => {
+    renderDialog(
+      <BotConfigDialog
+        mode="edit"
+        bot={bot()}
+        bots={[bot()]}
+        accounts={[]}
+        activeOrders={[]}
+        positions={[]}
+        pendingRequests={[]}
+        budget={{
+          portfolioValue: 1_000_000,
+          accountBuyingPower: 500_000,
+          remainingBotBudget: 4_000,
+          limitPercentage: 100,
+          limit: 10_000,
+          limitPerPosition: 2_000,
+          limitPercentagePerPosition: 20,
+        }}
+        onClose={vi.fn()}
+      />,
+    );
+
+    // min(2.000 TL, 1.000.000 x 20%) is the TL figure, and neither number alone said so.
+    expect(screen.getByText(/Right now that is 2\.000 TL — the TL figure binds/)).toBeVisible();
+    expect(screen.getByText(/Committed right now: 6\.000 of 10\.000/)).toBeVisible();
+  });
+
+  it('says a per-stock cap above the total cap can never bind', async () => {
+    const user = userEvent.setup();
+    renderDialog(
+      <BotConfigDialog
+        mode="edit"
+        bot={bot()}
+        bots={[bot()]}
+        accounts={[]}
+        activeOrders={[]}
+        positions={[]}
+        pendingRequests={[]}
+        budget={undefined}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const perStock = screen.getByLabelText(/per stock · TL/);
+    await user.clear(perStock);
+    await user.type(perStock, '99.000');
+
+    expect(screen.getByText(/can never bind/)).toBeVisible();
+  });
+
+  it('does not draw an untouched edit form as a fault', () => {
+    renderDialog(
+      <BotConfigDialog
+        mode="edit"
+        bot={bot()}
+        bots={[bot()]}
+        accounts={[]}
+        activeOrders={[]}
+        positions={[]}
+        pendingRequests={[]}
+        budget={undefined}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const message = screen.getByText(/Nothing has changed yet/);
+    expect(message).toHaveClass('muted');
+    expect(message).not.toHaveAttribute('role', 'alert');
+    expect(screen.getByRole('button', { name: 'Send the changes' })).toBeDisabled();
+  });
+});
+
 function renderDialog(element: ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },

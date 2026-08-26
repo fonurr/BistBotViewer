@@ -15,11 +15,12 @@ import type {
 } from '../../bistApi/types';
 import { Modal } from '../../components/Modal';
 import { ResultList, type ActionResult } from '../../components/ResultList';
-import { formatNumber, plural } from '../../domain/format';
+import { formatNumber, parseTurkishNumber, plural } from '../../domain/format';
 import { committedAmount } from '../../domain/orders';
 import {
   botFormFor,
   committedForBudget,
+  effectivePerPositionCap,
   newBotForm,
   requestMatchesCreatedBot,
   requestMatchesBot,
@@ -75,6 +76,17 @@ export function BotConfigDialog({
   );
   const existingBotIds = useMemo(() => new Set(bots.map((row) => row.id)), [bots]);
   const committed = committedForBudget(budget);
+  const formLimit = parseTurkishNumber(form.limit);
+  const formPerPosition = parseTurkishNumber(form.limitPerPosition);
+  const effectiveCap = effectivePerPositionCap(
+    formPerPosition,
+    parseTurkishNumber(form.limitPercentagePerPosition),
+    budget?.portfolioValue ?? null,
+  );
+  // A per-stock cap above the total cap can never bind. Harmless, but it means
+  // one stock may take the whole limit, and nothing else on screen says so.
+  const perPositionCapCannotBind =
+    formLimit !== null && formPerPosition !== null && formPerPosition > formLimit;
   const validation = useMemo(
     () =>
       validateBotForm(form, {
@@ -325,7 +337,14 @@ export function BotConfigDialog({
           <p className="bots-dialog-subhead">
             {mode === 'add'
               ? 'Only id is required. Blank optional fields stay unset and create an incomplete, but real, bot.'
-              : 'This is a partial update. Only changed fields are sent; blanking an existing routing field is not allowed.'}
+              : mode === 'finish'
+                ? // SCREEN-MAP: Finish setup is the same form, opened on what is missing.
+                  `The same form, opened on what is missing: ${
+                    validation.missingFields.length > 0
+                      ? validation.missingFields.join(', ')
+                      : 'nothing — the server already reports this bot complete'
+                  }. Only changed fields are sent.`
+                : 'This is a partial update. Only changed fields are sent; blanking an existing routing field is not allowed.'}
           </p>
 
           <div className="bots-form">
@@ -403,9 +422,15 @@ export function BotConfigDialog({
                 <p className="bots-field-note">
                   Locked because this bot has{' '}
                   {plural(botOrders.length, 'active or scheduled order')} and{' '}
-                  {plural(botPositions.length, 'position')}, plus{' '}
-                  {plural(botPendingRequests.length, 'queued basket')}. Existing rows are never
-                  rerouted, and queued baskets must be canceled before an account change.
+                  {plural(botPositions.length, 'position')}
+                  {botPendingRequests.length > 0
+                    ? `, plus ${plural(botPendingRequests.length, 'queued basket')}`
+                    : ''}
+                  . The server rejects the change rather than moving rows
+                  {botPendingRequests.length > 0
+                    ? ', and a queued basket would replay against the new account'
+                    : ''}
+                  , so close them first or make a second bot.
                 </p>
               ) : null}
             </fieldset>
@@ -440,11 +465,30 @@ export function BotConfigDialog({
               <p className="bots-field-note">
                 Effective per-stock cap is whichever is smaller: the TL figure, or portfolio value ×
                 the percentage.
-                {committed === null
-                  ? ' Current committed money is not available yet.'
-                  : ` Committed right now: ${formatNumber(committed)} TL.`}{' '}
-                Lowering a limit never pulls a live order; it only stops the next one.
+                {effectiveCap === null
+                  ? ''
+                  : ` Right now that is ${formatNumber(effectiveCap.value, 0)} TL — the ${
+                      effectiveCap.bound === 'tl'
+                        ? 'TL figure binds'
+                        : 'percentage of portfolio value binds'
+                    }.`}
+                {committed !== null
+                  ? ` Committed right now: ${formatNumber(committed, 0)} of ${
+                      formLimit === null ? '—' : formatNumber(formLimit, 0)
+                    }. Lowering a limit never pulls a live order; it only stops the next one.`
+                  : bot?.complete
+                    ? ' Committed money and portfolio value are not available yet, so neither figure' +
+                      ' can be resolved here. Lowering a limit never pulls a live order; it only' +
+                      ' stops the next one.'
+                    : ' A quantity marked auto is worked out from these at fire, so a small limit' +
+                      ' quietly means small orders rather than an error.'}
               </p>
+              {perPositionCapCannotBind ? (
+                <p className="status-wait bots-field-note">
+                  The per-stock cap is above the total cap, so it can never bind — harmless, but it
+                  means one stock may take the whole limit.
+                </p>
+              ) : null}
             </fieldset>
 
             <div className="bots-form-grid bots-form-grid-two">
@@ -556,7 +600,12 @@ export function BotConfigDialog({
               </p>
             ) : null}
             {validation.blockReason ? (
-              <p className="status-dead bots-form-message" role="alert" aria-live="polite">
+              // Nothing is wrong with a form that still matches the stored record,
+              // so the resting state of an edit is muted, not a fault in red.
+              <p
+                className={`bots-form-message ${validation.unchanged ? 'muted' : 'status-dead'}`}
+                {...(validation.unchanged ? {} : { role: 'alert' as const })}
+              >
                 {validation.blockReason}
               </p>
             ) : null}

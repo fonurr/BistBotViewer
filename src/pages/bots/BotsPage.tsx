@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { useBotBudgets, useBotsData, useFleetPrices } from '../../app/dataHooks';
 import { useViewerRuntime } from '../../app/ViewerRuntime';
 import type { Account, ActiveOrder, Bot, ClosedTrade, Position } from '../../bistApi/types';
+import { FilterPopover, PopoverHeading, PopoverScrim } from '../../components/FilterPopover';
 import { buildBookChains } from '../../domain/chains';
 import {
   formatDateKey,
@@ -38,31 +39,12 @@ export function BotsPage() {
   const [accountFilter, setAccountFilter] = useState<AccountFilter>({
     kind: 'all',
   });
-  const [accountOpen, setAccountOpen] = useState(false);
+  // SPEC 3: the toolbar's account dropdown is built on the Book's popover
+  // pattern, so Escape, click-away and focus return behave the same everywhere.
+  const [openFilter, setOpenFilter] = useState<string | null>(null);
   const [dialog, setDialog] = useState<OpenDialog>(null);
-  const accountPopoverRef = useRef<HTMLDivElement>(null);
-  const accountTriggerRef = useRef<HTMLButtonElement>(null);
   const snapshotAvailable = !data.isPending && data.error === null;
-
-  useEffect(() => {
-    if (!accountOpen) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!accountPopoverRef.current?.contains(event.target as Node)) setAccountOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.stopPropagation();
-        setAccountOpen(false);
-        requestAnimationFrame(() => accountTriggerRef.current?.focus());
-      }
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [accountOpen]);
+  const accountOpen = openFilter === 'accounts';
 
   const summaryByBot = useMemo(
     () =>
@@ -193,12 +175,17 @@ export function BotsPage() {
   );
   const pricesLoading = symbols.length > 0 && prices.isPending;
 
+  const pickAccount = (next: AccountFilter) => {
+    setAccountFilter(next);
+    setOpenFilter(null);
+  };
+
   const clearFilters = () => {
     setShowActive(true);
     setShowInactive(false);
     setSearch('');
     setAccountFilter({ kind: 'all' });
-    setAccountOpen(false);
+    setOpenFilter(null);
   };
 
   return (
@@ -236,65 +223,46 @@ export function BotsPage() {
           </label>
         </div>
 
-        <div className="bots-account-filter" ref={accountPopoverRef}>
-          <button
-            ref={accountTriggerRef}
-            type="button"
-            className="btn btn-secondary bots-account-trigger"
-            aria-haspopup="dialog"
-            aria-expanded={accountOpen}
-            onClick={() => setAccountOpen((current) => !current)}
-          >
-            {accountFilterLabel(accountFilter, data.accounts)} <span aria-hidden="true">⌄</span>
-          </button>
-          {accountOpen ? (
-            <div className="bots-account-popover" role="dialog" aria-label="Filter bots by account">
-              <span className="kicker">account</span>
-              <p>Bot routing uses the account and brokerage together.</p>
-              <AccountChoice
-                label="All accounts"
-                detail={`${data.accounts.length} loaded`}
-                checked={accountFilter.kind === 'all'}
-                onChange={() => {
-                  setAccountFilter({ kind: 'all' });
-                  setAccountOpen(false);
-                  requestAnimationFrame(() => accountTriggerRef.current?.focus());
-                }}
-              />
-              {data.accounts.map((account) => (
-                <AccountChoice
-                  key={`${account.accountId}:${account.brokerageId}`}
-                  label={`${account.accountId} · ${account.brokerageId}`}
-                  detail={account.owner || account.brokerageName}
-                  checked={
-                    accountFilter.kind === 'account' &&
-                    accountFilter.accountId === account.accountId &&
-                    accountFilter.brokerageId === account.brokerageId
-                  }
-                  onChange={() => {
-                    setAccountFilter({
-                      kind: 'account',
-                      accountId: account.accountId,
-                      brokerageId: account.brokerageId,
-                    });
-                    setAccountOpen(false);
-                    requestAnimationFrame(() => accountTriggerRef.current?.focus());
-                  }}
-                />
-              ))}
-              <AccountChoice
-                label="No account set"
-                detail="incomplete routing"
-                checked={accountFilter.kind === 'unset'}
-                onChange={() => {
-                  setAccountFilter({ kind: 'unset' });
-                  setAccountOpen(false);
-                  requestAnimationFrame(() => accountTriggerRef.current?.focus());
-                }}
-              />
-            </div>
-          ) : null}
-        </div>
+        <FilterPopover
+          name="accounts"
+          label={accountFilterLabel(accountFilter, data.accounts)}
+          open={accountOpen}
+          setOpen={setOpenFilter}
+        >
+          <PopoverHeading label="account" />
+          <p className="filter-help">Bot routing uses the account and brokerage together.</p>
+          <AccountChoice
+            label="All accounts"
+            detail={`${data.accounts.length} loaded`}
+            checked={accountFilter.kind === 'all'}
+            onChange={() => pickAccount({ kind: 'all' })}
+          />
+          {data.accounts.map((account) => (
+            <AccountChoice
+              key={`${account.accountId}:${account.brokerageId}`}
+              label={`${account.accountId} · ${account.brokerageId}`}
+              detail={account.owner || account.brokerageName}
+              checked={
+                accountFilter.kind === 'account' &&
+                accountFilter.accountId === account.accountId &&
+                accountFilter.brokerageId === account.brokerageId
+              }
+              onChange={() =>
+                pickAccount({
+                  kind: 'account',
+                  accountId: account.accountId,
+                  brokerageId: account.brokerageId,
+                })
+              }
+            />
+          ))}
+          <AccountChoice
+            label="No account set"
+            detail="incomplete routing"
+            checked={accountFilter.kind === 'unset'}
+            onChange={() => pickAccount({ kind: 'unset' })}
+          />
+        </FilterPopover>
 
         <label className="bots-search">
           <span className="sr-only">Search by bot or algorithm</span>
@@ -312,13 +280,14 @@ export function BotsPage() {
           disabled={!snapshotAvailable}
           title={snapshotAvailable ? undefined : 'Wait for a complete fleet snapshot.'}
           onClick={() => {
-            setAccountOpen(false);
+            setOpenFilter(null);
             setDialog({ kind: 'config', mode: 'add', bot: null });
           }}
         >
           + Add bot
         </button>
       </div>
+      {openFilter ? <PopoverScrim onClose={() => setOpenFilter(null)} /> : null}
 
       {data.error ? (
         <div className="bots-read-error" role="alert">
