@@ -1,6 +1,9 @@
+/*
+ * No stacking context here. The filter popovers inside carry z-index 42 so they
+ * sit above the scrim (30); a z-index on the toolbar would trap them below it
+ * and every click inside an open popover would land on the scrim instead.
+ */
 .book-toolbar {
-  position: relative;
-  z-index: 20;
   display: flex;
   align-items: center;
   flex-wrap: wrap;

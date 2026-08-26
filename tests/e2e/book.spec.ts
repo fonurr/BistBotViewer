@@ -61,8 +61,17 @@ test.describe('The Book safety smoke', () => {
     await page.getByRole('button', { name: 'All bots' }).click();
     const botFilter = page.getByRole('dialog', { name: 'All bots filter' });
     const botCheckbox = botFilter.getByRole('checkbox', { name: /bot-alpha/i });
-    await botCheckbox.focus();
-    await page.keyboard.press('Space');
+    // A real mouse click, not focus plus Space: the scrim that closes the popover is
+    // fixed and full-viewport, so any stacking context around the toolbar would put it
+    // over the open popover and swallow every option click.
+    await expect(
+      botCheckbox.evaluate((node) => {
+        const box = node.getBoundingClientRect();
+        const top = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        return top?.closest('.filter-popover') === null ? 'covered' : 'clickable';
+      }),
+    ).resolves.toBe('clickable');
+    await botCheckbox.click();
     await expect(
       page.getByRole('dialog', { name: '0 bots filter' }).getByRole('checkbox', {
         name: /bot-alpha/i,
