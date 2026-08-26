@@ -24,13 +24,23 @@ import {
   formatCompactDuration,
   formatDateKey,
   formatNumber,
+  formatPercentage,
   formatQuantity,
+  formatSignedNumber,
   formatTime,
   parseTurkishNumber,
   plural,
   toIstanbulDateKey,
 } from '../../domain/format';
-import { effectivePerPositionCap, reservedBuyCost } from '../../domain/orders';
+import {
+  deriveFilledPnlState,
+  effectivePerPositionCap,
+  pnlPercentage,
+  realizedPnl,
+  reservedBuyCost,
+  slippagePercentage,
+  unrealizedPnl,
+} from '../../domain/orders';
 import { resolveSchedule } from '../../domain/schedule';
 import { statusClass } from '../../domain/status';
 import { orderActionsForRow, type OrderDialogAction } from './orderActions';
@@ -46,6 +56,8 @@ interface OrderDialogProps {
   budget: BotBudget | undefined;
   holidays: readonly Holiday[];
   writesHeldReason?: string | null;
+  /** The chain's own market price, for the header figure. Null when untrusted. */
+  marketPrice?: number | null;
   onClose: () => void;
 }
 
@@ -73,6 +85,7 @@ export function OrderDialog({
   budget,
   holidays,
   writesHeldReason: pageWritesHeldReason = null,
+  marketPrice = null,
   onClose,
 }: OrderDialogProps) {
   const runtime = useViewerRuntime();
@@ -365,14 +378,17 @@ export function OrderDialog({
   };
 
   const title = dialogTitle(chain, action, step);
+  const header = step === 'view' ? chainHeader(chain, marketPrice) : null;
 
   return (
     <Modal
       open={open}
-      title={title}
+      title={step === 'view' ? chain.symbol : title}
+      titleKicker={header?.kicker}
+      subtitle={header?.subtitle}
+      aside={header?.aside}
       onClose={onClose}
       closeBlocked={step === 'sending'}
-      wide={step === 'view'}
     >
       {step === 'view' ? (
         <ChainView
@@ -419,6 +435,77 @@ export function OrderDialog({
   );
 }
 
+/**
+ * The header states what the chain is and what it made. A chain that never
+ * traded says so rather than showing a zero (TOKENS 3: an absence is not a
+ * measurement).
+ */
+function chainHeader(chain: BookChain, marketPrice: number | null) {
+  const figure = chainFigure(chain, marketPrice);
+  const orderCount = chain.rows.length + chain.canceledRows.length;
+  return {
+    kicker: `chain · ${plural(orderCount, 'order')}`,
+    subtitle: [
+      chain.chainId ? `chain …${chain.chainId.slice(-6)}` : 'chain link unknown',
+      chain.batchDate === null ? 'batch date unknown' : `batch ${formatDateKey(chain.batchDate)}`,
+      chain.botId,
+    ].join(' · '),
+    aside: (
+      <>
+        <strong className={figure.tone}>{figure.value}</strong>
+        <small className={figure.tone}>{figure.detail}</small>
+      </>
+    ),
+  };
+}
+
+function chainFigure(
+  chain: BookChain,
+  marketPrice: number | null,
+): { value: string; detail: string; tone: string } {
+  const state = deriveFilledPnlState(
+    chain.sources.positions,
+    chain.sources.activeOrders,
+    chain.sources.closedTrades,
+  );
+  const realized =
+    chain.sources.closedTrades.reduce(
+      (sum, trade) =>
+        sum + realizedPnl(trade.quantity, trade.averageOpenPrice, trade.averageClosePrice),
+      0,
+    ) +
+    state.partialSellFills.reduce(
+      (sum, fill) =>
+        sum + realizedPnl(fill.quantity, fill.averageOpenPrice, fill.averageClosePrice),
+      0,
+    );
+  const costBasis =
+    chain.sources.closedTrades.reduce(
+      (sum, trade) => sum + trade.quantity * trade.averageOpenPrice,
+      0,
+    ) +
+    state.partialSellFills.reduce((sum, fill) => sum + fill.quantity * fill.averageOpenPrice, 0) +
+    state.exposures.reduce((sum, exposure) => sum + exposure.quantity * exposure.averagePrice, 0);
+  const traded = chain.sources.closedTrades.length > 0 || state.partialSellFills.length > 0;
+  if (state.exposures.length === 0 && !traded) {
+    return { value: '—', detail: 'waiting · nothing bought yet', tone: 'muted' };
+  }
+  if (state.exposures.length > 0 && marketPrice === null) {
+    return { value: 'not available', detail: 'no price we will stand behind', tone: 'status-warn' };
+  }
+  const unrealized = state.exposures.reduce(
+    (sum, exposure) => sum + unrealizedPnl(exposure, marketPrice ?? 0),
+    0,
+  );
+  const total = realized + unrealized;
+  const percent = pnlPercentage(total, costBasis);
+  return {
+    value: formatSignedNumber(total),
+    detail: percent === null ? '' : formatPercentage(percent),
+    tone: total >= 0 ? 'number-positive' : 'number-negative',
+  };
+}
+
 function ChainView({
   chain,
   onAction,
@@ -430,58 +517,74 @@ function ChainView({
   writesHeldReason: string | null;
   onClose: () => void;
 }) {
+  const rows = [...chain.rows, ...chain.canceledRows.filter((row) => !chain.rows.includes(row))];
+  const opener = rows[0];
+  const legs = opener ? rows.slice(1) : rows;
+  const sellAction = chain.positionRows
+    .flatMap((row) => orderActionsForRow(row, chain))
+    .find((candidate) => candidate.kind === 'sell');
   return (
     <div className="chain-dialog-view">
-      <div className="chain-dialog-meta">
-        <span>{chain.botId}</span>
-        <span>
-          {chain.batchDate === null ? 'batch date unknown' : formatDateKey(chain.batchDate)}
-        </span>
-        <span>{chain.chainId ? `chain …${chain.chainId.slice(-8)}` : 'chain link unknown'}</span>
-      </div>
-      {chain.rows.map((row) => {
-        const actions = orderActionsForRow(row, chain);
-        const presentation = bookRowPresentation(row, chain);
-        return (
-          <div className="chain-dialog-row" key={row.key}>
-            <span className={`chain-dialog-spine ${statusClass(presentation.role)}`} />
-            <div>
-              <strong>{row.symbol}</strong>
-              <span className="muted">
-                {' '}
-                · {row.clientOrderId ? `…${row.clientOrderId.slice(-8)}` : 'no client id'}
-              </span>
-              <div className="chain-dialog-row-detail">
-                {row.quantity === null ? 'auto' : formatQuantity(row.quantity)} · {row.direction}
-                {row.orderType ? ` ${row.orderType}` : ''} · {presentation.label}
-              </div>
+      {opener ? (
+        <ChainOpener
+          row={opener}
+          chain={chain}
+          onAction={onAction}
+          writesHeldReason={writesHeldReason}
+        />
+      ) : null}
+      <div className="chain-dialog-legs">
+        {legs.map((row) => {
+          const actions = orderActionsForRow(row, chain);
+          const presentation = bookRowPresentation(row, chain);
+          return (
+            <div className={`chain-dialog-row ${statusClass(presentation.role)}`} key={row.key}>
+              <span className="chain-dialog-status">{presentation.label}</span>
+              <span className="chain-dialog-terms">{legTerms(row)}</span>
               {presentation.detail ? (
-                <div className={`chain-dialog-row-detail ${statusClass(presentation.role)}`}>
-                  {presentation.detail}
-                </div>
+                <span className="chain-dialog-note">{presentation.detail}</span>
               ) : null}
+              <span className="chain-dialog-actions">
+                {actions.map((action) => (
+                  <button
+                    type="button"
+                    className={`btn btn-ghost${action.kind === 'fire' ? ' fire-action' : ''}`}
+                    disabled={Boolean(writesHeldReason) || action.disabled}
+                    title={writesHeldReason ?? action.disabledReason}
+                    onClick={() => onAction(action)}
+                    key={action.kind}
+                  >
+                    {action.kind === 'fire' ? 'fire now' : action.kind}
+                  </button>
+                ))}
+              </span>
             </div>
-            <div className="chain-dialog-actions">
-              {actions.map((action) => (
-                <button
-                  type="button"
-                  className={`btn btn-ghost${action.kind === 'fire' ? ' fire-action' : ''}`}
-                  disabled={Boolean(writesHeldReason) || action.disabled}
-                  title={writesHeldReason ?? action.disabledReason}
-                  onClick={() => onAction(action)}
-                  key={action.kind}
-                >
-                  {action.kind === 'fire' ? 'fire now' : action.kind}
-                </button>
-              ))}
-            </div>
-          </div>
-        );
-      })}
-      {chain.sellableQuantity === 0 && chain.positionQuantity ? (
+          );
+        })}
+      </div>
+      {chain.positionQuantity ? (
         <p className="dialog-note">
-          All {formatQuantity(chain.positionQuantity)} held shares are claimed by active or
-          scheduled sells. Edit one of those orders to free shares.
+          {chain.sellableQuantity === 0 ? (
+            <>
+              All {formatQuantity(chain.positionQuantity)} held shares are claimed by active or
+              scheduled sells. Edit one of those orders to free shares.
+            </>
+          ) : (
+            <>
+              Sellable by hand:{' '}
+              <span className="book-inline-value">
+                {formatQuantity(chain.sellableQuantity ?? 0)} of{' '}
+                {formatQuantity(chain.positionQuantity)}
+              </span>
+              {sellClaims(chain) ? ` — ${sellClaims(chain)}` : ''}. A scheduled sell dated today can
+              also fire before its time, on its own, if the stock closes a minute at the daily
+              ceiling.{' '}
+              <span className="status-wait">
+                A sell with a cancel in flight still claims its shares
+              </span>{' '}
+              — the count only grows once the cancel is confirmed, never when it is asked.
+            </>
+          )}
         </p>
       ) : null}
       {writesHeldReason ? (
@@ -491,9 +594,136 @@ function ChainView({
         <button type="button" className="btn btn-secondary" onClick={onClose}>
           Close
         </button>
+        {sellAction && !writesHeldReason ? (
+          <button type="button" className="btn btn-primary" onClick={() => onAction(sellAction)}>
+            Sell the remaining {formatQuantity(chain.sellableQuantity ?? 0)}
+          </button>
+        ) : null}
       </div>
     </div>
   );
+}
+
+/**
+ * Names each order that claims shares, and how many: the arithmetic behind
+ * the sellable count is the fact the user needs, not the count alone.
+ */
+function sellClaims(chain: BookChain): string {
+  const claims = chain.activeRows
+    .filter((row) => row.direction === 'sell' && row.isWaiting)
+    .map((row) => {
+      const kind = row.source === 'scheduled' ? 'scheduled' : 'resting';
+      const type = row.orderType ? `${row.orderType} ` : '';
+      return row.quantity === null
+        ? `the ${kind} ${type}sell claims the whole position`
+        : `the ${kind} ${type}sell claims ${formatQuantity(row.quantity)}`;
+    });
+  return claims.join(', ');
+}
+
+/** `sell 60 limit 39,90` — the terms, in the order the sentence reads. */
+function legTerms(row: BookChain['rows'][number]): string {
+  const quantity = row.quantity === null ? 'auto' : formatQuantity(row.quantity);
+  const price = row.orderPrice === null ? '' : ` ${formatNumber(row.orderPrice)}`;
+  return `${row.direction} ${quantity}${row.orderType ? ` ${row.orderType}` : ''}${price}`;
+}
+
+/** The opener carries the chain's own numbers, in a block of its own. */
+function ChainOpener({
+  row,
+  chain,
+  onAction,
+  writesHeldReason,
+}: {
+  row: BookChain['rows'][number];
+  chain: BookChain;
+  onAction: (action: OrderDialogAction) => void;
+  writesHeldReason: string | null;
+}) {
+  const actions = orderActionsForRow(row, chain);
+  const presentation = bookRowPresentation(row, chain, Date.now(), true);
+  const slip =
+    row.averagePrice === null
+      ? null
+      : slippagePercentage({
+          orderPrice: row.orderPrice,
+          averagePrice: row.averagePrice,
+          type: row.orderType,
+        });
+  const stats: Array<{ label: string; value: string; muted?: boolean }> = [
+    { label: 'qty', value: row.quantity === null ? 'auto' : formatQuantity(row.quantity) },
+    {
+      label: row.orderType === 'limit' ? 'limit' : 'order',
+      value: row.orderPrice === null ? '' : formatNumber(row.orderPrice),
+    },
+  ];
+  if (row.averagePrice === null) {
+    stats.push({
+      label: 'filled',
+      value: formatQuantity(Math.max(0, row.filledQuantity ?? 0)),
+      muted: (row.filledQuantity ?? 0) === 0,
+    });
+  } else {
+    stats.push({ label: 'avg fill', value: formatNumber(row.averagePrice) });
+  }
+  if (slip !== null) stats.push({ label: 'slip', value: formatPercentage(slip) });
+  return (
+    <div className={`chain-dialog-opener ${statusClass(presentation.role)}`}>
+      <div className="chain-dialog-opener-head">
+        <span className="kicker">opener · {openerWord(row)}</span>
+        <span className="muted">
+          {row.clientOrderId ? `…${row.clientOrderId.slice(-6)}` : 'no client id'}
+        </span>
+      </div>
+      <div className="chain-dialog-opener-stats">
+        {stats.map((stat) => (
+          <div key={stat.label}>
+            <span className="kicker">{stat.label}</span>
+            <strong className={stat.muted ? 'muted' : ''}>{stat.value}</strong>
+          </div>
+        ))}
+      </div>
+      {/* The opener keeps its status sentence and its own actions: the kicker
+          names the kind of row, not what is happening to it right now, and an
+          opener is often the only leg a chain has. */}
+      <div className="chain-dialog-opener-note">
+        <span>
+          {presentation.label}
+          {presentation.detail ? <span className="muted"> · {presentation.detail}</span> : null}
+        </span>
+        <span className="chain-dialog-actions">
+          {actions.map((action) => (
+            <button
+              type="button"
+              className={`btn btn-ghost${action.kind === 'fire' ? ' fire-action' : ''}`}
+              disabled={Boolean(writesHeldReason) || action.disabled}
+              title={writesHeldReason ?? action.disabledReason}
+              onClick={() => onAction(action)}
+              key={action.kind}
+            >
+              {action.kind === 'fire' ? 'fire now' : action.kind}
+            </button>
+          ))}
+        </span>
+      </div>
+      {presentation.notes?.map((note) => (
+        <div
+          className={`chain-dialog-opener-note ${note.tone === 'wait' ? 'status-wait' : 'muted'}`}
+          key={note.text}
+        >
+          {note.text}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function openerWord(row: BookChain['rows'][number]): string {
+  if (row.source === 'position') return `filled ${row.direction}`;
+  if (row.source === 'closed-trade') return 'closed round trip';
+  if (row.source === 'canceled') return `canceled ${row.direction}`;
+  if (row.source === 'scheduled') return `scheduled ${row.direction}`;
+  return `resting ${row.direction}`;
 }
 
 function ActionForm({

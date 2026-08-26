@@ -1,3 +1,4 @@
+import { Warning } from '@phosphor-icons/react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 
 import type { Account, Bot } from '../../bistApi/types';
@@ -140,7 +141,7 @@ export function BookFilters(props: BookFiltersProps) {
     'accounts',
   );
   const symbolLabel =
-    filters.symbols.size === 0 ? 'All symbols' : plural(filters.symbols.size, 'symbol');
+    filters.symbols.size === 0 ? 'any symbol' : plural(filters.symbols.size, 'symbol');
   const dateLabel =
     filters.batchFrom === null && filters.batchTo === null
       ? 'Every batch'
@@ -150,28 +151,6 @@ export function BookFilters(props: BookFiltersProps) {
 
   return (
     <>
-      {props.noClosingOrderCount > 0 || props.mismatchCount > 0 ? (
-        <div className="human-banner" role="status">
-          <span className="human-total">
-            {props.noClosingOrderCount + props.mismatchCount === 1
-              ? '1 needs a human'
-              : `${props.noClosingOrderCount + props.mismatchCount} need a human`}
-          </span>
-          {props.noClosingOrderCount > 0 ? (
-            <button type="button" onClick={setNoExit} aria-pressed={filters.noClosingOrder}>
-              {plural(props.noClosingOrderCount, 'position')} with no closing order
-            </button>
-          ) : null}
-          {props.mismatchCount > 0 ? (
-            <button type="button" onClick={props.onOpenMismatch}>
-              {plural(props.mismatchCount, 'account mismatch', 'account mismatches')}
-            </button>
-          ) : null}
-          <span className="human-unfiltered">
-            never filtered · these stay visible whatever the toolbar says
-          </span>
-        </div>
-      ) : null}
       <div className="book-toolbar">
         <div className="seg" aria-label="Book scopes">
           {scopes.map((scope) => (
@@ -267,7 +246,7 @@ export function BookFilters(props: BookFiltersProps) {
           label={symbolLabel}
           open={open === 'symbols'}
           setOpen={setOpen}
-          className="symbol-filter"
+          className={`symbol-filter${filters.symbols.size === 0 ? ' filter-unset' : ''}`}
           onEscape={() => {
             if (symbolQuery) {
               setSymbolQuery('');
@@ -398,6 +377,29 @@ export function BookFilters(props: BookFiltersProps) {
           <p className="filter-help">These are batch dates, not calendar days.</p>
         </FilterPopover>
         <span className="book-toolbar-spacer" />
+        {props.noClosingOrderCount > 0 || props.mismatchCount > 0 ? (
+          <div className="human-banner" role="status">
+            <Warning size={14} weight="fill" aria-hidden="true" />
+            <span className="human-total">
+              {props.noClosingOrderCount + props.mismatchCount === 1
+                ? '1 needs a human'
+                : `${props.noClosingOrderCount + props.mismatchCount} need a human`}
+            </span>
+            <span className="human-divider" aria-hidden="true" />
+            {props.noClosingOrderCount > 0 ? (
+              <button type="button" onClick={setNoExit} aria-pressed={filters.noClosingOrder}>
+                {plural(props.noClosingOrderCount, 'position')} with no closing order
+              </button>
+            ) : null}
+            {props.mismatchCount > 0 ? (
+              <button type="button" onClick={props.onOpenMismatch}>
+                {plural(props.mismatchCount, 'account mismatch', 'account mismatches')}
+              </button>
+            ) : null}
+            {/* SPEC 3: the counts are never filtered, and the word says so once. */}
+            <span className="human-unfiltered">unfiltered</span>
+          </div>
+        ) : null}
         {props.canceledCount > 0 ? (
           <button
             type="button"
@@ -427,7 +429,7 @@ function selectionLabel(
   one: string,
   many: string,
 ): string {
-  if (values === null || values.size === total) return `All ${many}`;
+  if (values === null || values.size === total) return `${total} ${total === 1 ? one : many}`;
   if (values.size === 1) return `1 ${one}`;
   return `${values.size} ${many}`;
 }

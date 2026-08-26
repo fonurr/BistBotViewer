@@ -25,11 +25,12 @@ body {
   margin-bottom: var(--space-6);
 }
 
+/* Nocturne h4: the reference titles every page at 20px, not at the h1 ramp. */
 .page-heading h1 {
   margin: 0;
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 500;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
 }
 
 .page-heading span {
@@ -273,7 +274,12 @@ a:hover {
 }
 
 .symbol-filter .filter-trigger {
-  width: 152px;
+  width: 160px;
+}
+
+/* An unset filter reads as a placeholder, not as a chosen value. */
+.filter-unset .filter-trigger {
+  color: color-mix(in srgb, var(--color-text) 45%, transparent);
 }
 
 .filter-popover {
@@ -508,13 +514,54 @@ a:hover {
   overflow: auto;
 }
 
+/* The form dialogs run one step wider than the confirmations, never wider. */
 .viewer-dialog-wide {
-  width: min(940px, calc(100vw - 48px));
+  width: min(680px, calc(100vw - 48px));
 }
 
 .viewer-dialog-heading {
+  align-items: flex-start;
   justify-content: space-between;
-  gap: var(--space-4);
+  gap: var(--space-6);
+}
+
+.viewer-dialog-identity {
+  min-width: 0;
+}
+
+.viewer-dialog-heading .dialog-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.viewer-dialog-kicker {
+  color: var(--mut);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.viewer-dialog-subtitle {
+  color: var(--mut);
+  font-size: var(--font-meta);
+}
+
+.viewer-dialog-aside {
+  flex: none;
+  text-align: right;
+}
+
+.viewer-dialog-aside strong {
+  display: block;
+  font-size: 24px;
+  font-weight: 500;
+}
+
+.viewer-dialog-aside small {
+  font-size: var(--font-meta);
 }
 
 .viewer-dialog-close,

@@ -83,14 +83,19 @@ function rawColumn(
   };
 }
 
+/*
+ * Reading order follows the reference: time, then what it was, then whose
+ * account, then the text. Every field is still a column (SPEC 3) — the id
+ * simply stops leading, because nobody reads a log by its row id.
+ */
 const ERROR_COLUMNS: readonly LogColumn[] = [
-  rawColumn('id', 'id', 72, 'integer'),
   rawColumn('time', 'time', 150, 'timestamp'),
   rawColumn('type', 'type', 202),
+  rawColumn('accountId', 'account id', 130),
   rawColumn('information', 'information', 330),
-  rawColumn('accountId', 'account id', 160),
   rawColumn('brokerageId', 'brokerage id', 160),
   rawColumn('context', 'context', 240),
+  rawColumn('id', 'id', 72, 'integer'),
 ];
 
 const WIRE_COLUMNS: readonly LogColumn[] = [

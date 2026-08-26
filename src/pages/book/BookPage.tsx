@@ -16,12 +16,15 @@ import {
   formatDate,
   formatNumber,
   formatPercentage,
+  formatRowTime,
   formatSignedNumber,
   plural,
+  toIstanbulDateKey,
 } from '../../domain/format';
 import {
   committedAmount,
   deriveFilledPnlState,
+  pnlPercentage,
   realizedPnl,
   slippagePercentage,
   unrealizedPnl,
@@ -257,9 +260,7 @@ export function BookPage() {
           selected={pendingSelection}
           writesHeldReason={writesHeldReason}
           onToggle={(id) => setPendingSelection((current) => toggleNumber(current, id))}
-          onCancelSelected={() =>
-            setPendingTargets(visiblePending.filter((request) => pendingSelection.has(request.id)))
-          }
+          onCancel={(targets) => setPendingTargets(targets)}
         />
       ) : null}
       {snapshotAvailable && filters.scopes.size === 0 ? (
@@ -345,6 +346,11 @@ export function BookPage() {
           budget={budgets.data.get(resolvedOpenChain.chain.botId)}
           holidays={data.holidays}
           writesHeldReason={writesHeldReason}
+          marketPrice={
+            prices.trustworthy
+              ? (prices.quotes.get(resolvedOpenChain.chain.symbol)?.son ?? null)
+              : null
+          }
           onClose={() => setOpenChain(null)}
         />
       ) : null}
@@ -543,6 +549,16 @@ function summarize(
         sum + realizedPnl(fill.quantity, fill.averageOpenPrice, fill.averageClosePrice),
       0,
     );
+  const costBasis =
+    [...trades.values()].reduce((sum, trade) => sum + trade.quantity * trade.averageOpenPrice, 0) +
+    filledState.partialSellFills.reduce(
+      (sum, fill) => sum + fill.quantity * fill.averageOpenPrice,
+      0,
+    ) +
+    filledState.exposures.reduce(
+      (sum, exposure) => sum + exposure.quantity * exposure.averagePrice,
+      0,
+    );
   let unrealized = 0;
   let hasEveryPrice = true;
   for (const exposure of filledState.exposures) {
@@ -585,6 +601,9 @@ function summarize(
     unrealizedKnown: hasEveryPrice,
     marketFiguresTrusted: filledState.exposures.length === 0 || pricesTrustworthy,
     total: hasEveryPrice ? realized + unrealized : null,
+    // The strip states the total against what the visible chains actually
+    // cost, never against the portfolio (TOKENS 3).
+    totalPercentage: hasEveryPrice ? pnlPercentage(realized + unrealized, costBasis) : null,
     committed,
     committedCompleteOnly,
     avgSlip: slips.length ? slips.reduce((sum, value) => sum + value, 0) / slips.length : null,
@@ -620,6 +639,9 @@ function StatStrip({ summary, pendingCount }: { summary: BookSummary; pendingCou
       <Stat
         label="total"
         value={summary.total === null ? 'not available' : formatSignedNumber(summary.total)}
+        inlineDetail={
+          summary.totalPercentage === null ? null : formatPercentage(summary.totalPercentage)
+        }
         detail={summary.total !== null && !summary.marketFiguresTrusted ? 'last known' : null}
         signed={summary.marketFiguresTrusted ? (summary.total ?? undefined) : undefined}
         unavailable={summary.total === null}
@@ -646,6 +668,7 @@ function Stat({
   label,
   value,
   detail = null,
+  inlineDetail = null,
   accent,
   signed,
   unavailable = false,
@@ -654,6 +677,8 @@ function Stat({
   label: string;
   value: string;
   detail?: string | null;
+  /** A percentage belongs beside its figure, a step down in size. */
+  inlineDetail?: string | null;
   accent?: boolean;
   signed?: number;
   unavailable?: boolean;
@@ -671,7 +696,10 @@ function Stat({
   return (
     <div className="book-stat">
       <span className={`kicker${accent ? ' accent-kicker' : ''}`}>{label}</span>
-      <strong className={`${signedClass}${unavailable ? '' : className}`}>{value}</strong>
+      <strong className={`${signedClass}${unavailable ? '' : className}`}>
+        {value}
+        {inlineDetail && !unavailable ? <small> {inlineDetail}</small> : null}
+      </strong>
       {/* A qualifier is not the figure: at the strip's size it read louder than the number. */}
       {detail ? <small className="status-warn">{detail}</small> : null}
     </div>
@@ -683,13 +711,13 @@ function PendingBaskets({
   selected,
   writesHeldReason,
   onToggle,
-  onCancelSelected,
+  onCancel,
 }: {
   requests: readonly PendingOrderRequest[];
   selected: ReadonlySet<number>;
   writesHeldReason: string | null;
   onToggle: (id: number) => void;
-  onCancelSelected: () => void;
+  onCancel: (targets: readonly PendingOrderRequest[]) => void;
 }) {
   const selectedHere = requests.filter((request) => selected.has(request.id));
   const bots = new Set(selectedHere.map((request) => request.botId));
@@ -710,70 +738,114 @@ function PendingBaskets({
               className="btn btn-ghost"
               disabled={Boolean(writesHeldReason)}
               title={writesHeldReason ?? undefined}
-              onClick={onCancelSelected}
+              onClick={() => onCancel(selectedHere)}
             >
-              cancel selected
+              call off selected
             </button>
           </>
         ) : (
-          <span className="muted">select a basket to call it off</span>
+          <span className="muted">select baskets to call several off at once</span>
         )}
       </header>
       {requests.map((request) => (
-        <div className="pending-basket" key={request.id}>
-          <span className="pending-spine" />
-          <label className="pending-select">
-            <input
-              type="checkbox"
-              checked={selected.has(request.id)}
-              onChange={() => onToggle(request.id)}
-              aria-label={`Select queued request ${request.id}`}
-            />
-          </label>
-          <div className="pending-basket-summary">
-            <strong>{request.direction} batch</strong>
-            <span>
-              req {request.id} ·{' '}
-              {request.request
-                ? `${plural(request.request.stocks.length, 'stock')}, fires as one`
-                : 'request contents unavailable'}
-            </span>
-            <span className="status-wait">
-              next try {formatDate(request.nextAttemptTime)} · attempt {request.retryCount + 1}
-            </span>
-          </div>
-          <div className="pending-stock-list">
-            {request.request ? (
-              request.request.stocks.map((stock, index) => (
-                <span key={`${stock.symbol}:${index}`}>
-                  <b>{stock.symbol}</b> · {request.request?.type}
-                  {stock.quantity === undefined ? ' · quantity at fire' : ` · ${stock.quantity}`}
-                  {stock.price === undefined ? '' : ` @ ${formatNumber(stock.price)}`}
-                  {pendingTimingCopy(
-                    stock.openTime ??
-                      stock.closeTime ??
-                      request.request?.openTime ??
-                      request.request?.closeTime,
-                  )}
-                </span>
-              ))
-            ) : (
-              <span className="status-warn">
-                The stored request body could not be read; no stock count is inferred.
+        <div className="pending-basket-group" key={request.id}>
+          <div className="pending-basket">
+            <span className="pending-spine" />
+            <div className="pending-basket-head">
+              <label className="pending-select">
+                <input
+                  type="checkbox"
+                  checked={selected.has(request.id)}
+                  onChange={() => onToggle(request.id)}
+                  aria-label={`Select queued request ${request.id}`}
+                />
+              </label>
+              <strong>queued {request.direction} batch</strong>
+              <span className="muted">
+                req {request.id} ·{' '}
+                {request.request
+                  ? `${plural(request.request.stocks.length, 'stock')}, fires as one`
+                  : 'request contents unavailable'}
               </span>
-            )}
+              <span className="status-wait">
+                next try{' '}
+                {formatRowTime(request.nextAttemptTime, toIstanbulDateKey(Date.now())) ?? ''} ·
+                attempt {request.retryCount + 1}
+              </span>
+              {request.request?.budget === undefined ? null : (
+                <span className="muted">budget {formatNumber(request.request.budget, 0)}</span>
+              )}
+              <span className="pending-grow" />
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={Boolean(writesHeldReason)}
+                title={writesHeldReason ?? undefined}
+                onClick={() => onCancel([request])}
+              >
+                call off…
+              </button>
+            </div>
           </div>
-          <span className="pending-grow" />
+          {request.request ? (
+            <div className="pending-stocks">
+              {request.request.stocks.map((stock, index) => (
+                <div className="book-row pending-stock" key={`${stock.symbol}:${index}`}>
+                  <span className="book-spine pending-stock-spine" aria-hidden="true" />
+                  <div className="book-symbol-leg pending-stock-symbol">↳ {stock.symbol}</div>
+                  <div className={stock.quantity === undefined ? 'captured-value' : ''}>
+                    {stock.quantity === undefined ? 'auto' : formatNumber(stock.quantity, 0)}
+                  </div>
+                  <div>
+                    <span className={request.direction === 'buy' ? 'side-buy' : 'side-sell'}>
+                      {request.direction}
+                    </span>{' '}
+                    {request.request?.type}
+                  </div>
+                  <div className="align-right">
+                    {stock.price === undefined ? '' : formatNumber(stock.price)}
+                  </div>
+                  <div />
+                  <div />
+                  <div />
+                  <div />
+                  <div />
+                  <div
+                    className={
+                      stock.cancelAtFloor ? 'book-status status-warn' : 'book-status status-wait'
+                    }
+                  >
+                    <span>
+                      {stock.cancelAtFloor ? 'cancelAtFloor on' : 'Queued'}
+                      <span className="muted">
+                        {' · '}
+                        {stock.quantity === undefined
+                          ? 'sized from the limit when it is sent'
+                          : 'quantity given in the request'}
+                        {pendingTimingCopy(stock.openTime ?? stock.closeTime)}
+                      </span>
+                    </span>
+                  </div>
+                  <div />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="pending-unreadable status-warn">
+              The stored request body could not be read; no stock count is inferred.
+            </p>
+          )}
         </div>
       ))}
     </section>
   );
 }
 
+/** Only a stock that overrides the basket's own timing earns a line about it. */
 function pendingTimingCopy(spec: ScheduleSpec | undefined): string {
-  if (!spec) return ' · next replay sends now';
+  if (!spec) return '';
   const difference = spec.diff === undefined ? '' : ` ${formatNumber(spec.diff)}m`;
-  return ` · ${spec.day} ${spec.type}${difference}`;
+  return ` · own time · ${spec.type}${difference}`;
 }
 
 function PendingCancelDialog({

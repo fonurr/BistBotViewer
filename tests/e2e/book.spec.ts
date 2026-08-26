@@ -58,8 +58,8 @@ test.describe('The Book safety smoke', () => {
     expect(layout.columnTemplate).toBe(layout.dataTemplate);
     expect(layout.bodyScrollWidth).toBeGreaterThan(layout.viewportWidth);
 
-    await page.getByRole('button', { name: 'All bots' }).click();
-    const botFilter = page.getByRole('dialog', { name: 'All bots filter' });
+    await page.getByRole('button', { name: '1 bot', exact: true }).click();
+    const botFilter = page.getByRole('dialog', { name: '1 bot filter' });
     const botCheckbox = botFilter.getByRole('checkbox', { name: /bot-alpha/i });
     // A real mouse click, not focus plus Space: the scrim that closes the popover is
     // fixed and full-viewport, so any stacking context around the toolbar would put it

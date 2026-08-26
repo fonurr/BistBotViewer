@@ -11,6 +11,9 @@
 
 .bots-heading h1 {
   margin: 0;
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
 }
 
 .bots-heading span,
@@ -40,7 +43,7 @@
 }
 
 .bots-search {
-  width: calc(var(--space-8) * 7);
+  width: 170px;
 }
 
 .bots-account-choice {
@@ -145,7 +148,13 @@
 
 .bots-fleet-stat strong {
   min-height: var(--space-6);
-  font-size: var(--font-figure);
+  font-size: 19px;
+  font-weight: 500;
+}
+
+/* The strip states a percentage beside its figure, a step down in size. */
+.bots-fleet-stat strong small {
+  font-size: 14px;
   font-weight: 500;
 }
 
@@ -192,9 +201,7 @@
 
 .bots-card-inner {
   display: grid;
-  grid-template-columns:
-    minmax(calc(var(--space-8) * 6), 1fr) minmax(0, 3fr)
-    calc(var(--space-8) * 4);
+  grid-template-columns: 230px minmax(0, 1fr) 110px;
   width: 100%;
   gap: var(--space-8);
   padding: var(--space-6);
@@ -224,7 +231,7 @@
 }
 
 .bots-health {
-  font-size: var(--font-kicker);
+  font-size: 9.5px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -270,7 +277,7 @@
 
 .bots-description {
   min-height: var(--space-6);
-  margin: 0 0 var(--space-4);
+  margin: 0 0 var(--space-6);
   color: var(--mut);
   font-size: var(--font-row);
   line-height: 1.5;
@@ -279,11 +286,19 @@
 }
 
 .bots-card-notice {
-  margin-bottom: var(--space-4);
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-bottom: var(--space-6);
   padding: var(--space-3) var(--space-4);
   border-left: 3px solid;
   border-radius: var(--radius-sm);
   font-size: var(--font-leg);
+}
+
+.bots-card-notice svg {
+  flex: none;
+  margin-top: 2px;
 }
 
 .bots-card-notice-wait {
@@ -496,8 +511,15 @@
 }
 
 .bots-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   cursor: pointer;
   background: transparent;
+}
+
+.bots-chip-remove span {
+  color: var(--mut);
 }
 
 .bots-chip-input {

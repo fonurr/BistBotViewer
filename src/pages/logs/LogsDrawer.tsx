@@ -795,6 +795,14 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
   const typeCounts = sourcePage?.countsByType ?? {};
   const unfilteredRangeCount = Object.values(typeCounts).reduce((total, count) => total + count, 0);
   const selectedTypeList = activeTab === 'errors' ? ERROR_TYPES : TRAFFIC_TYPES;
+  /*
+   * A chip counts within the current range (SCREEN-MAP), so a type with no
+   * row in it is not a filter worth offering. A selected chip always stays,
+   * or the control the user just pressed would vanish under them.
+   */
+  const offeredTypeList = selectedTypeList.filter(
+    (type) => (typeCounts[type] ?? 0) > 0 || activeTypes.includes(type as never),
+  );
   const hasEscalation = loadedRows.some(
     (entry) =>
       entry.source === 'errors' &&
@@ -826,7 +834,7 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
           <div className="logs-heading-copy">
             <h5 id="logs-drawer-title">Logs</h5>
             <span id="logs-drawer-description" className="muted">
-              read-only · nothing here can send or change an order
+              read-only · nothing here is checked unless something is wrong
             </span>
           </div>
           <button
@@ -958,7 +966,7 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
               type="search"
               className="input logs-search"
               value={currentSearch}
-              placeholder="search loaded rows…"
+              placeholder="search text…"
               onChange={(event) =>
                 setSearches((current) => ({
                   ...current,
@@ -1017,7 +1025,7 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
                 >
                   All types
                 </button>
-                {selectedTypeList.map((type) => (
+                {offeredTypeList.map((type) => (
                   <button
                     key={type}
                     type="button"

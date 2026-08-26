@@ -20,6 +20,9 @@ session. Nothing is persisted.
   the last server-ordered row id as `beforeId`. Display sorting never changes that cursor.
 - Totals and type counts come from the first page and stay stable while older pages append.
   Type counts deliberately ignore the current type selection, matching the range-chip contract.
+  A type with no row in the chosen range is not offered as a chip at all — a count within the
+  range is what makes a chip a filter worth pressing — but a type the user has already selected
+  stays, so the control they just pressed never vanishes under them.
 - Search is client-side over loaded rows only. Its label and result copy state that scope; it
   never pretends to search rows that have not been loaded.
 - Empty unfiltered ranges resolve the nearest stored day. The newer side is found with bounded
@@ -28,6 +31,8 @@ session. Nothing is persisted.
 ## Tables
 
 The three source tabs expose every contracted database field. Wide tables scroll horizontally.
+Error columns read time → type → account → information, the order the reference puts them in;
+every remaining stored field still has a column of its own after those, id included.
 Headers sort loaded rows and each column has a pointer/keyboard resize separator. Wire/API body
 fields expand below their row, pretty-print JSON when possible, and copy only after an explicit
 user action. Display sorting never changes the server-ordered paging cursor, and the footer names

@@ -1,3 +1,4 @@
+import { Warning } from '@phosphor-icons/react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -320,7 +321,7 @@ export function BotsPage() {
             value={snapshotAvailable ? money(fleet.realized) : 'not available'}
             unavailable={!snapshotAvailable}
             signed={snapshotAvailable ? fleet.realized : null}
-            detail={
+            inlineDetail={
               snapshotAvailable && fleet.realizedPercentage !== null
                 ? formatPercentage(fleet.realizedPercentage)
                 : null
@@ -526,8 +527,11 @@ function BotCard({
           ) : null}
           {state === 'deactivated' && summary.openPositions > 0 ? (
             <div className="bots-card-notice bots-card-notice-dead">
-              Still holds {plural(summary.openPositions, 'position')}. It cannot buy, but it can
-              still sell, and nobody is managing the exit.
+              <Warning size={15} weight="fill" aria-hidden="true" />
+              <span>
+                Still holds {plural(summary.openPositions, 'position')}. It cannot buy, but it can
+                still sell — and nobody is managing the exit.
+              </span>
             </div>
           ) : null}
 
@@ -679,6 +683,7 @@ function FleetStat({
   label,
   value,
   detail,
+  inlineDetail = null,
   accent = false,
   signed = null,
   untrusted = false,
@@ -687,6 +692,8 @@ function FleetStat({
   label: string;
   value: string;
   detail?: string | null;
+  /** The reference states a strip percentage beside its figure, not beneath it. */
+  inlineDetail?: string | null;
   accent?: boolean;
   signed?: number | null;
   untrusted?: boolean;
@@ -704,6 +711,7 @@ function FleetStat({
         }
       >
         {value}
+        {inlineDetail ? <small> {inlineDetail}</small> : null}
       </strong>
       {detail ? (
         <small

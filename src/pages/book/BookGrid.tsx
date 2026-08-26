@@ -1,3 +1,4 @@
+import { Warning } from '@phosphor-icons/react';
 import { useEffect, useRef, useState } from 'react';
 
 import type { Account, Bot } from '../../bistApi/types';
@@ -11,6 +12,7 @@ import {
   formatSignedNumber,
   formatNumber,
   plural,
+  weekdayName,
 } from '../../domain/format';
 import {
   deriveFilledPnlState,
@@ -82,26 +84,32 @@ export function BookGrid(props: BookGridProps) {
 
   return (
     <div className="book-grid-wrap" role="table" aria-label="Order, position and trade chains">
-      <div className="book-columns" role="row">
-        {columnLabels.map((label, index) => (
-          <div
-            key={`${label}:${index}`}
-            role="columnheader"
-            className={(index >= 4 && index <= 7) || index === 11 ? 'align-right' : ''}
-          >
-            {label}
-          </div>
-        ))}
-      </div>
       {groups.map((dateGroup) => (
         <section className="book-date-group" role="rowgroup" key={dateGroup.date}>
+          {/*
+           * The batch heading comes first and the column band sits under it:
+           * the columns belong to the batch they head, not to the whole page.
+           */}
           <header className="book-date-heading">
             <span>
               {dateGroup.date === 'unknown' ? 'Date unknown' : formatDateKey(dateGroup.date)}
             </span>
-            <span className="kicker">batch</span>
+            <span className="kicker">
+              batch{dateGroup.date === 'unknown' ? '' : ` · ${weekdayName(dateGroup.date)}`}
+            </span>
             <span className="muted">{plural(dateGroup.chains.length, 'chain')}</span>
           </header>
+          <div className="book-columns" role="row">
+            {columnLabels.map((label, index) => (
+              <div
+                key={`${label}:${index}`}
+                role="columnheader"
+                className={(index >= 4 && index <= 7) || index === 11 ? 'align-right' : ''}
+              >
+                {label}
+              </div>
+            ))}
+          </div>
           {dateGroup.bots.map((botGroup) => {
             const bot = botById.get(botGroup.botId);
             const account = bot?.accountId ? accountById.get(bot.accountId) : undefined;
@@ -115,9 +123,8 @@ export function BookGrid(props: BookGridProps) {
                   <span className="book-bot-name" title={bot?.description ?? undefined}>
                     {botGroup.botId}
                   </span>
-                  <span className="muted">
+                  <span className="muted" title={account?.owner || undefined}>
                     {bot?.accountId ?? 'account unset'}
-                    {account ? ` · ${account.owner}` : ''}
                     {bot?.brokerageId ? ` · ${bot.brokerageId}` : ''}
                   </span>
                   <span className="book-bot-rule" />
@@ -185,33 +192,68 @@ function ChainRows(
         />
       ))}
       {canceledRows.length > 0 ? (
-        <div className="canceled-tail">
-          {visibleCanceled
-            ? canceledRows.map((row) => (
-                <BookRow
-                  key={row.key}
-                  row={row}
-                  chain={chain}
-                  opener={nonCanceledRows.length === 0 && row === canceledRows[0]}
-                  quotes={props.quotes}
-                  pnlState={props.pnlState}
-                  pricesTrustworthy={props.pricesTrustworthy}
-                  writesHeldReason={props.writesHeldReason}
-                  now={props.now}
-                  onOpenChain={props.onOpenChain}
-                />
-              ))
-            : null}
-          <div className="canceled-tail-summary">
-            <button type="button" onClick={() => props.onToggleCanceledChain(chain.key)}>
-              {visibleCanceled ? 'hide' : 'show'} · {plural(canceledRows.length, 'canceled order')}
-            </button>
-            <CanceledTailNote chain={chain} />
+        visibleCanceled ? (
+          /*
+           * Opened, the tail is the tinted block the rows sit inside, and its
+           * note and `hide` sit beneath them rather than above.
+           */
+          <div className="canceled-tail canceled-tail-open">
+            {canceledRows.map((row) => (
+              <BookRow
+                key={row.key}
+                row={row}
+                chain={chain}
+                opener={nonCanceledRows.length === 0 && row === canceledRows[0]}
+                quotes={props.quotes}
+                pnlState={props.pnlState}
+                pricesTrustworthy={props.pricesTrustworthy}
+                writesHeldReason={props.writesHeldReason}
+                now={props.now}
+                onOpenChain={props.onOpenChain}
+              />
+            ))}
+            <div className="canceled-tail-footer">
+              <span className="canceled-tail-notes">
+                <CanceledTailNote chain={chain} />
+              </span>
+              <button
+                type="button"
+                className="btn btn-ghost canceled-tail-toggle"
+                onClick={() => props.onToggleCanceledChain(chain.key)}
+              >
+                hide
+              </button>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="canceled-tail canceled-tail-stub">
+            <span className="book-spine status-dead" aria-hidden="true" />
+            <div className="canceled-tail-summary">
+              <strong>+{canceledTailLabel(canceledRows)}</strong>
+              <span className="canceled-tail-notes">
+                <CanceledTailNote chain={chain} />
+              </span>
+              <button
+                type="button"
+                className="btn btn-ghost canceled-tail-toggle"
+                onClick={() => props.onToggleCanceledChain(chain.key)}
+              >
+                show
+              </button>
+            </div>
+          </div>
+        )
       ) : null}
     </article>
   );
+}
+
+/** `+3 canceled sells` where the tail is all one side, `+3 canceled` otherwise. */
+function canceledTailLabel(rows: readonly BookChainRow[]): string {
+  if (rows.length === 1) return '1 canceled';
+  const sides = new Set(rows.map((row) => row.direction));
+  const side = sides.size === 1 ? [...sides][0] : null;
+  return `${rows.length} canceled${side === null ? '' : ` ${side}s`}`;
 }
 
 function BookRow({
@@ -248,7 +290,7 @@ function BookRow({
           averagePrice: row.averagePrice,
           type: displayType,
         });
-  const status = bookRowPresentation(row, chain, now);
+  const status = bookRowPresentation(row, chain, now, opener);
   const actionButtons = orderActionsForRow(row, chain);
   const capturedPrice = displayType === 'market' && row.orderPrice !== null;
   const pnlTrusted = pnlFigure?.marketBased !== true || pricesTrustworthy;
@@ -277,10 +319,25 @@ function BookRow({
     >
       <div className={`book-spine ${statusClass(status.role)}`} role="cell" aria-hidden="true" />
       <div role="cell">
-        <button type="button" className="book-symbol" onClick={() => onOpenChain(chain)}>
-          {row.symbol}
-          {row.clientOrderId ? <span>…{row.clientOrderId.slice(-6)}</span> : null}
-        </button>
+        {opener ? (
+          <button type="button" className="book-symbol" onClick={() => onOpenChain(chain)}>
+            {row.symbol}
+            {row.clientOrderId ? <span>…{row.clientOrderId.slice(-6)}</span> : null}
+          </button>
+        ) : (
+          /*
+           * A leg never repeats the chain's symbol: the opener above already
+           * said it, and the id is the only thing that tells legs apart.
+           */
+          <button
+            type="button"
+            className="book-symbol book-symbol-leg"
+            onClick={() => onOpenChain(chain)}
+          >
+            <span className="sr-only">{row.symbol} </span>
+            {row.clientOrderId ? `↳ …${row.clientOrderId.slice(-6)}` : '↳'}
+          </button>
+        )}
       </div>
       <div role="cell">
         {row.quantity === null ? (
@@ -325,8 +382,11 @@ function BookRow({
           : (formatRowTime(row.acknowledgementTime, batchDate) ?? '')}
       </div>
       <div role="cell" className={`book-status ${statusClass(status.role)}`}>
-        <span>{status.label}</span>
-        {status.detail ? <small>{status.detail}</small> : null}
+        {status.exposed ? <Warning size={14} weight="fill" aria-hidden="true" /> : null}
+        <span>
+          {status.label}
+          {status.detail ? <span className="muted"> · {status.detail}</span> : null}
+        </span>
       </div>
       <div role="cell" className="book-actions">
         {actionButtons.map((action) => (
@@ -344,6 +404,15 @@ function BookRow({
           </button>
         ))}
       </div>
+      {status.notes && status.notes.length > 0 ? (
+        <div className="book-row-notes" role="cell">
+          {status.notes.map((note) => (
+            <span className={note.tone === 'wait' ? 'status-wait' : 'muted'} key={note.text}>
+              {note.text}
+            </span>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -435,14 +504,41 @@ function CanceledTailNote({ chain }: { chain: BookChain }) {
   const blockedSells = chain.canceledRows.filter(
     (row) => row.direction === 'sell' && (row.quantity ?? 0) > (chain.sellableQuantity ?? 0),
   );
-  if (blockedSells.length === 0) return null;
-  const smallest = Math.min(...blockedSells.map((row) => row.quantity ?? 0));
+  const smallest = blockedSells.length
+    ? Math.min(...blockedSells.map((row) => row.quantity ?? 0))
+    : null;
   return (
-    <span className="muted">
-      none offers resend: each asks for at least {formatQuantity(smallest)} and only{' '}
-      {formatQuantity(chain.sellableQuantity ?? 0)} shares are unclaimed
-    </span>
+    <>
+      <span className="muted">{canceledByCopy(chain.canceledRows)}</span>
+      {smallest === null ? null : (
+        <span className="muted">
+          none offers resend: each asks for at least {formatQuantity(smallest)} and only{' '}
+          {formatQuantity(chain.sellableQuantity ?? 0)} shares are unclaimed
+        </span>
+      )}
+    </>
   );
+}
+
+const CANCELED_BY: Record<string, string> = {
+  CanceledByBot: 'by bot',
+  CanceledByUser: 'by user',
+  CanceledByServer: 'by server',
+  Canceled: 'by the exchange',
+  Expired: 'expired',
+  Rejected: 'rejected',
+  Skipped: 'skipped',
+  SkippedForNow: 'skipped for now',
+};
+
+/** `2 by the exchange . 1 by bot` — what the rows above cannot say at a glance. */
+function canceledByCopy(rows: readonly BookChainRow[]): string {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const word = CANCELED_BY[row.status] ?? 'unconfirmed';
+    counts.set(word, (counts.get(word) ?? 0) + 1);
+  }
+  return [...counts.entries()].map(([word, count]) => `${count} ${word}`).join(' · ');
 }
 
 /**
@@ -513,12 +609,13 @@ export function scopeGroupSummary(
   pricesTrustworthy: boolean,
 ): { detail: string; aggregate: string | null; tone: string } {
   if (scope === 'waiting') {
-    const waiting = chains.reduce(
-      (total, chain) => total + chain.activeRows.filter((row) => row.isWaiting).length,
-      0,
-    );
+    const waitingRows = chains.flatMap((chain) => chain.activeRows.filter((row) => row.isWaiting));
+    // `6 buy orders` reads better than `6 waiting orders` when they all go
+    // one way, and the side is the fact worth stating.
+    const sides = new Set(waitingRows.map((row) => row.direction));
+    const noun = sides.size === 1 ? `${[...sides][0]} order` : 'waiting order';
     return {
-      detail: `${plural(waiting, 'waiting order')}, nothing bought yet`,
+      detail: `${plural(waitingRows.length, noun)}, nothing bought yet`,
       aggregate: null,
       tone: 'muted',
     };

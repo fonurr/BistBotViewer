@@ -34,10 +34,11 @@ export function orderActionsForRow(
 
     const held = row.cancelInFlight || row.status === 'PendingCancel';
     const disabledReason = held ? 'A cancel is already in flight.' : undefined;
-    const actions: OrderDialogAction[] = [{ kind: 'edit', row, disabled: held, disabledReason }];
-    if (row.source === 'scheduled') {
-      actions.push({ kind: 'fire', row, disabled: held, disabledReason });
-    }
+    // `fire now` leads the row: it is the loudest action a row carries, and
+    // the reference puts it ahead of edit and cancel on a scheduled leg.
+    const actions: OrderDialogAction[] =
+      row.source === 'scheduled' ? [{ kind: 'fire', row, disabled: held, disabledReason }] : [];
+    actions.push({ kind: 'edit', row, disabled: held, disabledReason });
     actions.push({ kind: 'cancel', row, disabled: held, disabledReason });
     return actions;
   }

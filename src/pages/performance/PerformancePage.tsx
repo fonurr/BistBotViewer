@@ -232,7 +232,7 @@ export function PerformancePage() {
                   checked={windowMode === mode}
                   onChange={() => setWindowMode(mode)}
                 />
-                <span>{mode === 'range' ? 'Range' : capitalize(mode)}</span>
+                <span>{mode === 'range' ? 'Window' : capitalize(mode)}</span>
               </label>
             ))}
           </div>
@@ -264,7 +264,7 @@ export function PerformancePage() {
           )}
           <FilterPopover
             name="bots"
-            label={scopedBot === null ? 'All bots' : '1 bot'}
+            label={scopedBot === null ? plural(data.bots.length, 'bot') : '1 bot'}
             open={openFilter === 'bots'}
             setOpen={setOpenFilter}
           >
@@ -297,7 +297,9 @@ export function PerformancePage() {
           </FilterPopover>
           <FilterPopover
             name="accounts"
-            label={selectedAccountKey === '*' ? 'All accounts' : '1 account'}
+            label={
+              selectedAccountKey === '*' ? plural(data.accounts.length, 'account') : '1 account'
+            }
             open={openFilter === 'accounts'}
             setOpen={setOpenFilter}
           >
@@ -643,7 +645,7 @@ function RollupTable({
             <th>avg win</th>
             <th>avg loss</th>
             <th>per trip</th>
-            <th>hold</th>
+            <th>avg hold</th>
             <th>slip</th>
           </tr>
         </thead>
@@ -829,8 +831,8 @@ function SymbolTable({
           <tr>
             <th>symbol</th>
             <th>trips</th>
-            <th>bot gross</th>
-            <th>held return</th>
+            <th>bot</th>
+            <th>held</th>
             <th>coverage</th>
           </tr>
         </thead>
@@ -937,17 +939,16 @@ function Limitations({ report }: { report: PerformanceReport }) {
     <section className="limitations">
       <article className="card">
         <div className="card-kicker">what this page cannot say</div>
-        <h3>No net result</h3>
         <p>
-          There is no commission or tax field. Every figure above is gross; subtracting an invented
-          cost would be less accurate than leaving it unavailable.
+          There is no net result to give: no commission or tax field exists. Every figure above is
+          gross; subtracting an invented cost would be less accurate than leaving it unavailable.
         </p>
       </article>
       <article className="card">
         <div className="card-kicker">time boundary</div>
-        <h3>Acknowledgement, not fill time</h3>
         <p>
-          Trades are assigned to the Istanbul date when this server learned of the close.{' '}
+          These are acknowledgement dates, not fill times. Trades are assigned to the Istanbul date
+          when this server learned of the close.{' '}
           {plural(report.exclusions.missingCloseAcknowledgementCount, 'row')} lacked even that
           boundary and were excluded. {report.exclusions.nonBusinessAcknowledgementCount} were
           learned on a weekend or full holiday; they remain included on that observed
@@ -956,7 +957,6 @@ function Limitations({ report }: { report: PerformanceReport }) {
       </article>
       <article className="card">
         <div className="card-kicker">calendar boundary</div>
-        <h3>{report.window.calendarVerified ? 'Calendar covered' : 'Session count unavailable'}</h3>
         <p>
           {report.window.calendarVerified
             ? `The holiday rows cover this range; ${

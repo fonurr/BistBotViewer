@@ -63,6 +63,19 @@ export function formatDateKey(dateKey: string): string {
   return `${day}.${month}.${year.slice(-2)}`;
 }
 
+/**
+ * The batch heading names its weekday: the reference reads `batch . friday`,
+ * and the day of the week is what tells a reader which session they are on.
+ */
+export function weekdayName(dateKey: string): string {
+  const timestamp = Date.parse(`${dateKey}T12:00:00+03:00`);
+  if (!Number.isFinite(timestamp)) return '';
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: TIME_ZONE,
+    weekday: 'long',
+  }).format(timestamp);
+}
+
 export function formatDate(timestamp: number): string {
   return formatDateKey(toIstanbulDateKey(timestamp));
 }

@@ -37,7 +37,7 @@ describe('BookFilters account identity', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: 'All accounts' }));
+    await user.click(screen.getByRole('button', { name: '2 accounts' }));
     const firstBrokerage = screen.getByRole('checkbox', { name: /ACC-1.*BRK-1/ });
     const secondBrokerage = screen.getByRole('checkbox', { name: /ACC-1.*BRK-2/ });
 

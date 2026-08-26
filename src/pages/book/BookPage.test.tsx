@@ -207,13 +207,13 @@ describe('queued baskets', () => {
     };
     renderBook();
 
-    expect(screen.getByText('select a basket to call it off')).toBeVisible();
+    expect(screen.getByText('select baskets to call several off at once')).toBeVisible();
     await user.click(screen.getByLabelText('Select queued request 7'));
     await user.click(screen.getByLabelText('Select queued request 8'));
     await user.click(screen.getByLabelText('Select queued request 9'));
     expect(screen.getByText('3 baskets selected · 2 calls, one per bot')).toBeVisible();
 
-    await user.click(screen.getByRole('button', { name: 'cancel selected' }));
+    await user.click(screen.getByRole('button', { name: 'call off selected' }));
     const dialog = screen.getByRole('dialog', { name: 'Cancel 3 queued requests' });
     // The confirm itemizes the calls in the order they will be made.
     expect(
@@ -243,7 +243,7 @@ describe('queued baskets', () => {
     renderBook();
 
     await user.click(screen.getByLabelText('Select queued request 7'));
-    expect(screen.getByRole('button', { name: 'cancel selected' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'call off selected' })).toBeDisabled();
     expect(api.cancelPendingOrderRequests).not.toHaveBeenCalled();
   });
 });

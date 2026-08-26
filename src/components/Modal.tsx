@@ -15,6 +15,12 @@ interface ModalProps {
   closeBlocked?: boolean;
   wide?: boolean;
   labelledBy?: string;
+  /** Uppercase kicker beside the title — what kind of thing this dialog is about. */
+  titleKicker?: ReactNode;
+  /** One line under the title naming the record: chain id, batch, bot. */
+  subtitle?: ReactNode;
+  /** The figure the dialog is really about, set right of the title. */
+  aside?: ReactNode;
 }
 
 const focusableSelector = [
@@ -34,6 +40,9 @@ export function Modal({
   closeBlocked = false,
   wide = false,
   labelledBy,
+  titleKicker,
+  subtitle,
+  aside,
 }: ModalProps) {
   const generatedTitleId = useId();
   const titleId = labelledBy ?? generatedTitleId;
@@ -100,9 +109,14 @@ export function Modal({
         onKeyDown={handleKeyDown}
       >
         <div className="viewer-dialog-heading">
-          <h2 className="dialog-title" id={titleId}>
-            {title}
-          </h2>
+          <div className="viewer-dialog-identity">
+            <h2 className="dialog-title" id={titleId}>
+              {title}
+              {titleKicker ? <span className="viewer-dialog-kicker">{titleKicker}</span> : null}
+            </h2>
+            {subtitle ? <div className="viewer-dialog-subtitle">{subtitle}</div> : null}
+          </div>
+          {aside ? <div className="viewer-dialog-aside">{aside}</div> : null}
           <button
             type="button"
             className="btn btn-ghost viewer-dialog-close"

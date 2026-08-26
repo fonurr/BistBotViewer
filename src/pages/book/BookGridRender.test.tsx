@@ -112,7 +112,7 @@ describe('BookGrid row vocabulary', () => {
 
     expect(screen.getByText('Partly filled · cancel in flight')).toBeVisible();
     expect(screen.getByText(/asked by a person, in the terminal/)).toBeVisible();
-    expect(screen.getByText(/25 resting shares can still fill/)).toBeVisible();
+    expect(screen.getByText(/the cancel can only take the 25 that are resting/)).toBeVisible();
     for (const name of ['edit', 'cancel']) {
       const button = screen.getByRole('button', { name });
       expect(button).toBeDisabled();
@@ -134,9 +134,7 @@ describe('BookGrid row vocabulary', () => {
     );
 
     const tail = document.querySelector('.canceled-tail')!;
-    expect(
-      within(tail as HTMLElement).getByRole('button', { name: /1 canceled order/ }),
-    ).toBeVisible();
+    expect(within(tail as HTMLElement).getByText('+1 canceled')).toBeVisible();
     await user.click(within(tail as HTMLElement).getByRole('button', { name: /^show/ }));
     expect(props.onToggleCanceledChain).toHaveBeenCalledTimes(1);
 
@@ -187,7 +185,7 @@ describe('BookGrid scope groups', () => {
       'waiting',
       'trades',
     ]);
-    expect(screen.getByText('1 chain · 1 waiting order, nothing bought yet')).toBeVisible();
+    expect(screen.getByText('1 chain · 1 buy order, nothing bought yet')).toBeVisible();
     expect(screen.getByText('1 chain · bought and sold · realized')).toBeVisible();
     // The header opens its group: the chains it counts follow it, not the reverse.
     const botGroup = document.querySelector('.book-bot-group')!;

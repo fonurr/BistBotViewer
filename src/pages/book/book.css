@@ -25,16 +25,18 @@
   min-height: 32px;
   align-items: center;
   flex-wrap: wrap;
-  gap: var(--space-4);
-  margin-bottom: var(--space-4);
-  padding: var(--space-2) var(--space-4);
+  gap: var(--space-3);
+  padding: 4px 10px;
   border: 1px solid color-mix(in srgb, var(--st-dead) 45%, transparent);
   border-radius: var(--radius-md);
   background: var(--st-dead-t);
+  color: var(--st-dead);
 }
 
-.human-banner .human-unfiltered {
-  margin-left: auto;
+.human-divider {
+  width: 1px;
+  height: 13px;
+  background: color-mix(in srgb, var(--st-dead) 35%, transparent);
 }
 
 .human-total {
@@ -44,8 +46,7 @@
 }
 
 .human-banner button,
-.canceled-global,
-.canceled-tail-summary button {
+.canceled-global {
   padding: 0;
   border: 0;
   background: transparent;
@@ -114,6 +115,11 @@
   font-weight: 500;
 }
 
+.book-stat strong small {
+  font-size: 14px;
+  font-weight: 500;
+}
+
 .book-stat small {
   font-size: var(--font-meta);
 }
@@ -139,22 +145,63 @@
 .pending-baskets {
   /* Each basket is its own tinted block; without a gap two of them read as one. */
   display: grid;
-  gap: var(--space-2);
-  padding: var(--space-6) 0 var(--space-3);
+  gap: var(--space-3);
+  padding: var(--space-4) 0 var(--space-3);
 }
 
 .pending-baskets > header {
   display: flex;
   align-items: center;
   gap: var(--space-4);
-  margin-bottom: var(--space-2);
   font-size: var(--font-meta);
+}
+
+.pending-baskets > header .btn {
+  padding: 2px 6px;
+  font-size: var(--font-small);
+}
+
+.pending-basket {
+  display: grid;
+  grid-template-columns: 3px 1fr;
+  align-items: center;
+}
+
+.pending-spine {
+  align-self: stretch;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--st-wait);
+}
+
+.pending-basket-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--st-wait-t);
+  font-size: var(--font-meta);
+}
+
+.pending-basket-head strong {
+  color: var(--st-wait);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pending-basket-head .btn {
+  padding: 2px 6px;
+  font-size: var(--font-small);
 }
 
 .pending-select {
   display: flex;
+  align-self: center;
   align-items: center;
-  padding-left: var(--space-3);
 }
 
 .pending-select input {
@@ -165,56 +212,21 @@
   cursor: pointer;
 }
 
-.pending-basket {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  min-height: 38px;
-  padding-right: var(--space-3);
-  border-radius: var(--radius-sm);
-  background: var(--st-wait-t);
-  font-size: var(--font-meta);
+/* A basket's stocks use the Book's own column grid, so their prices align. */
+.pending-stock-spine {
+  background: color-mix(in srgb, var(--st-wait) 45%, transparent);
 }
 
-.pending-spine {
-  align-self: stretch;
-  width: 3px;
-  border-radius: 2px;
-  background: var(--st-wait);
-}
-
-.pending-basket strong {
-  color: var(--st-wait);
-  font-size: var(--font-meta);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.pending-basket-summary,
-.pending-stock-list {
-  display: grid;
-  gap: 2px;
-}
-
-.pending-basket-summary {
-  flex: 0 0 auto;
-}
-
-.pending-stock-list {
-  min-width: 0;
+.book-row.pending-stock > .pending-stock-symbol {
+  padding-left: var(--space-8);
   color: var(--mut);
-  font-size: var(--font-small);
+  font-size: var(--font-leg);
 }
 
-.pending-stock-list span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pending-stock-list b {
-  color: var(--color-text);
-  font-weight: 500;
+.pending-unreadable {
+  margin: 0;
+  padding: var(--space-2) var(--space-8);
+  font-size: var(--font-meta);
 }
 
 .book-columns,
@@ -299,6 +311,17 @@
   margin-bottom: 1px;
 }
 
+/*
+ * The reference separates one chain from the next with a fading hairline
+ * rather than a gap, so the grid keeps reading as one column set.
+ */
+.book-chain + .book-chain {
+  border-top: 1px solid transparent;
+  border-image: var(--fade-rule) 1;
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+}
+
 .book-row {
   min-height: 32px;
   align-items: center;
@@ -309,14 +332,15 @@
   font-size: var(--font-row);
 }
 
-.book-row-opener > div:not(.book-spine),
+.book-row-opener > div:not(.book-spine):not(.book-row-notes),
 .book-row-opener > button {
   padding-top: var(--space-3);
   padding-bottom: var(--space-3);
 }
 
+/* The elbow sits where the reference indents a leg: --space-8 from the edge. */
 .book-row-leg .book-symbol {
-  padding-left: var(--space-5);
+  padding-left: calc(var(--space-8) - var(--space-2));
 }
 
 .book-spine {
@@ -342,7 +366,13 @@
 .book-symbol span {
   display: block;
   color: var(--mut);
-  font-size: 11.5px;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.book-symbol-leg {
+  color: var(--mut);
+  font-size: var(--font-small);
   font-weight: 400;
 }
 
@@ -352,6 +382,11 @@
 
 .book-slip {
   color: var(--color-text);
+  font-size: var(--font-small);
+}
+
+.book-row-opener .book-slip {
+  font-size: var(--font-leg);
 }
 
 .book-pnl {
@@ -382,15 +417,28 @@
 }
 
 .book-status {
-  display: grid;
-  gap: 1px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-weight: 500;
 }
 
-.book-status small {
-  color: var(--mut);
-  font-size: 11.5px;
-  font-weight: 400;
+.book-status svg {
+  flex: none;
+}
+
+/*
+ * A cancel in flight is the one row that needs a second line, and the
+ * reference gives it the row's full width beneath the cells (SPEC 5).
+ */
+.book-row-notes {
+  grid-column: 2 / -1;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  padding: 0 var(--space-2) var(--space-3);
+  font-size: var(--font-meta);
 }
 
 .book-actions {
@@ -419,24 +467,61 @@
   background: var(--st-wait-t);
 }
 
-.canceled-tail {
+.canceled-tail-open {
   border-radius: var(--radius-sm);
   background: var(--st-dead-t);
 }
 
+/* Collapsed, the tail is a spine plus one tinted line, on the row grid. */
+.canceled-tail-stub {
+  display: grid;
+  grid-template-columns: 3px 100px 1fr;
+  align-items: center;
+}
+
+.canceled-tail-stub .book-spine {
+  color: var(--st-dead);
+}
+
 .canceled-tail-summary {
+  grid-column: 2 / -1;
   display: flex;
   align-items: baseline;
   gap: var(--space-4);
   padding: var(--space-2) var(--space-2) var(--space-2) var(--space-8);
-  border-left: 3px solid var(--st-dead);
+  border-radius: var(--radius-sm);
+  background: var(--st-dead-t);
   font-size: var(--font-meta);
 }
 
-.canceled-tail-summary button {
+.canceled-tail-summary strong {
   flex: none;
+  color: var(--st-dead);
   font-size: var(--font-leg);
   font-weight: 500;
+}
+
+.canceled-tail-footer {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-8);
+  font-size: var(--font-meta);
+}
+
+.canceled-tail-notes {
+  display: flex;
+  flex: 1;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.canceled-tail-toggle {
+  flex: none;
+  padding: 2px 6px;
+  color: var(--st-dead);
+  font-size: var(--font-small);
 }
 
 .book-empty-reason,
@@ -498,47 +583,101 @@
   animation: skeleton-shift 1.4s ease-in-out infinite;
 }
 
-.chain-dialog-meta {
+.chain-dialog-view {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* The opener carries the chain's own numbers, in a block with its own spine. */
+.chain-dialog-opener {
+  padding: var(--space-4);
+  border-left: 3px solid currentColor;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+
+.chain-dialog-opener-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+  font-size: 11px;
+}
+
+.chain-dialog-opener-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
   gap: var(--space-4);
-  margin-bottom: var(--space-4);
-  color: var(--mut);
-  font-size: var(--font-small);
+  color: var(--color-text);
+}
+
+.chain-dialog-opener-stats .kicker {
+  letter-spacing: 0.08em;
+}
+
+.chain-dialog-opener-stats strong {
+  display: block;
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.chain-dialog-opener-note {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+  font-size: var(--font-leg);
+  font-weight: 500;
+}
+
+.chain-dialog-opener-note .muted,
+.chain-dialog-opener-note.muted,
+.chain-dialog-opener-note.status-wait {
+  font-weight: 400;
+}
+
+.chain-dialog-legs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
 .chain-dialog-row {
-  display: grid;
-  grid-template-columns: 3px minmax(0, 1fr) auto;
-  align-items: center;
-  min-height: 48px;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid currentColor;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, currentColor 12%, transparent);
   font-size: var(--font-row);
 }
 
-.chain-dialog-spine {
-  width: 3px;
-  align-self: stretch;
-  border-radius: 2px;
-  background: currentColor;
+.chain-dialog-status {
+  width: 78px;
+  flex: none;
+  font-weight: 500;
 }
 
-.chain-dialog-row > div {
-  padding: var(--space-3);
+.chain-dialog-terms {
+  flex: 1;
+  color: var(--color-text);
 }
 
-.chain-dialog-row-detail {
-  margin-top: 2px;
+.chain-dialog-note {
   color: var(--mut);
-  font-size: var(--font-small);
+  font-size: var(--font-meta);
 }
 
 .chain-dialog-actions {
   display: flex;
-  gap: var(--space-2);
+  flex: none;
+  gap: 2px;
 }
 
 .chain-dialog-actions .btn {
-  padding: 2px 5px;
+  padding: 2px 6px;
   font-size: var(--font-small);
 }
 

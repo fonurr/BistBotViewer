@@ -5,7 +5,9 @@ components; shared components never import a page.
 
 - `AppShell` renders navigation, the single freshness indicator, refresh control, stream
   interruption, logs trigger, and toast region.
-- `Modal` provides focus entry, focus trapping, Escape handling, and trigger-focus return.
+- `Modal` provides focus entry, focus trapping, Escape handling, and trigger-focus return. Its
+  heading takes an optional kicker, a subtitle naming the record, and an `aside` for the figure
+  the dialog is really about — the shape the chain dialog's header uses.
 - `ResultList` renders write outcomes without promoting accepted or unknown work to success.
 - `FilterPopover` is the one filter-control shape: a trigger stating the current selection, a
   popover carrying the fact that prevents a wrong reading, Escape closing the top layer, and

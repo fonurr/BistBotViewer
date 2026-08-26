@@ -14,15 +14,37 @@ by the furthest stage its own life reached — it holds shares (`positions`), it
 **every leg it owns** whatever kind that leg is; the only rows a toggle may withhold are the
 canceled ones, and that is the canceled toggle's job alone.
 
-Grouping is date → bot → scope. The scope line (`waiting · 3 chains · 6 waiting orders, nothing
-bought yet`) **opens its own group**, immediately above the chains it counts, and carries that
-group's aggregate — unrealized for positions, realized for trades. The focused
-`no closing order` list spans scopes on purpose, so it groups by bot alone.
+Grouping is date → bot → scope. The batch heading leads (`15.08.26 · batch · friday · 11
+chains`) and the column band sits **under** it, because the columns belong to the batch they
+head. The scope line (`waiting · 3 chains · 6 buy orders, nothing bought yet`) **opens its own
+group**, immediately above the chains it counts, names the side when the waiting orders all go
+one way, and carries that group's aggregate — unrealized for positions, realized for trades. The
+focused `no closing order` list spans scopes on purpose, so it groups by bot alone.
 
-`BookFilters` owns additive scopes and the bot, account, symbol, and batch-range controls.
+Row vocabulary follows the visual reference: an opener carries its symbol with the client-order
+id beneath it, a leg carries `↳ …id` alone (the opener above already said the symbol), and the
+status cell states its qualifier **inline** in muted ink after a middle dot — `New · resting 22m
+· 0 of 150 filled`, `Position · held 3d 2h`, `By user · canceled in the MatriksIQ terminal`. A
+resting time is read off `orderTime`, the exchange's own registration stamp, never off the ack
+column. The one row that takes lines of its own is a cancel in flight: its two sentences span
+the row beneath the cells, because it is the only row whose state changes while you watch it.
+
+A canceled tail collapses to `+N canceled` in dead ink, the breakdown of who ended the orders,
+and `show` on the right; opened, the rows sit inside the tint with the note and `hide` beneath
+them.
+
+`BookFilters` owns additive scopes and the bot, account, symbol, and batch-range controls. A
+trigger states the current selection as a count (`4 bots`, `2 accounts`), and an unset symbol
+filter reads `any symbol` in placeholder ink. The **needs-a-human** pill lives at the right of
+that same toolbar row — a dead-tinted pill with its warning glyph, its clickable counts, and the
+word `unfiltered`, said once. Its counts never follow the filters.
 Account selection uses the stored account and brokerage together; matching account numbers at
 different brokerages remain separate filters.
-Queued baskets carry per-row selection. `CancelPendingOrderRequests` names one bot, so a
+Queued baskets draw as the reference does: a tinted header line naming the request, its next
+attempt and its budget, with `call off…` on the right, and the basket's stocks beneath it as
+rows in the Book's own column grid so their prices stay in the price column. They sit above the
+batch groups because a basket has no batch date to file it under. They also carry per-row
+selection. `CancelPendingOrderRequests` names one bot, so a
 selection spanning bots becomes one call per bot, itemized in the confirm step in the order they
 will be made, and every id gets its own outcome — `canceled`, `gone` and `wrongBot` are each
 rendered as themselves.

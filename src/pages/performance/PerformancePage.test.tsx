@@ -185,7 +185,7 @@ describe('Performance scope and unavailable values', () => {
 
     renderPerformance();
 
-    await user.click(await screen.findByRole('button', { name: 'All accounts' }));
+    await user.click(await screen.findByRole('button', { name: '2 accounts' }));
     const accountFilter = screen.getByRole('dialog', { name: /accounts filter/i });
     // Matching account numbers at different brokerages stay distinct choices.
     const first = within(accountFilter).getByRole('radio', { name: /ACC-1.*BRK-1.*Fixture Owner/ });
