@@ -7,6 +7,18 @@ the fixed desktop grid. Null chain links stay independent.
 A bot card's `Open book` arrives as `?bot=<id>`. The parameter seeds the bot filter once and
 is dropped as soon as the toolbar is used, so the URL never fights the state it seeded.
 
+The four scopes are a **partition of chains, not a row filter**. Every chain is classified once,
+by the furthest stage its own life reached — it holds shares (`positions`), it bought and sold
+(`trades`), it can still execute and has bought nothing (`waiting`), or only dead legs are left
+(`canceled`). A scope toggle therefore adds or removes whole chains, and a chain in view draws
+**every leg it owns** whatever kind that leg is; the only rows a toggle may withhold are the
+canceled ones, and that is the canceled toggle's job alone.
+
+Grouping is date → bot → scope. The scope line (`waiting · 3 chains · 6 waiting orders, nothing
+bought yet`) **opens its own group**, immediately above the chains it counts, and carries that
+group's aggregate — unrealized for positions, realized for trades. The focused
+`no closing order` list spans scopes on purpose, so it groups by bot alone.
+
 `BookFilters` owns additive scopes and the bot, account, symbol, and batch-range controls.
 Account selection uses the stored account and brokerage together; matching account numbers at
 different brokerages remain separate filters.

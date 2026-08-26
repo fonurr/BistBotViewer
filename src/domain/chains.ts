@@ -70,11 +70,28 @@ export interface BookChainSources {
   readonly closedTrades: readonly ClosedTrade[];
 }
 
-export interface BookScopeMembership {
-  readonly waiting: boolean;
-  readonly positions: boolean;
-  readonly trades: boolean;
-  readonly canceled: boolean;
+/**
+ * The scope a chain belongs to. The four scopes are a partition, not four
+ * overlapping tags: the reference draws every chain exactly once, under the
+ * furthest stage its own life reached (`BotViewer.dc.html` — ASELS under
+ * waiting, BURCE under positions, SISE under trades, ADESE under canceled),
+ * and toggling a scope adds or removes whole chains with every one of their
+ * legs. A chain that holds shares is a position however many orders wait on
+ * it; one that bought and sold is a trade however many legs died on the way.
+ */
+export function classifyBookChain(input: {
+  readonly hasPosition: boolean;
+  readonly hasTrade: boolean;
+  readonly hasWaitingOrder: boolean;
+  readonly hasCanceled: boolean;
+}): BookScope {
+  if (input.hasPosition) return 'positions';
+  if (input.hasTrade) return 'trades';
+  if (input.hasWaitingOrder) return 'waiting';
+  // Only fully dead legs are left. A chain with no canceled row either is an
+  // order row the exchange finished without a position or trade behind it;
+  // it is not canceled, so it stays where an order row belongs.
+  return input.hasCanceled ? 'canceled' : 'waiting';
 }
 
 export interface BookChain {
@@ -92,8 +109,8 @@ export interface BookChain {
   readonly positionRows: readonly BookPositionRow[];
   readonly tradeRows: readonly BookClosedTradeRow[];
   readonly sources: BookChainSources;
-  readonly scopeMembership: BookScopeMembership;
-  readonly scopes: readonly BookScope[];
+  /** The one scope this chain belongs to; the four are a partition. */
+  readonly scope: BookScope;
   readonly positionQuantity: number | null;
   readonly sellableQuantity: number | null;
   /** Position plus pending buys, minus every current sell claim. */
@@ -574,12 +591,12 @@ function finalizeChain(accumulator: ChainAccumulator): BookChain {
     positionQuantity !== null && positionQuantity > 0 && !hasWaitingSell;
   const hasWaitingBuyWithoutExit =
     tradeRows.length === 0 && waitingBuyIds.size > 0 && !hasWaitingSell && hasCanceledReversingExit;
-  const scopeMembership: BookScopeMembership = {
-    waiting: activeRows.some((row) => row.isWaiting),
-    positions: positionRows.length > 0,
-    trades: tradeRows.length > 0,
-    canceled: canceledRows.length > 0,
-  };
+  const scope = classifyBookChain({
+    hasPosition: positionRows.length > 0,
+    hasTrade: tradeRows.length > 0,
+    hasWaitingOrder: activeRows.some((row) => row.isWaiting),
+    hasCanceled: canceledRows.length > 0,
+  });
 
   return {
     key: accumulator.key,
@@ -599,8 +616,7 @@ function finalizeChain(accumulator: ChainAccumulator): BookChain {
       positions: [...accumulator.sources.positions],
       closedTrades: [...accumulator.sources.closedTrades],
     },
-    scopeMembership,
-    scopes: (Object.keys(scopeMembership) as BookScope[]).filter((scope) => scopeMembership[scope]),
+    scope,
     positionQuantity,
     sellableQuantity,
     projectedSellableQuantity: sellableQuantity,

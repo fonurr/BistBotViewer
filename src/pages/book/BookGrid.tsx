@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import type { Account, Bot } from '../../bistApi/types';
 import type { Quote } from '../../priceApi/types';
-import { type BookChain, type BookChainRow } from '../../domain/chains';
+import { type BookChain, type BookChainRow, type BookScope } from '../../domain/chains';
 import {
   formatDateKey,
   formatPercentage,
@@ -23,13 +23,16 @@ import {
 import { statusClass } from '../../domain/status';
 import { useMinuteClock } from '../../components/useMinuteClock';
 import { bookRowPresentation } from './rowPresentation';
-import type { BookFilterState } from './types';
 import { orderActionsForRow, type OrderDialogAction } from './orderActions';
 
 interface BookGridProps {
   chains: readonly BookChain[];
-  filters: BookFilterState;
   bots: readonly Bot[];
+  /**
+   * The focused "no closing order" list is not a browse: it spans scopes on
+   * purpose and carries its own heading, so it groups by bot alone.
+   */
+  showScopeHeadings?: boolean;
   accounts: readonly Account[];
   quotes: ReadonlyMap<string, Quote>;
   pricesTrustworthy: boolean;
@@ -119,14 +122,31 @@ export function BookGrid(props: BookGridProps) {
                   </span>
                   <span className="book-bot-rule" />
                 </header>
-                {botGroup.chains.map((chain) => (
-                  <ChainRows
-                    {...props}
-                    chain={chain}
-                    pnlState={pnlState}
-                    now={now}
-                    key={chain.key}
-                  />
+                {botGroup.scopes.map((scopeGroup) => (
+                  <section
+                    className="book-scope-group"
+                    role="presentation"
+                    key={`${dateGroup.date}:${botGroup.botId}:${scopeGroup.scope}`}
+                  >
+                    {props.showScopeHeadings === false ? null : (
+                      <ScopeHeading
+                        scope={scopeGroup.scope}
+                        chains={scopeGroup.chains}
+                        pnlState={pnlState}
+                        quotes={props.quotes}
+                        pricesTrustworthy={props.pricesTrustworthy}
+                      />
+                    )}
+                    {scopeGroup.chains.map((chain) => (
+                      <ChainRows
+                        {...props}
+                        chain={chain}
+                        pnlState={pnlState}
+                        now={now}
+                        key={chain.key}
+                      />
+                    ))}
+                  </section>
                 ))}
               </section>
             );
@@ -141,15 +161,12 @@ function ChainRows(
   props: BookGridProps & { chain: BookChain; pnlState: FilledPnlState; now: number },
 ) {
   const { chain } = props;
-  const nonCanceledRows = chain.rows.filter(
-    (row) => row.source !== 'canceled' && rowVisible(row, props.filters),
-  );
-  const canceledSelected = props.filters.scopes.has('canceled');
-  const chainCanceledOpen = props.showCanceled !== props.openCanceledChains.has(chain.key);
+  // A scope selects whole chains, so every leg a chain owns is drawn once the
+  // chain is in view. The only rows a toggle may withhold are the canceled
+  // ones, and that is the canceled toggle's own job (SPEC 3).
+  const nonCanceledRows = chain.rows.filter((row) => row.source !== 'canceled');
   const canceledRows = chain.canceledRows;
-  const visibleCanceled = chainCanceledOpen;
-  const hasAnyVisible = nonCanceledRows.length > 0 || canceledSelected;
-  if (!hasAnyVisible) return null;
+  const visibleCanceled = props.showCanceled !== props.openCanceledChains.has(chain.key);
 
   return (
     <article className="book-chain" aria-label={`${chain.symbol} chain`}>
@@ -345,13 +362,6 @@ function rowFlashSignature(row: BookChainRow): string {
   ].join('|');
 }
 
-function rowVisible(row: BookChainRow, filters: BookFilterState): boolean {
-  if (row.source === 'active' || row.source === 'scheduled') return filters.scopes.has('waiting');
-  if (row.source === 'position') return filters.scopes.has('positions');
-  if (row.source === 'closed-trade') return filters.scopes.has('trades');
-  return filters.scopes.has('canceled');
-}
-
 function actionLabel(kind: OrderDialogAction['kind']): string {
   if (kind === 'fire') return 'fire now';
   return kind;
@@ -435,6 +445,12 @@ function CanceledTailNote({ chain }: { chain: BookChain }) {
   );
 }
 
+/**
+ * Grouping is date -> bot -> scope, and the scope line opens its own group
+ * rather than sitting in a strip above the page: the reference draws
+ * `waiting  3 chains - 6 buy orders, nothing bought yet` immediately before
+ * the chains it counts, under the bot that owns them.
+ */
 function groupChains(chains: readonly BookChain[]) {
   const dates = new Map<string, Map<string, BookChain[]>>();
   for (const chain of chains) {
@@ -448,6 +464,115 @@ function groupChains(chains: readonly BookChain[]) {
   return [...dates.entries()].map(([date, bots]) => ({
     date,
     chains: [...bots.values()].flat(),
-    bots: [...bots.entries()].map(([botId, botChains]) => ({ botId, chains: botChains })),
+    bots: [...bots.entries()].map(([botId, botChains]) => ({
+      botId,
+      chains: botChains,
+      scopes: SCOPE_ORDER.flatMap((scope) => {
+        const scoped = botChains.filter((chain) => chain.scope === scope);
+        return scoped.length === 0 ? [] : [{ scope, chains: scoped }];
+      }),
+    })),
   }));
+}
+
+const SCOPE_ORDER: readonly BookScope[] = ['waiting', 'positions', 'trades', 'canceled'];
+
+function ScopeHeading({
+  scope,
+  chains,
+  pnlState,
+  quotes,
+  pricesTrustworthy,
+}: {
+  scope: BookScope;
+  chains: readonly BookChain[];
+  pnlState: FilledPnlState;
+  quotes: ReadonlyMap<string, Quote>;
+  pricesTrustworthy: boolean;
+}) {
+  const summary = scopeGroupSummary(scope, chains, pnlState, quotes, pricesTrustworthy);
+  return (
+    <header className="book-scope-heading">
+      <span className="kicker">{scope}</span>
+      <span className="muted">
+        {plural(chains.length, 'chain')} · {summary.detail}
+      </span>
+      {summary.aggregate === null ? null : (
+        <span className={summary.tone}>{summary.aggregate}</span>
+      )}
+      <i />
+    </header>
+  );
+}
+
+export function scopeGroupSummary(
+  scope: BookScope,
+  chains: readonly BookChain[],
+  pnlState: FilledPnlState,
+  quotes: ReadonlyMap<string, Quote>,
+  pricesTrustworthy: boolean,
+): { detail: string; aggregate: string | null; tone: string } {
+  if (scope === 'waiting') {
+    const waiting = chains.reduce(
+      (total, chain) => total + chain.activeRows.filter((row) => row.isWaiting).length,
+      0,
+    );
+    return {
+      detail: `${plural(waiting, 'waiting order')}, nothing bought yet`,
+      aggregate: null,
+      tone: 'muted',
+    };
+  }
+
+  if (scope === 'positions') {
+    // Ids are only unique within their own source table, so an exposure is
+    // matched on both its source and its id.
+    const exposureKeys = new Set([
+      ...chains.flatMap((chain) => chain.positionRows.map((row) => `position:${row.rawId}`)),
+      ...chains.flatMap((chain) => chain.activeRows.map((row) => `partial-buy:${row.rawId}`)),
+    ]);
+    let unrealized = 0;
+    let everyPriceKnown = true;
+    for (const exposure of pnlState.exposures) {
+      if (!exposureKeys.has(`${exposure.source}:${exposure.sourceId}`)) continue;
+      const marketPrice = quotes.get(exposure.symbol)?.son;
+      if (marketPrice === null || marketPrice === undefined) everyPriceKnown = false;
+      else unrealized += unrealizedPnl(exposure, marketPrice);
+    }
+    return {
+      detail: 'bought, not yet sold · unrealized',
+      aggregate: everyPriceKnown
+        ? `${formatSignedNumber(unrealized)}${pricesTrustworthy ? '' : ' · last known'}`
+        : 'not available',
+      tone: !everyPriceKnown
+        ? 'status-warn'
+        : !pricesTrustworthy
+          ? 'number-untrusted'
+          : unrealized >= 0
+            ? 'number-positive'
+            : 'number-negative',
+    };
+  }
+
+  if (scope === 'trades') {
+    const trades = new Map(
+      chains.flatMap((chain) => chain.sources.closedTrades).map((trade) => [trade.id, trade]),
+    );
+    const realized = [...trades.values()].reduce(
+      (total, trade) =>
+        total + realizedPnl(trade.quantity, trade.averageOpenPrice, trade.averageClosePrice),
+      0,
+    );
+    return {
+      detail: 'bought and sold · realized',
+      aggregate: formatSignedNumber(realized),
+      tone: realized >= 0 ? 'number-positive' : 'number-negative',
+    };
+  }
+
+  return {
+    detail: 'never opened a position, nobody retried it',
+    aggregate: null,
+    tone: 'muted',
+  };
 }

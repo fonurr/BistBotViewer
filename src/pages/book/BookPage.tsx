@@ -121,10 +121,6 @@ export function BookPage() {
     () => summarize(visibleChains, prices.quotes, prices.trustworthy, budgets.data, botById),
     [botById, budgets.data, prices.quotes, prices.trustworthy, visibleChains],
   );
-  const scopeSummaries = useMemo(
-    () => summarizeScopes(visibleChains, visiblePending, prices.quotes, prices.trustworthy),
-    [prices.quotes, prices.trustworthy, visibleChains, visiblePending],
-  );
   const chips = filterChips(filters, data.bots.length, data.accounts.length);
   const genuineEmpty = chains.length === 0 && data.pendingRequests.length === 0;
   const filteredEmpty = !genuineEmpty && visibleChains.length === 0 && visiblePending.length === 0;
@@ -245,9 +241,6 @@ export function BookPage() {
       {snapshotAvailable && !genuineEmpty ? (
         <StatStrip summary={summary} pendingCount={visiblePending.length} />
       ) : null}
-      {snapshotAvailable && !filters.noClosingOrder && filters.scopes.size > 0 ? (
-        <ScopeSummaries summaries={scopeSummaries} selected={filters.scopes} />
-      ) : null}
       {snapshotAvailable && filters.noClosingOrder ? (
         <div className="no-exit-heading">
           <strong>No closing order</strong>
@@ -307,7 +300,7 @@ export function BookPage() {
       {snapshotAvailable && filters.scopes.size > 0 && visibleChains.length > 0 ? (
         <BookGrid
           chains={visibleChains}
-          filters={filters}
+          showScopeHeadings={!filters.noClosingOrder}
           bots={data.bots}
           accounts={data.accounts}
           quotes={prices.quotes}
@@ -495,7 +488,7 @@ function chainMatches(
   accountKey: string | null,
 ): boolean {
   if (filters.noClosingOrder) return chain.hasNoClosingOrder;
-  if (![...filters.scopes].some((scope) => chain.scopeMembership[scope])) return false;
+  if (!filters.scopes.has(chain.scope)) return false;
   if (filters.botIds !== null && !filters.botIds.has(chain.botId)) return false;
   if (filters.accountIds !== null && (accountKey === null || !filters.accountIds.has(accountKey)))
     return false;
@@ -599,116 +592,6 @@ function summarize(
 }
 
 type BookSummary = ReturnType<typeof summarize>;
-
-function summarizeScopes(
-  chains: readonly BookChain[],
-  pending: readonly PendingOrderRequest[],
-  quotes: ReturnType<typeof useFleetPrices>['quotes'],
-  pricesTrustworthy: boolean,
-) {
-  const waitingChains = chains.filter((chain) => chain.scopeMembership.waiting);
-  const positionChains = chains.filter((chain) => chain.scopeMembership.positions);
-  const tradeChains = chains.filter((chain) => chain.scopeMembership.trades);
-  const canceledChains = chains.filter((chain) => chain.scopeMembership.canceled);
-  const positions = new Map(
-    positionChains.flatMap((chain) => chain.sources.positions).map((row) => [row.id, row]),
-  );
-  const trades = new Map(
-    tradeChains.flatMap((chain) => chain.sources.closedTrades).map((row) => [row.id, row]),
-  );
-  const activeOrders = new Map(
-    positionChains.flatMap((chain) => chain.sources.activeOrders).map((row) => [row.id, row]),
-  );
-  const filledState = deriveFilledPnlState(
-    [...positions.values()],
-    [...activeOrders.values()],
-    [...trades.values()],
-  );
-  let positionPnl = 0;
-  let everyPositionPriceKnown = true;
-  for (const exposure of filledState.exposures) {
-    const marketPrice = quotes.get(exposure.symbol)?.son;
-    if (marketPrice === null || marketPrice === undefined) everyPositionPriceKnown = false;
-    else positionPnl += unrealizedPnl(exposure, marketPrice);
-  }
-  const realized = [...trades.values()].reduce(
-    (total, trade) =>
-      total + realizedPnl(trade.quantity, trade.averageOpenPrice, trade.averageClosePrice),
-    0,
-  );
-  return {
-    waiting: {
-      count: waitingChains.length,
-      detail: `${plural(
-        waitingChains.reduce(
-          (total, chain) => total + chain.activeRows.filter((row) => row.isWaiting).length,
-          0,
-        ),
-        'executable row',
-      )}${pending.length ? ` · ${plural(pending.length, 'queued basket')}` : ''}`,
-      aggregate: 'can still execute',
-      tone: 'status-wait',
-    },
-    positions: {
-      count: positionChains.length,
-      detail: plural(
-        filledState.exposures
-          .filter((exposure) => exposure.source === 'position')
-          .reduce((total, exposure) => total + exposure.quantity, 0),
-        'held share',
-      ),
-      aggregate: everyPositionPriceKnown
-        ? `${formatSignedNumber(positionPnl)} unrealized${pricesTrustworthy ? '' : ' · last known'}`
-        : 'unrealized not available',
-      tone:
-        everyPositionPriceKnown && pricesTrustworthy
-          ? positionPnl >= 0
-            ? 'number-positive'
-            : 'number-negative'
-          : 'status-warn',
-    },
-    trades: {
-      count: tradeChains.length,
-      detail: `${plural(trades.size, 'closed round trip')} · gross`,
-      aggregate: formatSignedNumber(realized),
-      tone: realized >= 0 ? 'number-positive' : 'number-negative',
-    },
-    canceled: {
-      count: canceledChains.length,
-      detail: plural(
-        canceledChains.reduce((total, chain) => total + chain.canceledRows.length, 0),
-        'gone order leg',
-      ),
-      aggregate: 'historical only',
-      tone: 'status-dead',
-    },
-  } as const;
-}
-
-function ScopeSummaries({
-  summaries,
-  selected,
-}: {
-  summaries: ReturnType<typeof summarizeScopes>;
-  selected: ReadonlySet<keyof ReturnType<typeof summarizeScopes>>;
-}) {
-  return (
-    <div className="book-scope-summaries" aria-label="Selected Book scope aggregates">
-      {(['waiting', 'positions', 'trades', 'canceled'] as const).map((scope) =>
-        selected.has(scope) ? (
-          <div className="book-scope-summary" key={scope}>
-            <span className="kicker">{scope}</span>
-            <span>
-              {plural(summaries[scope].count, 'chain')} · {summaries[scope].detail}
-            </span>
-            <strong className={summaries[scope].tone}>{summaries[scope].aggregate}</strong>
-            <i />
-          </div>
-        ) : null,
-      )}
-    </div>
-  );
-}
 
 function StatStrip({ summary, pendingCount }: { summary: BookSummary; pendingCount: number }) {
   const trustClass = summary.marketFiguresTrusted ? '' : ' number-untrusted';

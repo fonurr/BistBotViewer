@@ -170,12 +170,8 @@ describe('buildBookChains', () => {
       key: 'chain:root-buy',
       chainId: 'root-buy',
       batchDate: '2026-08-24',
-      scopeMembership: {
-        waiting: true,
-        positions: false,
-        trades: false,
-        canceled: true,
-      },
+      // A live retry with a dead root has bought nothing yet: it waits.
+      scope: 'waiting',
     });
     expect(chain?.activeRows[0]).toMatchObject({
       source: 'scheduled',
@@ -306,7 +302,7 @@ describe('buildBookChains', () => {
       key: 'chain:separate-sell-chain',
       positionQuantity: 100,
       sellableQuantity: 25,
-      scopeMembership: { waiting: true },
+      scope: 'waiting',
     });
   });
 
@@ -388,7 +384,7 @@ describe('buildBookChains', () => {
     expect(unrelatedCanceledSell?.hasNoClosingOrder).toBe(false);
   });
 
-  it('normalizes a linked multi-source chain and derives every additive scope', () => {
+  it('normalizes a linked multi-source chain and files it under the stage it reached', () => {
     const chainId = 'history-1';
     const [chain] = build({
       activeOrders: [
@@ -429,7 +425,8 @@ describe('buildBookChains', () => {
       botId: 'bot-a',
       symbol: 'THYAO',
       batchDate: '2026-08-25',
-      scopes: ['waiting', 'positions', 'trades', 'canceled'],
+      // It holds shares, so it is a position however many legs it also owns.
+      scope: 'positions',
     });
     expect(chain?.sources.activeOrders).toHaveLength(1);
     expect(chain?.sources.canceledOrders).toHaveLength(1);
@@ -446,6 +443,39 @@ describe('buildBookChains', () => {
       scheduled: 1,
       canceled: 1,
     });
+  });
+
+  it('files every chain under exactly one scope, by the stage its own life reached', () => {
+    const waitingOnly = build({
+      activeOrders: [active({ id: 1, chainId: 'w', clientOrderId: 'w' })],
+    });
+    const deadOnly = build({
+      canceledOrders: [
+        canceled({ id: 2, chainId: 'd', clientOrderId: 'd', parentClientOrderId: null }),
+      ],
+    });
+    const held = build({
+      activeOrders: [
+        active({ id: 3, chainId: 'p', clientOrderId: 'p-sell', direction: 'sell', status: 'New' }),
+      ],
+      canceledOrders: [
+        canceled({ id: 4, chainId: 'p', clientOrderId: 'p-dead', parentClientOrderId: 'p' }),
+      ],
+      positions: [position({ id: 5, chainId: 'p', clientOrderId: 'p' })],
+    });
+    const closed = build({
+      canceledOrders: [
+        canceled({ id: 6, chainId: 't', clientOrderId: 't-dead', parentClientOrderId: 't' }),
+      ],
+      closedTrades: [trade({ id: 7, chainId: 't', clientOpenOrderId: 't' })],
+    });
+
+    expect(waitingOnly[0]?.scope).toBe('waiting');
+    // Nothing opened and nothing left to run: only the dead legs remain.
+    expect(deadOnly[0]?.scope).toBe('canceled');
+    // Shares in hand outrank both a live sell and a dead leg.
+    expect(held[0]?.scope).toBe('positions');
+    expect(closed[0]?.scope).toBe('trades');
   });
 
   it('sorts newest batch first, then bot and stable identity independent of input order', () => {

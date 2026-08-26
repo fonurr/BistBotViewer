@@ -13,12 +13,6 @@ import {
   makeQuote,
 } from '../../test/fixtures';
 import { BookGrid } from './BookGrid';
-import { defaultBookFilters } from './types';
-
-const everyScope = {
-  ...defaultBookFilters,
-  scopes: new Set(['waiting', 'positions', 'trades', 'canceled'] as const),
-};
 
 function renderGrid(
   overrides: Partial<Parameters<typeof BookGrid>[0]> = {},
@@ -32,7 +26,6 @@ function renderGrid(
   const chains = buildBookChains(input);
   const props = {
     chains,
-    filters: everyScope,
     bots: [makeBot()],
     accounts: [makeAccount()],
     quotes: new Map([['THYAO', makeQuote()]]),
@@ -171,7 +164,65 @@ describe('BookGrid row vocabulary', () => {
     );
 
     expect(screen.getAllByText('Closed')).toHaveLength(2);
-    expect(screen.getByText('+600,00')).toBeVisible();
+    // Once on the closing leg, once as the trades group's own realized aggregate.
+    expect(screen.getAllByText('+600,00')).toHaveLength(2);
     expect(document.querySelectorAll('.book-actions button')).toHaveLength(0);
+  });
+});
+
+describe('BookGrid scope groups', () => {
+  it('opens each scope group with its own header line, inside the bot it belongs to', () => {
+    renderGrid(
+      {},
+      {
+        activeOrders: [makeActiveOrder()],
+        canceledOrders: [],
+        positions: [],
+        closedTrades: [makeClosedTrade({ id: 90, chainId: 'chain-closed' })],
+      },
+    );
+
+    const headings = [...document.querySelectorAll('.book-scope-heading')];
+    expect(headings.map((heading) => heading.querySelector('.kicker')?.textContent)).toEqual([
+      'waiting',
+      'trades',
+    ]);
+    expect(screen.getByText('1 chain · 1 waiting order, nothing bought yet')).toBeVisible();
+    expect(screen.getByText('1 chain · bought and sold · realized')).toBeVisible();
+    // The header opens its group: the chains it counts follow it, not the reverse.
+    const botGroup = document.querySelector('.book-bot-group')!;
+    expect(botGroup.querySelector('.book-scope-group')?.firstElementChild).toBe(headings[0]);
+  });
+
+  it('draws every leg of a chain the scope selected, including legs of other kinds', () => {
+    const position = makePosition();
+    renderGrid(
+      {},
+      {
+        activeOrders: [
+          makeActiveOrder({
+            id: 200,
+            clientOrderId: 'client-thyao-exit',
+            chainId: position.chainId,
+            parentClientOrderId: position.clientOrderId,
+            direction: 'sell',
+            status: 'Scheduled',
+            matriksOrderId: null,
+            orderTime: null,
+            sentTime: null,
+            scheduledTime: Date.now() + 60 * 60 * 1_000,
+          }),
+        ],
+        canceledOrders: [],
+        positions: [position],
+        closedTrades: [],
+      },
+    );
+
+    // One chain, filed under positions, and its waiting sell is drawn with it.
+    expect(document.querySelectorAll('.book-scope-heading')).toHaveLength(1);
+    expect(screen.getByText('positions')).toBeVisible();
+    expect(screen.getByText('Position')).toBeVisible();
+    expect(screen.getByText(/^Scheduled · in/)).toBeVisible();
   });
 });
