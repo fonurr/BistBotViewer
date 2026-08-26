@@ -7,8 +7,10 @@ incomplete bots, and are limited to bots visible under the current filters. A ca
 withheld while invalidated, refetching, stale, or failed. Live quotes are requested for every
 visible Position and partially filled exposure.
 
-The toolbar's account dropdown is the Book's shared `FilterPopover`, so Escape, click-away and
-focus return behave identically on both pages.
+The toolbar's account filter is the Book's own `MultiSelectFilter`, so the control, its label, its
+`all` action, Escape, click-away and focus return behave identically on every page. It carries one
+option GetAccounts cannot supply — `No account set` — because a bot with unset routing belongs to no
+account and would otherwise be unreachable from the filter.
 
 Cards use the server's `complete` flag for health. The `buys` and `positions` counts are **live**
 counts — only rows that can still execute — while `BotRowCounts` stays a raw row count, because

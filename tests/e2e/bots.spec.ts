@@ -29,8 +29,8 @@ test.describe('Bots fleet smoke', () => {
 
     // The toolbar uses the Book's shared filter popover, so it is named for its
     // trigger and closes on Escape with focus back where it started.
-    const accountTrigger = page.getByRole('button', { name: /^All accounts/ });
-    const accountPopover = page.getByRole('dialog', { name: 'All accounts filter' });
+    const accountTrigger = page.getByRole('button', { name: /^1 account/ });
+    const accountPopover = page.getByRole('dialog', { name: '1 account filter' });
     await accountTrigger.click();
     await expect(accountPopover).toBeVisible();
     await page.keyboard.press('Escape');

@@ -29,16 +29,12 @@ test('keeps unprovable Performance metrics unavailable instead of rendering zero
   await expect(exitTiming).toContainText(/required hold-boundary bars (?:are )?missing/);
   await expect(exitTiming).toContainText('never counted as zero');
 
+  // Entry and exit are derivable from the stored order prices; the limit/market
+  // split is what ClosedTrades cannot supply, and the section says so once.
   const slippage = page.locator('.slippage-grid');
-  await expect(slippage.locator('.unavailable-metric')).toHaveCount(4);
-  await expect(slippage.locator('.unavailable-metric strong')).toHaveText([
-    'not available',
-    'not available',
-    'not available',
-    'not available',
-  ]);
+  await expect(slippage.locator('.slippage-metric')).toHaveCount(2);
   await expect(page.locator('.slippage-reason')).toContainText(
-    'cannot be split across these four without inventing which prices were sent',
+    'cannot be sorted across the four without inventing which prices were sent',
   );
 
   const symbolSection = page

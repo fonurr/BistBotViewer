@@ -33,9 +33,11 @@ A canceled tail collapses to `+N canceled` in dead ink, the breakdown of who end
 and `show` on the right; opened, the rows sit inside the tint with the note and `hide` beneath
 them.
 
-`BookFilters` owns additive scopes and the bot, account, symbol, and batch-range controls. A
-trigger states the current selection as a count (`4 bots`, `2 accounts`), and an unset symbol
-filter reads `any symbol` in placeholder ink. The **needs-a-human** pill lives at the right of
+`BookFilters` owns additive scopes and the bot, account, symbol, and batch-range controls. The
+bot, account and symbol controls are `components/EntityFilters`, which the Bots and Performance
+pages import unchanged — the Book defines the shape, and no page reimplements it. A trigger states
+the current selection as a count (`4 bots`, `2 accounts`), and an unset symbol filter reads
+`any symbol` in placeholder ink. The **needs-a-human** pill lives at the right of
 that same toolbar row — a dead-tinted pill with its warning glyph, its clickable counts, and the
 word `unfiltered`, said once. Its counts never follow the filters.
 Account selection uses the stored account and brokerage together; matching account numbers at

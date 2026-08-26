@@ -5,7 +5,13 @@ import { Link } from 'react-router-dom';
 import { useBotBudgets, useBotsData, useFleetPrices } from '../../app/dataHooks';
 import { useViewerRuntime } from '../../app/ViewerRuntime';
 import type { Account, ActiveOrder, Bot, ClosedTrade, Position } from '../../bistApi/types';
-import { FilterPopover, PopoverHeading, PopoverScrim } from '../../components/FilterPopover';
+import {
+  accountOptions,
+  MultiSelectFilter,
+  type FilterSelection,
+} from '../../components/EntityFilters';
+import { PopoverScrim } from '../../components/FilterPopover';
+import { accountIdentityKey } from '../../domain/accounts';
 import { buildBookChains } from '../../domain/chains';
 import {
   formatDateKey,
@@ -25,8 +31,11 @@ import {
 } from './botsModel';
 import './bots.css';
 
-type AccountFilter =
-  { kind: 'all' } | { kind: 'unset' } | { kind: 'account'; accountId: string; brokerageId: string };
+/**
+ * The Book's account key, plus one option GetAccounts cannot supply: a bot whose
+ * routing is unset belongs to no account and would otherwise be unreachable.
+ */
+const NO_ACCOUNT = 'no-account-set';
 
 type OpenDialog =
   { kind: 'config'; mode: BotConfigMode; bot: Bot | null } | { kind: 'status'; bot: Bot } | null;
@@ -37,9 +46,7 @@ export function BotsPage() {
   const [showActive, setShowActive] = useState(true);
   const [showInactive, setShowInactive] = useState(false);
   const [search, setSearch] = useState('');
-  const [accountFilter, setAccountFilter] = useState<AccountFilter>({
-    kind: 'all',
-  });
+  const [accountFilter, setAccountFilter] = useState<FilterSelection>(null);
   // SPEC 3: the toolbar's account dropdown is built on the Book's popover
   // pattern, so Escape, click-away and focus return behave the same everywhere.
   const [openFilter, setOpenFilter] = useState<string | null>(null);
@@ -176,16 +183,11 @@ export function BotsPage() {
   );
   const pricesLoading = symbols.length > 0 && prices.isPending;
 
-  const pickAccount = (next: AccountFilter) => {
-    setAccountFilter(next);
-    setOpenFilter(null);
-  };
-
   const clearFilters = () => {
     setShowActive(true);
     setShowInactive(false);
     setSearch('');
-    setAccountFilter({ kind: 'all' });
+    setAccountFilter(null);
     setOpenFilter(null);
   };
 
@@ -224,46 +226,34 @@ export function BotsPage() {
           </label>
         </div>
 
-        <FilterPopover
+        <MultiSelectFilter
           name="accounts"
-          label={accountFilterLabel(accountFilter, data.accounts)}
           open={accountOpen}
           setOpen={setOpenFilter}
-        >
-          <PopoverHeading label="account" />
-          <p className="filter-help">Bot routing uses the account and brokerage together.</p>
-          <AccountChoice
-            label="All accounts"
-            detail={`${data.accounts.length} loaded`}
-            checked={accountFilter.kind === 'all'}
-            onChange={() => pickAccount({ kind: 'all' })}
-          />
-          {data.accounts.map((account) => (
-            <AccountChoice
-              key={`${account.accountId}:${account.brokerageId}`}
-              label={`${account.accountId} · ${account.brokerageId}`}
-              detail={account.owner || account.brokerageName}
-              checked={
-                accountFilter.kind === 'account' &&
-                accountFilter.accountId === account.accountId &&
-                accountFilter.brokerageId === account.brokerageId
-              }
-              onChange={() =>
-                pickAccount({
-                  kind: 'account',
-                  accountId: account.accountId,
-                  brokerageId: account.brokerageId,
-                })
-              }
-            />
-          ))}
-          <AccountChoice
-            label="No account set"
-            detail="incomplete routing"
-            checked={accountFilter.kind === 'unset'}
-            onChange={() => pickAccount({ kind: 'unset' })}
-          />
-        </FilterPopover>
+          heading="accounts"
+          help="Bot routing uses the account and brokerage together."
+          options={[
+            ...accountOptions(data.accounts),
+            /* Offered only when a bot actually has unset routing. With every bot
+               routed the list is exactly the Book's, and so is its count. */
+            ...(data.bots.some((bot) => bot.accountId === null || bot.brokerageId === null)
+              ? [
+                  {
+                    key: NO_ACCOUNT,
+                    label: (
+                      <>
+                        No account set<span className="muted"> · incomplete routing</span>
+                      </>
+                    ),
+                  },
+                ]
+              : []),
+          ]}
+          selected={accountFilter}
+          onChange={setAccountFilter}
+          one="account"
+          many="accounts"
+        />
 
         <label className="bots-search">
           <span className="sr-only">Search by bot or algorithm</span>
@@ -730,29 +720,6 @@ function FleetStat({
   );
 }
 
-function AccountChoice({
-  label,
-  detail,
-  checked,
-  onChange,
-}: {
-  label: string;
-  detail: string;
-  checked: boolean;
-  onChange: () => void;
-}) {
-  return (
-    <label className="bots-account-choice">
-      <input type="radio" name="bots-account-filter" checked={checked} onChange={onChange} />
-      <span className="bots-account-dot" />
-      <span>
-        <strong>{label}</strong>
-        <small>{detail}</small>
-      </span>
-    </label>
-  );
-}
-
 function BotCardSkeleton() {
   return (
     <div className="card elev-sm bots-card bots-card-skeleton" aria-label="Loading bot card">
@@ -781,19 +748,15 @@ function BotCardSkeleton() {
   );
 }
 
-function matchesAccount(bot: Bot, filter: AccountFilter): boolean {
-  if (filter.kind === 'all') return true;
-  if (filter.kind === 'unset') return bot.accountId === null || bot.brokerageId === null;
-  return bot.accountId === filter.accountId && bot.brokerageId === filter.brokerageId;
+function matchesAccount(bot: Bot, filter: FilterSelection): boolean {
+  if (filter === null) return true;
+  return filter.has(botAccountKey(bot));
 }
 
-function accountFilterLabel(filter: AccountFilter, accounts: readonly Account[]): string {
-  if (filter.kind === 'all') return 'All accounts';
-  if (filter.kind === 'unset') return 'No account set';
-  const account = accounts.find(
-    (row) => row.accountId === filter.accountId && row.brokerageId === filter.brokerageId,
-  );
-  return account ? `${account.accountId} · ${account.brokerageId}` : 'Selected account';
+function botAccountKey(bot: Bot): string {
+  return bot.accountId === null || bot.brokerageId === null
+    ? NO_ACCOUNT
+    : accountIdentityKey(bot.accountId, bot.brokerageId);
 }
 
 function findAccount(bot: Bot, accounts: readonly Account[]): Account | undefined {
@@ -818,12 +781,12 @@ function numberTone(value: number): string {
 function filteredEmptyReason(
   showActive: boolean,
   showInactive: boolean,
-  accountFilter: AccountFilter,
+  accountFilter: FilterSelection,
   search: string,
 ): string {
   if (!showActive && !showInactive) return 'Both activity checkboxes are off.';
   if (search) return `No bot id or algorithm contains “${search}”.`;
-  if (accountFilter.kind !== 'all') return 'No bot routes through the selected account state.';
+  if (accountFilter !== null) return 'No bot routes through the selected account state.';
   return 'The selected activity state has no bots.';
 }
 

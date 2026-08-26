@@ -46,63 +46,6 @@
   width: 170px;
 }
 
-.bots-account-choice {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-
-.bots-account-choice:hover {
-  background: color-mix(in srgb, var(--color-text) 6%, transparent);
-}
-
-.bots-account-choice input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-}
-
-.bots-account-dot {
-  width: var(--space-3);
-  height: var(--space-3);
-  border: 1px solid var(--color-divider);
-  border-radius: 50%;
-}
-
-.bots-account-choice input:checked + .bots-account-dot {
-  border-color: var(--color-accent);
-  background: var(--color-accent);
-  box-shadow: inset 0 0 0 var(--space-1) var(--color-surface);
-}
-
-.bots-account-choice input:focus-visible + .bots-account-dot {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
-
-.bots-account-choice > span:last-child {
-  display: grid;
-  min-width: 0;
-}
-
-.bots-account-choice strong {
-  font-size: var(--font-leg);
-  font-weight: 500;
-}
-
-.bots-account-choice small {
-  overflow: hidden;
-  color: var(--mut);
-  font-size: var(--font-meta);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .bots-read-error {
   display: flex;
   align-items: center;

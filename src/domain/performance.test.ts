@@ -173,7 +173,7 @@ describe('buildPerformanceReport', () => {
     ]);
   });
 
-  it('keeps costs, net P&L, hold duration, and drawdown percentage unavailable', () => {
+  it('keeps costs, net P&L, and drawdown percentage unavailable', () => {
     const result = report({ trades: [trade()] });
 
     expect(result.summary.costs).toEqual({
@@ -188,12 +188,6 @@ describe('buildPerformanceReport', () => {
       value: null,
       reason: 'commission-and-tax-data-not-provided',
     });
-    expect(result.summary.averageHoldDurationMs).toMatchObject({
-      available: false,
-      value: null,
-      reason: 'true-fill-times-not-provided',
-    });
-    expect(result.trades[0]?.holdDurationMs.value).toBeNull();
     expect(result.summary.drawdown.percent).toMatchObject({
       available: false,
       value: null,
@@ -241,7 +235,7 @@ describe('buildPerformanceReport', () => {
     });
   });
 
-  it('does not call price movement slippage when ClosedTrades omitted order type', () => {
+  it('signs slippage by price direction and leaves a priceless sell out of it', () => {
     const result = report({
       trades: [
         trade({ id: 1, openOrderPrice: 99, closeOrderPrice: 111 }),
@@ -249,24 +243,61 @@ describe('buildPerformanceReport', () => {
       ],
     });
 
+    // A buy filled above its order price is positive and a sell filled below its
+    // own is negative; neither sign says whether the move helped.
+    expect(result.trades[0]?.entrySlippagePercent.value).toBeCloseTo(1.0101, 4);
+    expect(result.trades[0]?.exitSlippagePercent.value).toBeCloseTo(-0.9009, 4);
+    expect(result.trades[1]?.entrySlippagePercent.value).toBeCloseTo(-0.9901, 4);
+    expect(result.trades[1]?.exitSlippagePercent).toMatchObject({
+      available: false,
+      value: null,
+      reason: 'close-order-price-not-stored',
+    });
+
+    expect(result.summary.slippage.entry.value).toBeCloseTo(0.01, 4);
+    expect(result.summary.slippage.exit.value).toBeCloseTo(-0.9009, 4);
     expect(result.summary.slippage).toMatchObject({
-      entry: {
-        available: false,
-        value: null,
-        reason: 'order-type-not-stored-on-closed-trades',
-      },
-      exit: {
-        available: false,
-        value: null,
-        reason: 'order-type-not-stored-on-closed-trades',
-      },
       entryOrderPricePresentCount: 2,
       exitOrderPricePresentCount: 1,
       exitOrderPriceMissingCount: 1,
     });
-    expect(
-      result.trades.every(({ entrySlippagePercent }) => entrySlippagePercent.value === null),
-    ).toBe(true);
+  });
+
+  it('holds a round trip between its two acknowledgement stamps, never a latency', () => {
+    const result = report({
+      trades: [
+        trade({ id: 1 }),
+        trade({
+          id: 2,
+          openExecuteTime: at('2026-08-24T09:00:00.000Z'),
+          closeExecuteTime: at('2026-08-24T11:00:00.000Z'),
+        }),
+        trade({ id: 3, openExecuteTime: null }),
+      ],
+    });
+
+    const holds = result.trades.map(({ holdDurationMs }) => holdDurationMs.value);
+    expect(holds).toContain(2 * 60 * 60 * 1000);
+    expect(holds).toContain(null);
+    // The unpaired row is excluded from the average, never averaged in as zero.
+    expect(result.summary.averageHoldDurationMs).toMatchObject({
+      available: true,
+      sampleSize: 2,
+      missingCount: 1,
+    });
+    expect(result.summary.medianHoldDurationMs.available).toBe(true);
+  });
+
+  it('counts a retried chain once, from its stored retry identifier alone', () => {
+    const result = report({
+      trades: [
+        trade({ id: 1, chainId: 'chain-a', openRetryOfClientOrderId: 'buy-0' }),
+        trade({ id: 2, chainId: 'chain-a', closeRetryOfClientOrderId: 'sell-0' }),
+        trade({ id: 3, chainId: 'chain-b' }),
+      ],
+    });
+
+    expect(result.summary.retriedChainCount).toBe(1);
   });
 
   it('uses exact window boundary bars for hold return and counts gaps instead of zeroing them', () => {

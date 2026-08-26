@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { useBotBudgets, usePerformanceData } from '../../app/dataHooks';
@@ -12,13 +12,21 @@ import {
   type PerformanceMetric,
   type PerformanceReport,
 } from '../../domain/performance';
-import { FilterPopover, PopoverHeading, PopoverScrim } from '../../components/FilterPopover';
+import {
+  accountOptions,
+  MultiSelectFilter,
+  SymbolFilter,
+  type FilterSelection,
+} from '../../components/EntityFilters';
+import { PopoverScrim } from '../../components/FilterPopover';
 import { accountIdentityKey } from '../../domain/accounts';
 import {
+  formatCompactDuration,
   formatDateKey,
   formatNumber,
   formatPercentage,
   formatSignedNumber,
+  formatSlip,
   plural,
   toIstanbulDateKey,
 } from '../../domain/format';
@@ -46,9 +54,9 @@ interface RetryScope {
 }
 
 interface RetryScopeOptions {
-  scopedBot: string | null;
-  accountKey: string;
-  symbols: readonly string[];
+  botIds: FilterSelection;
+  accountScoped: boolean;
+  symbols: ReadonlySet<string>;
   from: string;
   to: string;
 }
@@ -56,56 +64,92 @@ interface RetryScopeOptions {
 export function PerformancePage() {
   const data = usePerformanceData();
   const [searchParams, setSearchParams] = useSearchParams();
-  const scopedBot = searchParams.get('bot');
   const today = toIstanbulDateKey(Date.now());
   const [windowMode, setWindowMode] = useState<WindowMode>('all');
   const [rangeFrom, setRangeFrom] = useState(shiftDate(today, -14));
   const [rangeTo, setRangeTo] = useState(today);
-  const [selectedAccountKey, setSelectedAccountKey] = useState('*');
   const [openFilter, setOpenFilter] = useState<string | null>(null);
-  const [symbolInput, setSymbolInput] = useState('');
   const sourceReady = !data.isPending && data.error === null;
 
-  const symbols = useMemo(
-    () => [
-      ...new Set(
-        symbolInput
-          .toUpperCase()
-          .split(',')
-          .map((value) => value.trim())
-          .filter(Boolean),
-      ),
-    ],
-    [symbolInput],
+  // A bot card's `Performance` button deep-links with `?bot=`; the filter itself
+  // is the Book's multi-select, so one selected bot and that link are the same
+  // state seen from two sides and are kept in step here.
+  const botParam = searchParams.get('bot');
+  const [selectedBotIds, setSelectedBotIds] = useState<FilterSelection>(
+    botParam ? new Set([botParam]) : null,
+  );
+  const appliedBotParam = useRef(botParam);
+  useEffect(() => {
+    if (appliedBotParam.current === botParam) return;
+    appliedBotParam.current = botParam;
+    setSelectedBotIds(botParam ? new Set([botParam]) : null);
+  }, [botParam]);
+  const [selectedAccounts, setSelectedAccounts] = useState<FilterSelection>(null);
+  const [selectedSymbols, setSelectedSymbols] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
+
+  const pickBots = (selection: FilterSelection) => {
+    setSelectedBotIds(selection);
+    const only = selection !== null && selection.size === 1 ? [...selection][0]! : null;
+    appliedBotParam.current = only;
+    const next = new URLSearchParams(searchParams);
+    if (only === null) next.delete('bot');
+    else next.set('bot', only);
+    setSearchParams(next, { replace: true });
+  };
+  const clearBot = () => pickBots(null);
+
+  const accountScoped = selectedAccounts !== null && selectedAccounts.size !== data.accounts.length;
+  const scopedBot =
+    selectedBotIds !== null && selectedBotIds.size === 1 ? [...selectedBotIds][0]! : null;
+
+  const inFleetScope = useMemo(
+    () =>
+      data.closedTrades.filter((trade) => {
+        if (selectedBotIds !== null && !selectedBotIds.has(trade.botId)) return false;
+        if (
+          selectedAccounts !== null &&
+          !selectedAccounts.has(accountIdentityKey(trade.accountId, trade.brokerageId))
+        )
+          return false;
+        return true;
+      }),
+    [data.closedTrades, selectedAccounts, selectedBotIds],
+  );
+  // The symbol list only holds names the rows in scope actually traded, so a
+  // choice can never select nothing.
+  const symbolUniverse = useMemo(
+    () => [...new Set(inFleetScope.map((trade) => trade.symbol))].sort(),
+    [inFleetScope],
   );
   const scopedTrades = useMemo(
     () =>
-      data.closedTrades.filter((trade) => {
-        if (scopedBot && trade.botId !== scopedBot) return false;
-        if (
-          selectedAccountKey !== '*' &&
-          accountIdentityKey(trade.accountId, trade.brokerageId) !== selectedAccountKey
-        )
-          return false;
-        if (symbols.length > 0 && !symbols.includes(trade.symbol)) return false;
-        return true;
-      }),
-    [data.closedTrades, scopedBot, selectedAccountKey, symbols],
+      selectedSymbols.size === 0
+        ? inFleetScope
+        : inFleetScope.filter((trade) => selectedSymbols.has(trade.symbol)),
+    [inFleetScope, selectedSymbols],
   );
+  const tripsByBot = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const trade of data.closedTrades)
+      counts.set(trade.botId, (counts.get(trade.botId) ?? 0) + 1);
+    return counts;
+  }, [data.closedTrades]);
   const selectedBots = useMemo(
     () =>
       data.bots.filter((bot) => {
-        if (scopedBot && bot.id !== scopedBot) return false;
+        if (selectedBotIds !== null && !selectedBotIds.has(bot.id)) return false;
         if (
-          selectedAccountKey !== '*' &&
+          selectedAccounts !== null &&
           (bot.accountId === null ||
             bot.brokerageId === null ||
-            accountIdentityKey(bot.accountId, bot.brokerageId) !== selectedAccountKey)
+            !selectedAccounts.has(accountIdentityKey(bot.accountId, bot.brokerageId)))
         )
           return false;
         return true;
       }),
-    [data.bots, scopedBot, selectedAccountKey],
+    [data.bots, selectedAccounts, selectedBotIds],
   );
   const budgets = useBotBudgets(selectedBots, sourceReady);
   const bounds = useMemo(
@@ -184,27 +228,34 @@ export function PerformancePage() {
       : null,
     committedState: budgets.isPending ? 'loading' : committedKnown ? 'ready' : 'unavailable',
     completeBotsOnly: completeSelectedBots.length !== selectedBots.length,
-    scopeCopy: budgetScopeCopy(selectedBots.length, scopedBot !== null, selectedAccountKey !== '*'),
+    scopeCopy: budgetScopeCopy(selectedBots.length, scopedBot !== null, accountScoped),
   };
   const retryScope = useMemo(
     () =>
       scopeCanceledRetries(data.canceledOrders, {
-        scopedBot,
-        accountKey: selectedAccountKey,
-        symbols,
+        botIds: selectedBotIds,
+        accountScoped,
+        symbols: selectedSymbols,
         from: bounds.from,
         to: bounds.to,
       }),
-    [bounds.from, bounds.to, data.canceledOrders, scopedBot, selectedAccountKey, symbols],
+    [accountScoped, bounds.from, bounds.to, data.canceledOrders, selectedBotIds, selectedSymbols],
   );
-
-  const scopeToBot = (botId: string | null) => {
-    const next = new URLSearchParams(searchParams);
-    if (botId === null) next.delete('bot');
-    else next.set('bot', botId);
-    setSearchParams(next, { replace: true });
-  };
-  const clearBot = () => scopeToBot(null);
+  // A bot in scope with no closed round trip carries no figure in the table, and
+  // the table says so rather than leaving it to be missed.
+  const silentBots = useMemo(
+    () =>
+      selectedBots
+        .filter((bot) => !report.byBot.some((row) => row.botId === bot.id))
+        .map((bot) => ({
+          id: bot.id,
+          reason:
+            bot.accountId === null || bot.brokerageId === null
+              ? 'no account set \u2014 never traded, so it cannot appear in any figure above'
+              : 'no closed round trip in this window, so it carries no figure above',
+        })),
+    [report.byBot, selectedBots],
+  );
 
   return (
     <div className="performance-page page-pad">
@@ -262,86 +313,48 @@ export function PerformancePage() {
               {formatDateKey(bounds.from)} → {formatDateKey(bounds.to)}
             </span>
           )}
-          <FilterPopover
+          <MultiSelectFilter
             name="bots"
-            label={scopedBot === null ? plural(data.bots.length, 'bot') : '1 bot'}
             open={openFilter === 'bots'}
             setOpen={setOpenFilter}
-          >
-            <PopoverHeading
-              label="one bot, or the whole fleet"
-              action="all"
-              onAction={() => {
-                scopeToBot(null);
-                setOpenFilter(null);
-              }}
-            />
-            <p className="filter-help">
-              Scoping recomputes every figure and the curve's axis. The by-bot and by-symbol tables
-              are cross-comparisons, so they leave while one bot is selected.
-            </p>
-            {data.bots.map((bot) => (
-              <label className="filter-option" key={bot.id}>
-                <input
-                  type="radio"
-                  name="performance-bot"
-                  checked={scopedBot === bot.id}
-                  onChange={() => {
-                    scopeToBot(bot.id);
-                    setOpenFilter(null);
-                  }}
-                />
-                <span>{bot.id}</span>
-              </label>
-            ))}
-          </FilterPopover>
-          <FilterPopover
+            heading="one bot, or the whole fleet"
+            help="Scoping recomputes every figure and the curve's axis. The by-bot and by-symbol tables are cross-comparisons, so they leave while one bot is selected."
+            options={data.bots.map((bot) => ({
+              key: bot.id,
+              label: bot.id,
+              count: tripsByBot.get(bot.id) ?? 0,
+            }))}
+            selected={selectedBotIds}
+            onChange={pickBots}
+            one="bot"
+            many="bots"
+          />
+          <MultiSelectFilter
             name="accounts"
-            label={
-              selectedAccountKey === '*' ? plural(data.accounts.length, 'account') : '1 account'
-            }
             open={openFilter === 'accounts'}
             setOpen={setOpenFilter}
-          >
-            <PopoverHeading
-              label="accounts"
-              action="all"
-              onAction={() => {
-                setSelectedAccountKey('*');
-                setOpenFilter(null);
-              }}
-            />
-            <p className="filter-help">
-              A closed trade is attributed by the account stored on it, not by where its bot routes
-              today.
-            </p>
-            {data.accounts.map((account) => {
-              const key = accountIdentityKey(account.accountId, account.brokerageId);
-              return (
-                <label className="filter-option" key={key}>
-                  <input
-                    type="radio"
-                    name="performance-account"
-                    checked={selectedAccountKey === key}
-                    onChange={() => {
-                      setSelectedAccountKey(key);
-                      setOpenFilter(null);
-                    }}
-                  />
-                  <span>
-                    {account.accountId} · {account.brokerageId}
-                    {account.owner ? <span className="muted"> · {account.owner}</span> : null}
-                  </span>
-                </label>
-              );
-            })}
-          </FilterPopover>
-          <input
-            className="input performance-symbols"
-            value={symbolInput}
-            onChange={(event) => setSymbolInput(event.target.value)}
-            placeholder="symbol, symbol…"
-            aria-label="Symbol performance filter"
+            heading="accounts"
+            help="A closed trade is attributed by the account stored on it, not by where its bot routes today."
+            options={accountOptions(data.accounts)}
+            selected={selectedAccounts}
+            onChange={setSelectedAccounts}
+            one="account"
+            many="accounts"
+          />
+          <SymbolFilter
+            open={openFilter === 'symbols'}
+            setOpen={setOpenFilter}
+            heading="symbols traded in this scope"
+            symbols={symbolUniverse}
+            selected={selectedSymbols}
+            onChange={setSelectedSymbols}
+            keptNote={(count, list) => (
+              <>
+                {plural(count, 'symbol')} kept: {list}. Every figure below is recomputed over the
+                round trips in those names alone.
+              </>
+            )}
+            emptyNote="The list only holds symbols the closed round trips in scope actually traded."
           />
           {scopedBot ? (
             <button type="button" className="tag tag-outline scoped-chip" onClick={clearBot}>
@@ -377,9 +390,9 @@ export function PerformancePage() {
       ) : null}
       {sourceReady && barReadState !== 'pending' && report.summary.tradeCount > 0 ? (
         <>
-          <PerformanceStrip summary={report.summary} budgetContext={budgetContext} />
+          <PerformanceStrip summary={report.summary} />
           <PerformanceCurve report={report} />
-          {!scopedBot ? <RollupTable title="by bot" report={report} kind="bot" /> : null}
+          {!scopedBot ? <RollupTable report={report} silentBots={silentBots} /> : null}
           <div className="performance-cards">
             <ExitTimingCard report={report} barReadState={barReadState} />
             <RetryLedger
@@ -387,12 +400,13 @@ export function PerformancePage() {
               canceled={retryScope.rows}
               excludedUntimed={retryScope.excludedUntimed}
               accountAttributionUnavailable={retryScope.accountAttributionUnavailable}
+              grossRealized={report.summary.grossPnl}
             />
           </div>
-          <UnavailableSlippage report={report} />
+          <SlippageSection report={report} />
           {!scopedBot ? <SymbolTable report={report} barReadState={barReadState} /> : null}
           <AccountTable report={report} />
-          <Limitations report={report} />
+          <Limitations report={report} budgetContext={budgetContext} />
         </>
       ) : null}
     </div>
@@ -405,17 +419,16 @@ export function scopeCanceledRetries(
 ): RetryScope {
   // CanceledOrders has no account/brokerage field. A bot's current account is not
   // evidence of the account a historical canceled row belonged to.
-  if (options.accountKey !== '*') {
+  if (options.accountScoped) {
     return { rows: [], excludedUntimed: 0, accountAttributionUnavailable: true };
   }
 
-  const symbolSet = new Set(options.symbols);
   const rows: CanceledOrder[] = [];
   let excludedUntimed = 0;
   for (const order of canceledOrders) {
     if (!order.chainId || !order.retryOfClientOrderId) continue;
-    if (options.scopedBot && order.botId !== options.scopedBot) continue;
-    if (symbolSet.size > 0 && !symbolSet.has(order.symbol)) continue;
+    if (options.botIds !== null && !options.botIds.has(order.botId)) continue;
+    if (options.symbols.size > 0 && !options.symbols.has(order.symbol)) continue;
     if (order.cancelTime === null) {
       excludedUntimed += 1;
       continue;
@@ -450,30 +463,14 @@ function budgetScopeCopy(botCount: number, botScoped: boolean, accountScoped: bo
   return `${count} · ${scope}; window and symbol filters do not change these limits`;
 }
 
-function PerformanceStrip({
-  summary,
-  budgetContext,
-}: {
-  summary: PerformanceAggregate;
-  budgetContext: BudgetContext;
-}) {
-  const committedCopy =
-    budgetContext.committedState === 'loading'
-      ? 'loading current committed amount'
-      : budgetContext.committedState === 'unavailable' || budgetContext.committed === null
-        ? `current committed amount unavailable${
-            budgetContext.completeBotsOnly ? ' · incomplete bots have no budget read' : ''
-          }`
-        : `${formatNumber(budgetContext.committed, 0)} currently committed${
-            budgetContext.completeBotsOnly ? ' · complete bots only' : ''
-          }`;
+function PerformanceStrip({ summary }: { summary: PerformanceAggregate }) {
+  const slip = summary.slippage.combined;
   const metrics: Array<{
     label: string;
     value: string;
     sub: string;
     tone?: string;
     subTone?: string;
-    scope?: string;
   }> = [
     {
       label: 'realized',
@@ -508,7 +505,14 @@ function PerformanceStrip({
     },
     {
       label: 'max drawdown',
-      value: metricMoney(summary.drawdown.amount, false),
+      // The domain keeps the drawdown as a non-negative distance. It is inked
+      // red, so it is shown as the fall it was; a zero is not a fall and stays
+      // in body ink (TOKENS rule 7).
+      value: !summary.drawdown.amount.available
+        ? 'not available'
+        : summary.drawdown.amount.value > 0
+          ? formatSignedNumber(-summary.drawdown.amount.value)
+          : formatNumber(0),
       sub:
         summary.drawdown.peakDate && summary.drawdown.troughDate
           ? `${formatDateKey(summary.drawdown.peakDate)} → ${formatDateKey(summary.drawdown.troughDate)}`
@@ -521,17 +525,24 @@ function PerformanceStrip({
           : undefined,
     },
     {
-      label: 'configured limits',
-      value: formatNumber(budgetContext.limit, 0),
-      sub: committedCopy,
-      subTone: budgetContext.committedState === 'ready' ? 'muted' : 'status-warn',
-      scope: budgetContext.scopeCopy,
+      label: 'avg hold',
+      value: summary.averageHoldDurationMs.available
+        ? formatCompactDuration(summary.averageHoldDurationMs.value)
+        : 'not available',
+      sub: summary.medianHoldDurationMs.available
+        ? `median ${formatCompactDuration(summary.medianHoldDurationMs.value)}`
+        : 'no pair of acknowledgement stamps',
+      tone: summary.averageHoldDurationMs.available ? undefined : 'status-warn',
+      subTone: summary.medianHoldDurationMs.available ? 'muted' : 'status-warn',
     },
     {
-      label: 'profit factor',
-      value: metricNumber(summary.profitFactor),
-      sub: 'gross profit ÷ gross loss',
-      tone: summary.profitFactor.available ? undefined : 'status-warn',
+      // SPEC 4: slip is never inked. Whether a move helped depends on the side,
+      // so the reader supplies that judgement.
+      label: 'slip',
+      value: slip.available ? formatSlip(slip.value) : 'not available',
+      sub: 'order vs fill, signed',
+      tone: slip.available ? undefined : 'status-warn',
+      subTone: slip.available ? 'muted' : 'status-warn',
     },
   ];
   return (
@@ -541,7 +552,6 @@ function PerformanceStrip({
           <span className="kicker">{metric.label}</span>
           <strong className={metric.tone}>{metric.value}</strong>
           <small className={metric.subTone ?? metric.tone ?? 'muted'}>{metric.sub}</small>
-          {metric.scope ? <small className="muted">{metric.scope}</small> : null}
         </div>
       ))}
     </div>
@@ -555,8 +565,8 @@ function PerformanceCurve({ report }: { report: PerformanceReport }) {
   const max = Math.max(0, ...values);
   const span = Math.max(1, max - min);
   const left = 54;
-  const right = 940;
-  const top = 18;
+  const right = 925;
+  const top = 34;
   const bottom = 180;
   const points = series.map((day, index) => ({
     x:
@@ -573,6 +583,7 @@ function PerformanceCurve({ report }: { report: PerformanceReport }) {
     ? points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(' ')
     : '';
   const area = drawsPath ? `${left},${bottom} ${line} ${points.at(-1)!.x},${bottom}` : '';
+  const end = points.at(-1);
   return (
     <section className="performance-section">
       <SectionHeading
@@ -601,9 +612,28 @@ function PerformanceCurve({ report }: { report: PerformanceReport }) {
             .map((point) => (
               <circle key={point.day.date} cx={point.x} cy={point.y} r="3" className="curve-loss" />
             ))}
-          {points.at(-1) ? (
-            <circle cx={points.at(-1)!.x} cy={points.at(-1)!.y} r="4" className="curve-end" />
+          {end ? <circle cx={end.x} cy={end.y} r="4" className="curve-end" /> : null}
+          {end ? (
+            <text x={right} y="14" className="curve-end-label" textAnchor="end">
+              {formatSignedNumber(end.day.cumulativeGrossPnl, 0)}
+            </text>
           ) : null}
+          {/* The axis names the sessions the curve actually stands on — a day
+              nothing closed is not on it, so the gaps are not even spacing. */}
+          {dateTicks(points.length).map((index) => {
+            const point = points[index]!;
+            return (
+              <text
+                key={point.day.date}
+                x={point.x}
+                y="196"
+                className="curve-date"
+                textAnchor={index === 0 ? 'start' : index === points.length - 1 ? 'end' : 'middle'}
+              >
+                {formatDateKey(point.day.date).slice(0, 5)}
+              </text>
+            );
+          })}
         </svg>
         <div className="curve-caption">
           <span>
@@ -622,19 +652,30 @@ function PerformanceCurve({ report }: { report: PerformanceReport }) {
   );
 }
 
+/**
+ * At most ten dates, always including the first and the last. More than that and
+ * the labels overlap, which reads as a smudge rather than an axis.
+ */
+function dateTicks(count: number): number[] {
+  if (count === 0) return [];
+  if (count <= 10) return Array.from({ length: count }, (_, index) => index);
+  const step = Math.ceil((count - 1) / 9);
+  const ticks: number[] = [];
+  for (let index = 0; index < count - 1; index += step) ticks.push(index);
+  if (ticks.at(-1) !== count - 1) ticks.push(count - 1);
+  return ticks;
+}
+
 function RollupTable({
-  title,
   report,
-  kind,
+  silentBots,
 }: {
-  title: string;
   report: PerformanceReport;
-  kind: 'bot';
+  silentBots: readonly { id: string; reason: string }[];
 }) {
-  const rows = kind === 'bot' ? report.byBot : [];
   return (
     <section className="performance-section">
-      <SectionHeading title={title} detail="ranked by gross realized P&L" />
+      <SectionHeading title="by bot" detail="ranked by gross realized P&L" />
       <table className="table performance-table">
         <thead>
           <tr>
@@ -647,24 +688,38 @@ function RollupTable({
             <th>per trip</th>
             <th>avg hold</th>
             <th>slip</th>
+            <th>retried</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
+          {report.byBot.map((row) => (
             <tr key={row.botId}>
               <td>
                 <strong>{row.botId}</strong>
               </td>
               <td>{row.tradeCount}</td>
               <td>
-                {row.winningTrades} · {metricText(row.winRatePercent, true)}
+                {row.winningTrades}{' '}
+                <span className="muted">· {metricText(row.winRatePercent, true)}</span>
               </td>
-              <MoneyCell value={row.grossPnl} />
+              <MoneyCell value={row.grossPnl} lead />
               <MetricCell metric={row.averageWinPnl} money />
               <MetricCell metric={row.averageLossPnl} money />
               <MetricCell metric={row.averageTradePnl} money />
-              <td className="status-warn">not available</td>
-              <td className="status-warn">not available</td>
+              <HoldCell metric={row.averageHoldDurationMs} />
+              <SlipCell metric={row.slippage.combined} />
+              <td className="muted">{row.retriedChainCount}</td>
+            </tr>
+          ))}
+          {/* A bot with no trip is not a zero row: it has no win rate, no
+              expectancy and no slip, and averaging it in as neutral would be
+              the one figure here nobody could reproduce. */}
+          {silentBots.map((bot) => (
+            <tr key={bot.id}>
+              <td className="status-wait">{bot.id}</td>
+              <td className="status-wait table-note" colSpan={9}>
+                {bot.reason}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -720,45 +775,149 @@ function ExitTimingCard({
   );
 }
 
-function RetryLedger({
-  trades,
-  canceled,
-  excludedUntimed,
-  accountAttributionUnavailable,
-}: {
-  trades: readonly ClosedTrade[];
-  canceled: readonly CanceledOrder[];
-  excludedUntimed: number;
-  accountAttributionUnavailable: boolean;
-}) {
-  const tradeChains = new Map(
-    trades.filter((trade) => trade.chainId).map((trade) => [trade.chainId!, trade]),
-  );
+interface RetryLedgerFigures {
+  chainCount: number;
+  wonCount: number;
+  wonAmount: number;
+  deadCount: number;
+  worseCount: number;
+  worseAmount: number;
+  uncomparedCount: number;
+  net: number;
+}
+
+/**
+ * Follows the stored `retryOf` edge and nothing else: how many chains needed
+ * another attempt, how many of them ever closed, and what the retried fills cost
+ * against what the first attempt had asked for.
+ */
+export function summarizeRetryLedger(
+  trades: readonly ClosedTrade[],
+  canceled: readonly CanceledOrder[],
+): RetryLedgerFigures {
+  const tradeByChain = new Map<string, ClosedTrade>();
+  for (const trade of trades)
+    if (trade.chainId && !tradeByChain.has(trade.chainId)) tradeByChain.set(trade.chainId, trade);
+
   const retryChains = new Set<string>();
   for (const trade of trades)
     if (trade.chainId && (trade.openRetryOfClientOrderId || trade.closeRetryOfClientOrderId))
       retryChains.add(trade.chainId);
   for (const order of canceled)
     if (order.chainId && order.retryOfClientOrderId) retryChains.add(order.chainId);
-  const completed = [...retryChains].flatMap((chainId) =>
-    tradeChains.get(chainId) ? [tradeChains.get(chainId)!] : [],
-  );
-  const gross = completed.reduce(
-    (sum, trade) => sum + trade.quantity * (trade.averageClosePrice - trade.averageOpenPrice),
-    0,
-  );
-  const incompleteCount = retryChains.size - completed.length;
+
+  // The price the first attempt asked for. A market row's stored price was
+  // captured at the API call and never sent, so it is not an asking price.
+  const askedByClientOrderId = new Map<string, number>();
+  for (const order of canceled) {
+    if (!order.clientOrderId || order.type === 'market') continue;
+    if (order.orderPrice === null || order.orderPrice <= 0) continue;
+    askedByClientOrderId.set(order.clientOrderId, order.orderPrice);
+  }
+
+  const completed = [...retryChains].flatMap((chainId) => {
+    const trade = tradeByChain.get(chainId);
+    return trade ? [trade] : [];
+  });
+  let wonAmount = 0;
+  let worseCount = 0;
+  let worseAmount = 0;
+  let uncomparedCount = 0;
+  for (const trade of completed) {
+    wonAmount += trade.quantity * (trade.averageClosePrice - trade.averageOpenPrice);
+    const cost = retryFillCost(trade, askedByClientOrderId);
+    if (cost === null) uncomparedCount += 1;
+    else if (cost > 0) {
+      worseCount += 1;
+      worseAmount -= cost;
+    }
+  }
+  return {
+    chainCount: retryChains.size,
+    wonCount: completed.length,
+    wonAmount,
+    deadCount: retryChains.size - completed.length,
+    worseCount,
+    worseAmount,
+    uncomparedCount,
+    net: wonAmount + worseAmount,
+  };
+}
+
+/**
+ * What the retried legs paid above what the first attempt had asked. A buy above
+ * its asking price and a sell below it both cost money; `null` means the first
+ * attempt is not in the loaded canceled rows, or asked no price at all.
+ */
+function retryFillCost(trade: ClosedTrade, asked: ReadonlyMap<string, number>): number | null {
+  let cost = 0;
+  let compared = false;
+  const openAsked = trade.openRetryOfClientOrderId
+    ? asked.get(trade.openRetryOfClientOrderId)
+    : undefined;
+  if (openAsked !== undefined) {
+    cost += trade.quantity * (trade.averageOpenPrice - openAsked);
+    compared = true;
+  }
+  const closeAsked = trade.closeRetryOfClientOrderId
+    ? asked.get(trade.closeRetryOfClientOrderId)
+    : undefined;
+  if (closeAsked !== undefined) {
+    cost += trade.quantity * (closeAsked - trade.averageClosePrice);
+    compared = true;
+  }
+  return compared ? cost : null;
+}
+
+function RetryLedger({
+  trades,
+  canceled,
+  excludedUntimed,
+  accountAttributionUnavailable,
+  grossRealized,
+}: {
+  trades: readonly ClosedTrade[];
+  canceled: readonly CanceledOrder[];
+  excludedUntimed: number;
+  accountAttributionUnavailable: boolean;
+  grossRealized: number;
+}) {
+  const figures = summarizeRetryLedger(trades, canceled);
+  // A share only reads as one while it is inside the whole. Retrying that moved
+  // more money than the window realized is stated against the figure itself.
+  const share =
+    grossRealized > 0 && Math.abs(figures.net) <= grossRealized
+      ? `${formatPercentage((figures.net / grossRealized) * 100, 0, false)} of everything realized`
+      : `against ${formatSignedNumber(grossRealized, 0)} realized in this window`;
   return (
     <article className="card elev-sm performance-card performance-card-dead">
       <div className="card-kicker status-dead">the retry ledger</div>
       <h3>
-        {retryChains.size
-          ? `${retryChains.size} ${retryChains.size === 1 ? 'chain' : 'chains'} needed another attempt`
-          : 'No retry edge in this selected window'}
+        {figures.chainCount === 0 ? (
+          'No retry edge in this selected window'
+        ) : (
+          <>
+            Retrying earned{' '}
+            <span className={figures.net >= 0 ? 'status-live' : 'status-dead'}>
+              {formatSignedNumber(figures.net)}
+            </span>
+          </>
+        )}
       </h3>
       <p>
-        Retry edges come only from stored retry identifiers. They report what the policy did; they
-        do not guess at orders missing from every list.
+        {figures.chainCount === 0 ? (
+          <>
+            Retry edges come only from stored retry identifiers. They report what the policy did;
+            they do not guess at orders missing from every list.
+          </>
+        ) : (
+          <>
+            {plural(figures.chainCount, 'chain')} needed another attempt — {figures.wonCount} of
+            them got there, {figures.deadCount} did not. Following the{' '}
+            <span className="book-inline-value">retryOf</span> edge tells you whether the policy
+            paid for the orders it burned.
+          </>
+        )}
       </p>
       {accountAttributionUnavailable ? (
         <p className="status-warn">
@@ -772,42 +931,100 @@ function RetryLedger({
           cancel time and cannot be placed inside this selected window.
         </p>
       ) : null}
-      <div className={`metric-line ${completed.length > 0 ? 'status-live' : 'muted'}`}>
-        <strong>{completed.length}</strong>
-        <span>
-          {completed.length > 0
-            ? `eventually closed · ${formatSignedNumber(gross)} gross`
-            : 'completed in this selected window'}
-        </span>
-      </div>
-      <div className={`metric-line ${incompleteCount > 0 ? 'status-dead' : 'muted'}`}>
-        <strong>{incompleteCount}</strong>
-        <span>no completed round trip in this selected window</span>
-      </div>
+      {figures.chainCount > 0 ? (
+        <>
+          <div className="ledger-lines">
+            <div className={`metric-line ${figures.wonCount > 0 ? 'status-live' : 'muted'}`}>
+              <strong>{figures.wonCount}</strong>
+              <span>eventually opened, then closed</span>
+              <em className={signedTone(figures.wonAmount) ?? 'muted'}>
+                {formatSignedNumber(figures.wonAmount)}
+              </em>
+            </div>
+            {figures.worseCount > 0 ? (
+              <div className="metric-line-nested">
+                <i />
+                <div className="metric-line status-wait">
+                  <strong>{figures.worseCount}</strong>
+                  <span>of those, filled worse than the first try asked</span>
+                  <em className="number-negative">{formatSignedNumber(figures.worseAmount)}</em>
+                </div>
+              </div>
+            ) : null}
+            <div className={`metric-line ${figures.deadCount > 0 ? 'status-dead' : 'muted'}`}>
+              <strong>{figures.deadCount}</strong>
+              <span>never opened — the chain just died</span>
+              <em className="muted">no cost</em>
+            </div>
+          </div>
+          {figures.uncomparedCount > 0 ? (
+            /* A first attempt that is not in the loaded canceled rows, or asked
+               no price at all, is left out rather than compared against a
+               price nobody sent. */
+            <p className="muted">
+              {figures.uncomparedCount} of the {figures.wonCount} closed chains could not be
+              compared: the attempt they retry is outside the loaded canceled rows, or carried no
+              price the exchange saw.
+            </p>
+          ) : null}
+          <div className="card-total">
+            <span className="kicker">total</span>
+            <strong className={figures.net >= 0 ? 'status-live' : 'status-dead'}>
+              {formatSignedNumber(figures.net)}
+            </strong>
+            <span />
+            <small className="muted">{share}</small>
+          </div>
+        </>
+      ) : null}
     </article>
   );
 }
 
-function UnavailableSlippage({ report }: { report: PerformanceReport }) {
+function SlippageSection({ report }: { report: PerformanceReport }) {
+  const { entry, exit, exitOrderPriceMissingCount } = report.summary.slippage;
+  const legs: Array<{ label: string; metric: PerformanceMetric; sub: string }> = [
+    {
+      label: 'entry',
+      metric: entry,
+      sub: `${plural(entry.sampleSize, 'opening fill')} · every buy carries an order price`,
+    },
+    {
+      label: 'exit',
+      metric: exit,
+      sub:
+        exitOrderPriceMissingCount > 0
+          ? `${plural(exit.sampleSize, 'closing fill')} · ${exitOrderPriceMissingCount} priced no sell`
+          : `${plural(exit.sampleSize, 'closing fill')} · every sell carries an order price`,
+    },
+  ];
   return (
     <section className="performance-section">
       <SectionHeading
         title="slippage"
-        detail="order price against average fill, signed by price direction"
+        detail="order price against average fill, signed by which way the price moved"
       />
       <div className="slippage-grid">
-        {['entry · limit', 'entry · market', 'exit · limit', 'exit · market'].map((label) => (
-          <div className="unavailable-metric" key={label}>
-            <span className="kicker">{label}</span>
-            <strong className="status-warn">not available</strong>
+        {legs.map((leg) => (
+          <div
+            className={`slippage-metric${leg.metric.available ? '' : ' slippage-metric-unavailable'}`}
+            key={leg.label}
+          >
+            <span className="kicker">{leg.label}</span>
+            {/* SPEC 4: never inked. A buy above its order price and a sell below
+                it are both positive, and which one helped depends on the side. */}
+            <strong className={leg.metric.available ? undefined : 'status-warn'}>
+              {leg.metric.available ? formatSlip(leg.metric.value) : 'not available'}
+            </strong>
+            <small className="muted">{leg.sub}</small>
           </div>
         ))}
       </div>
       {/* A reason is said once, by the section that owns it. */}
       <p className="slippage-reason status-warn">
-        ClosedTrades stores prices but not order type, so the{' '}
-        {plural(report.summary.tradeCount, 'trade')} in this window cannot be split across these
-        four without inventing which prices were sent.
+        These two do not split into limit and market: ClosedTrades stores prices but not order type,
+        so the {plural(report.summary.tradeCount, 'trade')} in this window cannot be sorted across
+        the four without inventing which prices were sent.
       </p>
     </section>
   );
@@ -934,9 +1151,39 @@ function AccountTable({ report }: { report: PerformanceReport }) {
   );
 }
 
-function Limitations({ report }: { report: PerformanceReport }) {
+function Limitations({
+  report,
+  budgetContext,
+}: {
+  report: PerformanceReport;
+  budgetContext: BudgetContext;
+}) {
+  const committedCopy =
+    budgetContext.committedState === 'loading'
+      ? 'loading current committed amount'
+      : budgetContext.committedState === 'unavailable' || budgetContext.committed === null
+        ? `current committed amount unavailable${
+            budgetContext.completeBotsOnly ? ' \u00b7 incomplete bots have no budget read' : ''
+          }`
+        : `${formatNumber(budgetContext.committed, 0)} currently committed${
+            budgetContext.completeBotsOnly ? ' \u00b7 complete bots only' : ''
+          }`;
   return (
     <section className="limitations">
+      {/* SPEC lists GetBots budget context as a Performance read. It is not a
+          result, so it sits with the standing statements rather than among the
+          figures the window recomputes. */}
+      <article className="card">
+        <div className="card-kicker">budget context</div>
+        <p>
+          <span className="book-inline-value">{formatNumber(budgetContext.limit, 0)}</span>{' '}
+          configured across {budgetContext.scopeCopy}.{' '}
+          <span className={budgetContext.committedState === 'ready' ? 'muted' : 'status-warn'}>
+            {committedCopy}
+          </span>
+          .
+        </p>
+      </article>
       <article className="card">
         <div className="card-kicker">what this page cannot say</div>
         <p>
@@ -996,8 +1243,29 @@ function SectionHeading({ title, detail }: { title: string; detail: string }) {
     </header>
   );
 }
-function MoneyCell({ value }: { value: number }) {
-  return <td className={signedTone(value)}>{formatSignedNumber(value)}</td>;
+function MoneyCell({ value, lead }: { value: number; lead?: boolean }) {
+  return (
+    <td className={`${signedTone(value) ?? ''}${lead ? ' table-lead' : ''}`}>
+      {formatSignedNumber(value)}
+    </td>
+  );
+}
+
+function HoldCell({ metric }: { metric: PerformanceMetric }) {
+  return (
+    <td className={metric.available ? undefined : 'status-warn'}>
+      {metric.available ? formatCompactDuration(metric.value) : 'not available'}
+    </td>
+  );
+}
+
+/** SPEC 4: slip is never inked green or red, on any page. */
+function SlipCell({ metric }: { metric: PerformanceMetric }) {
+  return (
+    <td className={metric.available ? undefined : 'status-warn'}>
+      {metric.available ? formatSlip(metric.value) : 'not available'}
+    </td>
+  );
 }
 function MetricCell({
   metric,
@@ -1026,9 +1294,6 @@ function metricMoney(metric: PerformanceMetric, signed = true): string {
       ? formatSignedNumber(metric.value)
       : formatNumber(metric.value)
     : 'not available';
-}
-function metricNumber(metric: PerformanceMetric): string {
-  return metric.available ? formatNumber(metric.value) : 'not available';
 }
 function metricText(metric: PerformanceMetric, percent = false): string {
   return metric.available

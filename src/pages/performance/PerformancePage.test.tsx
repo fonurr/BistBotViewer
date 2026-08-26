@@ -127,9 +127,9 @@ describe('Performance scope and unavailable values', () => {
     ];
 
     const result = scopeCanceledRetries(rows, {
-      scopedBot: 'bot-alpha',
-      accountKey: '*',
-      symbols: ['THYAO'],
+      botIds: new Set(['bot-alpha']),
+      accountScoped: false,
+      symbols: new Set(['THYAO']),
       from: FIXTURE_DAY,
       to: FIXTURE_DAY,
     });
@@ -140,9 +140,9 @@ describe('Performance scope and unavailable values', () => {
 
     expect(
       scopeCanceledRetries(rows, {
-        scopedBot: 'bot-alpha',
-        accountKey: 'ACC-1:BRK-1',
-        symbols: ['THYAO'],
+        botIds: new Set(['bot-alpha']),
+        accountScoped: true,
+        symbols: new Set(['THYAO']),
         from: FIXTURE_DAY,
         to: FIXTURE_DAY,
       }),
@@ -188,11 +188,16 @@ describe('Performance scope and unavailable values', () => {
     await user.click(await screen.findByRole('button', { name: '2 accounts' }));
     const accountFilter = screen.getByRole('dialog', { name: /accounts filter/i });
     // Matching account numbers at different brokerages stay distinct choices.
-    const first = within(accountFilter).getByRole('radio', { name: /ACC-1.*BRK-1.*Fixture Owner/ });
-    const second = within(accountFilter).getByRole('radio', { name: /ACC-1.*BRK-2.*Second Owner/ });
+    const first = within(accountFilter).getByRole('checkbox', {
+      name: /ACC-1.*BRK-1.*Fixture Owner/,
+    });
+    const second = within(accountFilter).getByRole('checkbox', {
+      name: /ACC-1.*BRK-2.*Second Owner/,
+    });
     expect(first).not.toBe(second);
 
-    await user.click(second);
+    // The Book's control: every account is on, so narrowing means unticking one.
+    await user.click(first);
     expect(await screen.findByRole('button', { name: '1 account' })).toBeVisible();
 
     await screen.findByText(/· 1 trade$/);
@@ -211,7 +216,7 @@ describe('Performance scope and unavailable values', () => {
 
     renderPerformance();
 
-    await screen.findByText('configured limits');
+    await screen.findByText('by account');
     for (const label of ['avg win', 'avg loss']) {
       const stat = screen
         .getAllByText(label)
@@ -231,19 +236,19 @@ describe('Performance scope and unavailable values', () => {
 
     renderPerformance();
 
-    const label = await screen.findByText('configured limits');
-    const stat = label.closest('.performance-stat') as HTMLElement | null;
-    expect(stat).not.toBeNull();
-    expect(within(stat!).getByText('500.000')).toBeInTheDocument();
-    expect(within(stat!).getByText('current committed amount unavailable')).toHaveClass(
+    const label = await screen.findByText('budget context');
+    const card = label.closest('.card') as HTMLElement | null;
+    expect(card).not.toBeNull();
+    expect(within(card!).getByText('500.000')).toBeInTheDocument();
+    expect(within(card!).getByText('current committed amount unavailable')).toHaveClass(
       'status-warn',
     );
     expect(
-      within(stat!).getByText(
-        '1 bot · fleet scope; window and symbol filters do not change these limits',
+      within(card!).getByText(
+        /1 bot . fleet scope; window and symbol filters do not change these limits/,
       ),
     ).toBeInTheDocument();
-    expect(within(stat!).queryByText(/0 currently committed/i)).not.toBeInTheDocument();
+    expect(within(card!).queryByText(/0 currently committed/i)).not.toBeInTheDocument();
   });
 
   it('does not invent zero commitment when every selected bot is incomplete', async () => {
@@ -253,13 +258,13 @@ describe('Performance scope and unavailable values', () => {
 
     renderPerformance();
 
-    const label = await screen.findByText('configured limits');
-    const stat = label.closest('.performance-stat') as HTMLElement | null;
-    expect(stat).not.toBeNull();
-    expect(within(stat!).getByText(/current committed amount unavailable/)).toHaveClass(
+    const label = await screen.findByText('budget context');
+    const card = label.closest('.card') as HTMLElement | null;
+    expect(card).not.toBeNull();
+    expect(within(card!).getByText(/current committed amount unavailable/)).toHaveClass(
       'status-warn',
     );
-    expect(within(stat!).queryByText(/0 currently committed/i)).not.toBeInTheDocument();
+    expect(within(card!).queryByText(/0 currently committed/i)).not.toBeInTheDocument();
     expect(api.getBotBudget).not.toHaveBeenCalled();
   });
 });

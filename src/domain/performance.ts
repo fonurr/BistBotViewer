@@ -13,6 +13,8 @@ export type PerformanceUnavailableReason =
   | 'commission-and-tax-data-not-provided'
   | 'true-fill-times-not-provided'
   | 'order-type-not-stored-on-closed-trades'
+  | 'close-order-price-not-stored'
+  | 'acknowledgement-times-incomplete'
   | 'portfolio-balance-history-not-provided'
   | 'holiday-calendar-coverage-unavailable'
   | 'no-business-days'
@@ -52,11 +54,23 @@ export interface PerformanceTrade {
   readonly costBasis: number;
   readonly grossPnl: number;
   readonly grossReturnPercent: PerformanceMetric;
-  /** Unavailable: ClosedTrades does not retain the order type needed by the spec. */
+  /**
+   * `(averageOpenPrice - openOrderPrice) / openOrderPrice`, signed by the
+   * direction the price moved (API.md, Slippage & unrealized P&L). The opening
+   * buy always carries an order price, so this is available for every trade.
+   */
   readonly entrySlippagePercent: PerformanceMetric;
-  /** Unavailable: ClosedTrades does not retain the order type needed by the spec. */
+  /**
+   * The same for the closing sell, and unavailable exactly where
+   * `closeOrderPrice` is `null` - a priceless market sell or a manual close from
+   * the terminal. Never a zero.
+   */
   readonly exitSlippagePercent: PerformanceMetric;
-  /** Unavailable: execute times are refresh acknowledgements, not fill timestamps. */
+  /**
+   * Close acknowledgement minus open acknowledgement. Both stamps come from this
+   * server's own clock, so the difference is a hold duration; it is never a
+   * time-to-fill or a latency, which API.md rules out deriving.
+   */
   readonly holdDurationMs: PerformanceMetric;
 }
 
@@ -79,6 +93,7 @@ export interface PerformanceDay {
 export interface PerformanceSlippageSummary {
   readonly entry: PerformanceMetric;
   readonly exit: PerformanceMetric;
+  /** Both legs averaged. It mixes buy and sell directions, so it sits near zero. */
   readonly combined: PerformanceMetric;
   readonly entryOrderPricePresentCount: number;
   readonly exitOrderPricePresentCount: number;
@@ -112,6 +127,10 @@ export interface PerformanceAggregate {
   readonly averageWinPnl: PerformanceMetric;
   readonly averageLossPnl: PerformanceMetric;
   readonly averageHoldDurationMs: PerformanceMetric;
+  /** The middle hold, which a handful of multi-day trades cannot drag. */
+  readonly medianHoldDurationMs: PerformanceMetric;
+  /** Distinct chains in this set whose open or close leg carries a retry link. */
+  readonly retriedChainCount: number;
   readonly drawdown: PerformanceDrawdown;
   readonly slippage: PerformanceSlippageSummary;
   readonly series: readonly PerformanceDay[];
@@ -367,8 +386,6 @@ function normalizePerformanceTrade(trade: ClosedTrade, businessDate: string): Pe
     costBasis > 0
       ? availableMetric((grossPnl / costBasis) * 100, 1)
       : unavailableMetric('invalid-cost-basis', 0, 1);
-  const slippageUnavailable = unavailableMetric('order-type-not-stored-on-closed-trades', 0, 1);
-
   return {
     key: `closed-trade:${trade.id}`,
     raw: trade,
@@ -383,10 +400,42 @@ function normalizePerformanceTrade(trade: ClosedTrade, businessDate: string): Pe
     costBasis,
     grossPnl,
     grossReturnPercent,
-    entrySlippagePercent: slippageUnavailable,
-    exitSlippagePercent: slippageUnavailable,
-    holdDurationMs: unavailableMetric('true-fill-times-not-provided', 0, 1),
+    entrySlippagePercent: slipMetric(trade.openOrderPrice, trade.averageOpenPrice, 'entry'),
+    exitSlippagePercent: slipMetric(trade.closeOrderPrice, trade.averageClosePrice, 'exit'),
+    holdDurationMs: holdMetric(trade.openExecuteTime, trade.closeExecuteTime),
   };
+}
+
+/**
+ * Order price is intent, average price is the actual fill, and the sign is the
+ * direction the price moved - never whether the move helped, which depends on
+ * the side (SPEC 4). An order price that is `null` or non-positive was never an
+ * instruction the exchange saw, so it yields nothing rather than a zero.
+ */
+function slipMetric(
+  orderPrice: number | null,
+  averagePrice: number,
+  leg: 'entry' | 'exit',
+): PerformanceMetric {
+  if (orderPrice === null || !Number.isFinite(orderPrice) || orderPrice <= 0) {
+    return unavailableMetric(
+      leg === 'exit' ? 'close-order-price-not-stored' : 'invalid-cost-basis',
+      0,
+      1,
+    );
+  }
+  if (!Number.isFinite(averagePrice)) return unavailableMetric('invalid-cost-basis', 0, 1);
+  return availableMetric(((averagePrice - orderPrice) / orderPrice) * 100, 1);
+}
+
+function holdMetric(
+  openExecuteTime: number | null,
+  closeExecuteTime: number | null,
+): PerformanceMetric {
+  if (openExecuteTime === null || closeExecuteTime === null || closeExecuteTime < openExecuteTime) {
+    return unavailableMetric('acknowledgement-times-incomplete', 0, 1);
+  }
+  return availableMetric(closeExecuteTime - openExecuteTime, 1);
 }
 
 function aggregatePerformance(
@@ -403,6 +452,7 @@ function aggregatePerformance(
   const costBasis = sum(trades.map((trade) => trade.costBasis));
   const series = trades.length === 0 ? [] : buildDailySeries(trades, seriesDates, isDateVerified);
   const drawdown = calculateDrawdown(series, trades.length);
+  const holds = availableValues(trades.map((trade) => trade.holdDurationMs));
 
   return {
     tradeCount: trades.length,
@@ -443,7 +493,9 @@ function aggregatePerformance(
       losing.length === 0
         ? unavailableMetric('no-losing-trades')
         : availableMetric(grossLoss / losing.length, losing.length),
-    averageHoldDurationMs: unavailableMetric('true-fill-times-not-provided', 0, trades.length),
+    averageHoldDurationMs: meanMetric(holds, trades.length, 'acknowledgement-times-incomplete'),
+    medianHoldDurationMs: medianMetric(holds, trades.length, 'acknowledgement-times-incomplete'),
+    retriedChainCount: countRetriedChains(trades),
     drawdown,
     slippage: summarizeSlippage(trades),
     series,
@@ -531,25 +583,60 @@ function calculateDrawdown(
 }
 
 function summarizeSlippage(trades: readonly PerformanceTrade[]): PerformanceSlippageSummary {
-  const entryOrderPricePresentCount = trades.filter(
-    ({ raw }) => Number.isFinite(raw.openOrderPrice) && raw.openOrderPrice > 0,
-  ).length;
-  const exitOrderPricePresentCount = trades.filter(
-    ({ raw }) =>
-      raw.closeOrderPrice !== null &&
-      Number.isFinite(raw.closeOrderPrice) &&
-      raw.closeOrderPrice > 0,
-  ).length;
-  const reason = 'order-type-not-stored-on-closed-trades' as const;
+  const entrySlips = availableValues(trades.map((trade) => trade.entrySlippagePercent));
+  const exitSlips = availableValues(trades.map((trade) => trade.exitSlippagePercent));
 
   return {
-    entry: unavailableMetric(reason, 0, trades.length),
-    exit: unavailableMetric(reason, 0, trades.length),
-    combined: unavailableMetric(reason, 0, trades.length * 2),
-    entryOrderPricePresentCount,
-    exitOrderPricePresentCount,
-    exitOrderPriceMissingCount: trades.length - exitOrderPricePresentCount,
+    entry: meanMetric(entrySlips, trades.length, 'invalid-cost-basis'),
+    exit: meanMetric(exitSlips, trades.length, 'close-order-price-not-stored'),
+    combined: meanMetric(
+      [...entrySlips, ...exitSlips],
+      trades.length * 2,
+      'close-order-price-not-stored',
+    ),
+    entryOrderPricePresentCount: entrySlips.length,
+    exitOrderPricePresentCount: exitSlips.length,
+    exitOrderPriceMissingCount: trades.length - exitSlips.length,
   };
+}
+
+/**
+ * A retry edge is a stored identifier and nothing else. An order missing from
+ * every list is not evidence of one, so it is never inferred.
+ */
+function countRetriedChains(trades: readonly PerformanceTrade[]): number {
+  const chains = new Set<string>();
+  for (const { raw } of trades) {
+    if (!raw.chainId) continue;
+    if (raw.openRetryOfClientOrderId || raw.closeRetryOfClientOrderId) chains.add(raw.chainId);
+  }
+  return chains.size;
+}
+
+function availableValues(metrics: readonly PerformanceMetric[]): number[] {
+  return metrics.flatMap((metric) => (metric.available ? [metric.value] : []));
+}
+
+function meanMetric(
+  values: readonly number[],
+  population: number,
+  reason: PerformanceUnavailableReason,
+): PerformanceMetric {
+  if (values.length === 0) return unavailableMetric(reason, 0, population);
+  return availableMetric(sum(values) / values.length, values.length, population - values.length);
+}
+
+function medianMetric(
+  values: readonly number[],
+  population: number,
+  reason: PerformanceUnavailableReason,
+): PerformanceMetric {
+  if (values.length === 0) return unavailableMetric(reason, 0, population);
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  const value =
+    sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+  return availableMetric(value, values.length, population - values.length);
 }
 
 function buildHoldComparison(

@@ -24,17 +24,12 @@
   font-size: var(--font-small);
 }
 
-.performance-toolbar .performance-window-label,
-.performance-toolbar .performance-symbols {
+.performance-toolbar .performance-window-label {
   width: auto;
   min-height: 32px;
   height: 32px;
   padding: 0 10px;
   font-size: var(--font-leg);
-}
-
-.performance-symbols {
-  width: 160px;
 }
 
 .scoped-chip {
@@ -130,6 +125,16 @@
   fill: var(--color-accent);
 }
 
+.curve-wrap text.curve-end-label {
+  fill: var(--color-accent-200);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.curve-wrap text.curve-date {
+  font-size: 10.5px;
+}
+
 .curve-caption {
   display: flex;
   justify-content: space-between;
@@ -155,6 +160,17 @@
 .performance-table th,
 .performance-table td {
   font-size: var(--font-leg);
+}
+
+/* The figure the table is ranked by carries the weight; the rest support it. */
+.performance-table .table-lead {
+  font-weight: 500;
+}
+
+/* The reason a bot carries no figure runs to the table's right edge, where the
+   figures it is standing in for would have been. */
+.performance-table td.table-note {
+  font-size: var(--font-small);
 }
 
 .performance-cards {
@@ -217,36 +233,106 @@
 
 .metric-line strong {
   width: 30px;
+  flex: none;
+}
+
+.metric-line > span {
+  flex: 1;
+}
+
+.metric-line em {
+  font-style: normal;
+  font-weight: 500;
+}
+
+.ledger-lines {
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* The `of those` line is a subset of the line above it, and the connector is
+   what says so — it is indented from a row it is not a sibling of. */
+.metric-line-nested {
+  display: grid;
+  grid-template-columns: var(--space-8) 1fr;
+  align-items: center;
+}
+
+.metric-line-nested > i {
+  height: 1px;
+  margin-left: var(--space-4);
+  background: linear-gradient(
+    to right,
+    transparent,
+    color-mix(in srgb, var(--st-wait) 55%, transparent)
+  );
+}
+
+.metric-line-nested .metric-line {
+  margin-top: 0;
+}
+
+.card-total {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  background: var(--fade-rule) no-repeat top / 100% 1px;
+}
+
+.card-total .kicker {
+  flex: none;
+}
+
+.card-total strong {
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.card-total > span:not([class]) {
+  flex: 1;
+}
+
+.card-total small {
+  font-size: var(--font-meta);
 }
 
 .slippage-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: var(--space-4);
 }
 
-.unavailable-metric {
+/* Slip is never inked by outcome, so the card's own edge is neutral; the warn
+   edge belongs only to a figure that could not be derived. */
+.slippage-metric {
   display: grid;
   gap: var(--space-2);
   padding: var(--space-4);
-  border-left: 3px solid var(--st-warn);
+  border-left: 3px solid var(--color-divider);
   border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-text) 4%, transparent);
+}
+
+.slippage-metric-unavailable {
+  border-left-color: var(--st-warn);
   background: color-mix(in srgb, var(--st-warn) 10%, transparent);
 }
 
-.unavailable-metric strong {
+.slippage-metric strong {
   font-size: 22px;
   font-weight: 500;
 }
 
-.unavailable-metric small {
+.slippage-metric small {
   color: var(--mut);
   font-size: var(--font-meta);
 }
 
 .limitations {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: var(--space-4);
   margin-top: var(--space-8);
 }
