@@ -18,6 +18,7 @@ import {
   formatPercentage,
   formatRowTime,
   formatSignedNumber,
+  formatSlip,
   plural,
   toIstanbulDateKey,
 } from '../../domain/format';
@@ -237,7 +238,7 @@ export function BookPage() {
             clear all
           </button>
           <span className="muted">
-            the strip and chain counts follow the filter; the needs-a-human count does not
+            the strip and chain counts follow the filter; the red count does not
           </span>
         </div>
       ) : null}
@@ -657,7 +658,7 @@ function StatStrip({ summary, pendingCount }: { summary: BookSummary; pendingCou
       />
       <Stat
         label="avg slip"
-        value={summary.avgSlip === null ? 'not available' : formatPercentage(summary.avgSlip)}
+        value={summary.avgSlip === null ? 'not available' : formatSlip(summary.avgSlip)}
         unavailable={summary.avgSlip === null}
       />
     </div>

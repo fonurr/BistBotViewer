@@ -2,14 +2,17 @@ const TIME_ZONE = 'Europe/Istanbul';
 
 const numberFormatters = new Map<string, Intl.NumberFormat>();
 
-function numberFormatter(decimals: number, sign: boolean): Intl.NumberFormat {
+function numberFormatter(
+  decimals: number,
+  sign: 'always' | 'exceptZero' | 'auto',
+): Intl.NumberFormat {
   const key = `${decimals}:${sign}`;
   const cached = numberFormatters.get(key);
   if (cached) return cached;
   const formatter = new Intl.NumberFormat('tr-TR', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
-    signDisplay: sign ? 'always' : 'auto',
+    signDisplay: sign,
     useGrouping: true,
   });
   numberFormatters.set(key, formatter);
@@ -21,15 +24,24 @@ function trueMinus(value: string): string {
 }
 
 export function formatNumber(value: number, decimals = 2): string {
-  return trueMinus(numberFormatter(decimals, false).format(value));
+  return trueMinus(numberFormatter(decimals, 'auto').format(value));
 }
 
 export function formatSignedNumber(value: number, decimals = 2): string {
-  return trueMinus(numberFormatter(decimals, true).format(value));
+  return trueMinus(numberFormatter(decimals, 'always').format(value));
 }
 
 export function formatPercentage(value: number, decimals = 1, signed = true): string {
   return `${signed ? formatSignedNumber(value, decimals) : formatNumber(value, decimals)}%`;
+}
+
+/**
+ * Slip is a direction, so a zero carries no sign — a `+0,00%` claims the price
+ * moved up when it did not move at all. Two decimals, because the figures it
+ * reports live in the second one (`+0,10%`, `−0,16%`).
+ */
+export function formatSlip(value: number): string {
+  return `${trueMinus(numberFormatter(2, 'exceptZero').format(value))}%`;
 }
 
 export function formatQuantity(value: number): string {

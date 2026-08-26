@@ -374,6 +374,9 @@
   color: var(--mut);
   font-size: var(--font-small);
   font-weight: 400;
+  /* The elbow and the id are one token; a break after the ellipsis pushed the
+     whole row band taller for no gain. */
+  white-space: nowrap;
 }
 
 .align-right {
@@ -416,10 +419,19 @@
   white-space: nowrap;
 }
 
+/*
+ * The status word carries its hue, not extra weight — the reference sets 500
+ * on exactly one status, the position with no closing order, so that the one
+ * row that needs a human is the only one that gets louder.
+ */
 .book-status {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+/* The one status that is louder: a position with nothing set to close it. */
+.book-status.status-dead:has(svg) {
   font-weight: 500;
 }
 

@@ -24,7 +24,8 @@ test.describe('Bots fleet smoke', () => {
     await expect(card).toBeVisible();
     await expect(card).toContainText('ACC-1 · BRK-1');
     await expect(card.getByLabel('1 position, 0 open sells, 0 scheduled sells')).toBeVisible();
-    await expect(page.getByText(/prices live · orders updated/i)).toBeVisible();
+    // SPEC 5: one freshness line, and it is the age alone while the feed is live.
+    await expect(page.getByText(/^updated /i)).toBeVisible();
 
     // The toolbar uses the Book's shared filter popover, so it is named for its
     // trigger and closes on Escape with focus back where it started.

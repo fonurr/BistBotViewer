@@ -174,14 +174,13 @@ export function slippagePercentage(options: {
   averagePrice: number;
   type: OrderType | null;
 }): number | null {
-  // A market order's stored capture was never sent to the exchange and cannot be intent slippage.
-  if (
-    options.type === null ||
-    options.type === 'market' ||
-    options.orderPrice === null ||
-    options.orderPrice === 0
-  )
+  // A market order's stored capture was never sent to the exchange and cannot be
+  // intent slippage. A row with no type at all is a Positions or ClosedTrades
+  // row, where API.md states the stored price *is* the order (intent) price and
+  // is null exactly when no client price existed — so that null is the guard.
+  if (options.type === 'market' || options.orderPrice === null || options.orderPrice === 0) {
     return null;
+  }
   return ((options.averagePrice - options.orderPrice) / options.orderPrice) * 100;
 }
 

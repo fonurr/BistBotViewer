@@ -75,10 +75,18 @@ describe('order arithmetic', () => {
       slippagePercentage({ orderPrice: 38.16, averagePrice: 38.2, type: 'market' }),
     ).toBeNull();
     expect(slippagePercentage({ orderPrice: null, averagePrice: 38.2, type: 'limit' })).toBeNull();
-    expect(slippagePercentage({ orderPrice: 38.16, averagePrice: 38.2, type: null })).toBeNull();
     expect(
       slippagePercentage({ orderPrice: 38.16, averagePrice: 38.2, type: 'limit' }),
     ).toBeCloseTo(0.1048);
+  });
+
+  it('derives slippage for a row that stores no type', () => {
+    // Positions and ClosedTrades carry no type, and API.md states their stored
+    // price is the order (intent) price — null exactly where none existed.
+    expect(slippagePercentage({ orderPrice: 38.16, averagePrice: 38.2, type: null })).toBeCloseTo(
+      0.1048,
+    );
+    expect(slippagePercentage({ orderPrice: null, averagePrice: 38.2, type: null })).toBeNull();
   });
 
   it('reserves the market-buy buffer', () => {

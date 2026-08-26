@@ -45,8 +45,16 @@ textarea {
   font: inherit;
 }
 
+/*
+ * `appearance: none` alone leaves the UA's buttonface fill in place, so any
+ * button that is not a `.btn` (a chip, a row toggle) came out as a light grey
+ * pill. The ground is the page unless a class says otherwise.
+ */
 button {
   appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
 }
 
 a {
@@ -275,6 +283,10 @@ a:hover {
 
 .symbol-filter .filter-trigger {
   width: 160px;
+}
+
+.symbol-filter .filter-popover {
+  width: 240px;
 }
 
 /* An unset filter reads as a placeholder, not as a chosen value. */

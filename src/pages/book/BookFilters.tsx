@@ -291,6 +291,15 @@ export function BookFilters(props: BookFiltersProps) {
               . The list only holds symbols the loaded batches traded.
             </p>
           ) : null}
+          {filters.symbols.size > 0 ? (
+            /* The one fact that prevents a wrong reading: the filter is per
+               chain, not per row, so a chain with one matching leg stays. */
+            <p className="filter-help">
+              {plural(filters.symbols.size, 'symbol')} kept:{' '}
+              {[...filters.symbols].sort().join(', ')}. A chain qualifies if any of its orders is
+              one of them.
+            </p>
+          ) : null}
         </FilterPopover>
         <FilterPopover
           name="dates"

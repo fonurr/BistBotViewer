@@ -8,6 +8,7 @@ import {
   formatDateKey,
   formatPercentage,
   formatQuantity,
+  formatSlip,
   formatRowTime,
   formatSignedNumber,
   formatNumber,
@@ -279,7 +280,7 @@ function BookRow({
 }) {
   const quote = quotes.get(row.symbol);
   const displayType = row.orderType;
-  const pnlFigure = bookRowPnlFigure(row, pnlState, quote?.son ?? null);
+  const pnlFigure = bookRowPnlFigure(row, pnlState, quote?.son ?? null, opener ? chain : undefined);
   const pnl = pnlFigure?.value ?? null;
   const pnlPercent = rowPnlPercent(pnlFigure);
   const slip =
@@ -357,14 +358,14 @@ function BookRow({
         {row.averagePrice === null ? '' : formatNumber(row.averagePrice)}
       </div>
       <div role="cell" className="align-right book-slip">
-        {slip === null ? '' : formatPercentage(slip)}
+        {slip === null ? '' : formatSlip(slip)}
       </div>
       <div role="cell" className={`align-right book-pnl ${pnlClass(pnl, pnlTrusted)}`}>
         {pnl === null ? (
           ''
         ) : (
           <>
-            {formatSignedNumber(pnl)}
+            {formatSignedNumber(pnl, 0)}
             {pnlPercent === null ? null : <small> ({formatPercentage(pnlPercent)})</small>}
             {pnlTrusted ? null : <small className="pnl-note">last known</small>}
           </>
@@ -381,7 +382,12 @@ function BookRow({
           ? ''
           : (formatRowTime(row.acknowledgementTime, batchDate) ?? '')}
       </div>
-      <div role="cell" className={`book-status ${statusClass(status.role)}`}>
+      <div
+        role="cell"
+        /* A settled row's word stays in body ink; only its spine is --st-done,
+           the way the reference draws a closed chain. */
+        className={`book-status ${status.role === 'done' ? '' : statusClass(status.role)}`}
+      >
         {status.exposed ? <Warning size={14} weight="fill" aria-hidden="true" /> : null}
         <span>
           {status.label}
@@ -446,7 +452,27 @@ export function bookRowPnlFigure(
   row: BookChainRow,
   pnlState: FilledPnlState,
   marketPrice: number | null,
+  /** Present on a chain's own row, which carries the whole round trip (SPEC 3). */
+  openerChain?: BookChain,
 ): RowPnlFigure | null {
+  if (row.source === 'closed-trade' && row.leg === 'open' && openerChain) {
+    const trades = new Map(
+      openerChain.sources.closedTrades.map((trade) => [trade.id, trade] as const),
+    );
+    if (trades.size === 0) return null;
+    return {
+      value: [...trades.values()].reduce(
+        (sum, trade) =>
+          sum + realizedPnl(trade.quantity, trade.averageOpenPrice, trade.averageClosePrice),
+        0,
+      ),
+      costBasis: [...trades.values()].reduce(
+        (sum, trade) => sum + trade.quantity * trade.averageOpenPrice,
+        0,
+      ),
+      marketBased: false,
+    };
+  }
   if (row.source === 'position') {
     const exposure = pnlState.exposures.find(
       (candidate) => candidate.source === 'position' && candidate.sourceId === row.raw.id,
@@ -596,6 +622,7 @@ function ScopeHeading({
       {summary.aggregate === null ? null : (
         <span className={summary.tone}>{summary.aggregate}</span>
       )}
+      {summary.note ? <span className="muted">· {summary.note}</span> : null}
       <i />
     </header>
   );
@@ -607,7 +634,7 @@ export function scopeGroupSummary(
   pnlState: FilledPnlState,
   quotes: ReadonlyMap<string, Quote>,
   pricesTrustworthy: boolean,
-): { detail: string; aggregate: string | null; tone: string } {
+): { detail: string; aggregate: string | null; note?: string; tone: string } {
   if (scope === 'waiting') {
     const waitingRows = chains.flatMap((chain) => chain.activeRows.filter((row) => row.isWaiting));
     // `6 buy orders` reads better than `6 waiting orders` when they all go
@@ -663,6 +690,9 @@ export function scopeGroupSummary(
     return {
       detail: 'bought and sold · realized',
       aggregate: formatSignedNumber(realized),
+      // A trades chain draws every order it ever had, and the settled ones sit
+      // in --st-done; the heading says so once rather than per row.
+      note: 'every order in the chain, gray where it filled',
       tone: realized >= 0 ? 'number-positive' : 'number-negative',
     };
   }

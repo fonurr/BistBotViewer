@@ -161,9 +161,13 @@ describe('BookGrid row vocabulary', () => {
       },
     );
 
-    expect(screen.getAllByText('Closed')).toHaveLength(2);
-    // Once on the closing leg, once as the trades group's own realized aggregate.
-    expect(screen.getAllByText('+600,00')).toHaveLength(2);
+    // SPEC 2: the chain's own row reads `Closed`; `Filled` is the leg word.
+    expect(screen.getByText('Closed')).toBeVisible();
+    expect(screen.getByText('Filled')).toBeVisible();
+    // The chain row carries the round trip, the closing leg carries its own
+    // share, and the trades group states the same total once more.
+    expect(screen.getAllByText('+600')).toHaveLength(2);
+    expect(screen.getByText('+600,00')).toBeVisible();
     expect(document.querySelectorAll('.book-actions button')).toHaveLength(0);
   });
 });

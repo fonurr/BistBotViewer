@@ -44,7 +44,11 @@ export function bookRowPresentation(
       : { label: 'Position', detail: held, role: 'fill' };
   }
   if (row.source === 'closed-trade') {
-    return { label: 'Closed', detail: closedTradeHold(row, chain), role: 'done' };
+    // SPEC 2: `Filled` is a leg word; the chain's own row carries the round
+    // trip, so only the opening leg reads `Closed`.
+    return row.leg === 'close'
+      ? { label: 'Filled', role: 'done' }
+      : { label: 'Closed', detail: closedTradeHold(row, chain), role: 'done' };
   }
   if (row.source === 'canceled') {
     // The stored explanation is the only thing that says why a leg died, and

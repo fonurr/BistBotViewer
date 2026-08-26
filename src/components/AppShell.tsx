@@ -23,21 +23,23 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (runtime.refreshFailed) {
       return { className: 'status-warn', copy: 'refresh failed · snapshot unchanged' };
     }
+    // SPEC 5: one freshness line, never two. When the prices are the thing we
+    // cannot stand behind, the line says so instead of the age; otherwise it
+    // is the age alone, in the reference's own words.
     if (runtime.priceHealth === 'unavailable') {
-      return { className: 'status-warn', copy: 'prices unavailable · order stream live' };
+      return { className: 'status-warn', copy: 'prices unavailable' };
     }
     if (runtime.priceHealth === 'loading') {
-      return { className: 'status-wait', copy: 'prices connecting · order stream live' };
+      return { className: 'status-wait', copy: 'prices connecting' };
     }
-    const priceCopy = runtime.priceHealth === 'live' ? 'prices live · ' : '';
     return {
       className: runtime.streamState === 'live' ? 'muted' : 'status-wait',
       copy:
         runtime.streamState === 'connecting'
           ? 'stream connecting'
           : runtime.lastUpdateTime === null
-            ? `${priceCopy}waiting for first snapshot`
-            : `${priceCopy}orders updated ${formatRelativeAge(runtime.lastUpdateTime, now).toLowerCase()}`,
+            ? 'waiting for first snapshot'
+            : `updated ${formatRelativeAge(runtime.lastUpdateTime, now).toLowerCase()}`,
     };
   }, [
     now,
