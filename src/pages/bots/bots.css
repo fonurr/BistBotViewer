@@ -226,6 +226,11 @@
   line-height: 1.5;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+  overflow: hidden;
+  cursor: default;
 }
 
 .bots-card-notice {

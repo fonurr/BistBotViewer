@@ -505,7 +505,11 @@ function BotCard({
         </div>
 
         <div className="bots-card-main">
-          {bot.description !== null ? <p className="bots-description">{bot.description}</p> : null}
+          {bot.description !== null ? (
+            <p className="bots-description" title={bot.description}>
+              {bot.description}
+            </p>
+          ) : null}
           {state === 'incomplete' ? (
             <div className="bots-card-notice bots-card-notice-wait">
               {missing.length > 0
