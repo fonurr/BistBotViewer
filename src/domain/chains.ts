@@ -3,10 +3,12 @@ import type {
   CanceledOrder,
   ClosedTrade,
   Direction,
+  Holiday,
   OrderStatus,
   OrderType,
   Position,
 } from '../bistApi/types';
+import { holidayCalendar, istanbulDay, sessionBatchDate, type HolidayCalendar } from './calendar';
 
 export type BookScope = 'waiting' | 'positions' | 'trades' | 'canceled';
 
@@ -100,7 +102,10 @@ export interface BookChain {
   readonly chainId: string | null;
   readonly botId: string;
   readonly symbol: string;
-  /** The opening day in Istanbul, in an ISO date form that sorts chronologically. */
+  /**
+   * The session the chain opened into, in an ISO date form that sorts chronologically —
+   * the day its opening order could reach the exchange, not the clock day it was written.
+   */
   readonly batchDate: string | null;
   readonly batchTimestamp: number | null;
   readonly rows: readonly BookChainRow[];
@@ -125,6 +130,11 @@ export interface BuildBookChainsInput {
   readonly canceledOrders: readonly CanceledOrder[];
   readonly positions: readonly Position[];
   readonly closedTrades: readonly ClosedTrade[];
+  /**
+   * The trading calendar the batch dates are read against. Without it a batch still rolls
+   * off a weekend and off the close, but a full or half holiday cannot be seen.
+   */
+  readonly holidays?: readonly Holiday[];
 }
 
 const TERMINAL_STATUSES: ReadonlySet<OrderStatus> = new Set([
@@ -138,13 +148,6 @@ const TERMINAL_STATUSES: ReadonlySet<OrderStatus> = new Set([
   'Skipped',
   'SkippedForNow',
 ]);
-
-const istanbulDateFormatter = new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'Europe/Istanbul',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-});
 
 interface MutableChainSources {
   activeOrders: ActiveOrder[];
@@ -165,19 +168,7 @@ export function isWaitingOrderStatus(status: OrderStatus): boolean {
 }
 
 export function toIstanbulDate(timestamp: number | null): string | null {
-  if (timestamp === null || !Number.isFinite(timestamp)) return null;
-
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return null;
-
-  const parts = istanbulDateFormatter.formatToParts(date);
-  const year = parts.find(({ type }) => type === 'year')?.value;
-  const month = parts.find(({ type }) => type === 'month')?.value;
-  const day = parts.find(({ type }) => type === 'day')?.value;
-
-  return year !== undefined && month !== undefined && day !== undefined
-    ? `${year}-${month}-${day}`
-    : null;
+  return timestamp === null ? null : istanbulDay(timestamp);
 }
 
 export function buildBookChains(input: BuildBookChainsInput): BookChain[] {
@@ -228,7 +219,10 @@ export function buildBookChains(input: BuildBookChainsInput): BookChain[] {
     );
   }
 
-  const chains = [...linked.values(), ...unlinked].map(finalizeChain);
+  const calendar = holidayCalendar(input.holidays ?? []);
+  const chains = [...linked.values(), ...unlinked].map((accumulator) =>
+    finalizeChain(accumulator, calendar),
+  );
   return applyFleetSellClaims(chains).sort(compareBookChains);
 }
 
@@ -548,7 +542,7 @@ function normalizeClosedTrade(trade: ClosedTrade): [BookClosedTradeRow, BookClos
   ];
 }
 
-function finalizeChain(accumulator: ChainAccumulator): BookChain {
+function finalizeChain(accumulator: ChainAccumulator, calendar: HolidayCalendar): BookChain {
   const rows = [...accumulator.rows].sort(compareRows);
   const activeRows = rows.filter(isActiveRow);
   const canceledRows = rows.filter(isCanceledRow);
@@ -603,7 +597,7 @@ function finalizeChain(accumulator: ChainAccumulator): BookChain {
     chainId: accumulator.chainId,
     botId: representative.botId,
     symbol: representative.symbol,
-    batchDate: toIstanbulDate(batchTimestamp),
+    batchDate: sessionBatchDate(batchTimestamp, calendar),
     batchTimestamp,
     rows,
     activeRows,

@@ -1,4 +1,5 @@
 import type { Holiday, ScheduleType } from '../bistApi/types';
+import { closeMinuteOn, holidayCalendar, istanbulMinuteAt, rollToTradingDay } from './calendar';
 
 const DAY_MS = 86_400_000;
 const MAX_DAYS_AHEAD = 366;
@@ -22,27 +23,22 @@ export function resolveSchedule(
   holidays: readonly Holiday[],
   nowMs = Date.now(),
 ): ResolvedSchedule {
-  const dayEpoch = realIsoDateEpoch(input.day);
-  if (dayEpoch === null) return invalid('Choose a real date in YYYY-MM-DD form.');
+  if (realIsoDateEpoch(input.day) === null) {
+    return invalid('Choose a real date in YYYY-MM-DD form.');
+  }
 
   const needsDiff = input.type === 'AfterOpen' || input.type === 'BeforeClose';
   if (needsDiff && (input.diff === undefined || !Number.isFinite(input.diff) || input.diff < 0)) {
     return invalid('The selected moment requires a finite, non-negative difference.');
   }
 
-  const holidayByDay = new Map(holidays.map((holiday) => [holiday.date, holiday.type]));
-  let resolvedEpoch = dayEpoch;
-  let rolled = 0;
-  while (!isTradingDay(resolvedEpoch, holidayByDay)) {
-    resolvedEpoch += DAY_MS;
-    rolled += 1;
-    if (rolled > MAX_DAYS_AHEAD) {
-      return invalid('No trading day exists within one year of the requested day.');
-    }
+  const calendar = holidayCalendar(holidays);
+  const resolvedDay = rollToTradingDay(input.day, calendar);
+  if (resolvedDay === null) {
+    return invalid('No trading day exists within one year of the requested day.');
   }
 
-  const resolvedDay = new Date(resolvedEpoch).toISOString().slice(0, 10);
-  const closeMinute = holidayByDay.get(resolvedDay) === 'half' ? 12 * 60 + 30 : 18 * 60;
+  const closeMinute = closeMinuteOn(resolvedDay, calendar);
   const closeAt = istanbulMinuteAt(resolvedDay, closeMinute);
   let fireTime: number;
 
@@ -87,15 +83,4 @@ function realIsoDateEpoch(day: string): number | null {
   const epoch = Date.UTC(year!, month! - 1, date!, 9);
   const roundTrip = new Date(epoch).toISOString().slice(0, 10);
   return roundTrip === day ? epoch : null;
-}
-
-function isTradingDay(epoch: number, holidays: ReadonlyMap<string, Holiday['type']>): boolean {
-  const weekday = new Date(epoch).getUTCDay();
-  const day = new Date(epoch).toISOString().slice(0, 10);
-  return weekday !== 0 && weekday !== 6 && holidays.get(day) !== 'full';
-}
-
-function istanbulMinuteAt(day: string, minute: number): number {
-  const start = Date.parse(`${day}T00:00:00+03:00`);
-  return Math.round((start + minute * 60_000) / 1000) * 1000;
 }

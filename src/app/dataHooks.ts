@@ -111,9 +111,13 @@ export function useBotsData() {
         queryKey: bistKeys.pendingRequests(allBots),
         queryFn: () => bistApi.getPendingOrderRequests(allBots),
       },
+      // The batch a chain belongs to is a session, not a clock day, so this page reads the
+      // same calendar the Book does — one cache entry, shared.
+      { queryKey: bistKeys.holidays, queryFn: bistApi.getHolidays },
     ],
   });
-  const [bots, accounts, activeOrders, positions, closedTrades, pendingRequests] = results;
+  const [bots, accounts, activeOrders, positions, closedTrades, pendingRequests, holidays] =
+    results;
   return {
     bots: bots.data ?? [],
     accounts: accounts.data ?? [],
@@ -121,6 +125,7 @@ export function useBotsData() {
     positions: positions.data ?? [],
     closedTrades: closedTrades.data ?? [],
     pendingRequests: pendingRequests.data ?? [],
+    holidays: holidays.data ?? [],
     isPending: results.some((result) => result.isPending),
     error: results.find((result) => result.error)?.error ?? null,
   };

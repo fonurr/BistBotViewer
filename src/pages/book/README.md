@@ -16,7 +16,13 @@ canceled ones, and that is the canceled toggle's job alone.
 
 Grouping is date → bot → scope. The batch heading leads (`15.08.26 · batch · friday · 11
 chains`) and the column band sits **under** it, because the columns belong to the batch they
-head. The scope line (`waiting · 3 chains · 6 buy orders, nothing bought yet`) **opens its own
+head. A batch is a **session, not a clock day**: a chain is filed under the day its opening
+order could reach the exchange, so one written after the exchange stopped taking orders (five
+minutes past the close — 18:00, or 12:30 on a half day), at the weekend, or on a full holiday
+belongs to the next trading day. `domain/calendar.ts` owns that rule and reads it against the
+`GetHolidays` calendar; without one it still rolls off a weekend and off the close, since an
+absent holiday row cannot prove a weekday was open. A row whose own day is not the batch date
+then states its date beside the clock, which is what `formatRowTime` already does. The scope line (`waiting · 3 chains · 6 buy orders, nothing bought yet`) **opens its own
 group**, immediately above the chains it counts, names the side when the waiting orders all go
 one way, and carries that group's aggregate — unrealized for positions, realized for trades. The
 focused `no closing order` list spans scopes on purpose, so it groups by bot alone.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ActiveOrder, CanceledOrder, ClosedTrade, Position } from '../bistApi/types';
+import type { ActiveOrder, CanceledOrder, ClosedTrade, Holiday, Position } from '../bistApi/types';
 import { buildBookChains, toIstanbulDate } from './chains';
 
 const at = (iso: string): number => Date.parse(iso);
@@ -119,16 +119,60 @@ function build(overrides: {
   canceledOrders?: CanceledOrder[];
   positions?: Position[];
   closedTrades?: ClosedTrade[];
+  holidays?: Holiday[];
 }) {
   return buildBookChains({
     activeOrders: overrides.activeOrders ?? [],
     canceledOrders: overrides.canceledOrders ?? [],
     positions: overrides.positions ?? [],
     closedTrades: overrides.closedTrades ?? [],
+    holidays: overrides.holidays ?? [],
   });
 }
 
 describe('buildBookChains', () => {
+  it('files a chain in the session its opening order could reach, not the day it was written', () => {
+    // The bot's buy is rejected on Thursday evening, retried at 21:35, and the attempt that
+    // finally fills goes out at 00:40. All three belong to Friday's session.
+    const afterHours = {
+      canceledOrders: [
+        canceled({
+          id: 1,
+          clientOrderId: 'root-buy',
+          chainId: 'root-buy',
+          parentClientOrderId: null,
+          direction: 'buy' as const,
+          status: 'Rejected' as const,
+          orderTime: at('2026-08-13T21:04:58+03:00'),
+          sentTime: at('2026-08-13T21:04:57+03:00'),
+          cancelTime: at('2026-08-13T21:05:02+03:00'),
+        }),
+      ],
+      closedTrades: [
+        trade({
+          id: 2,
+          chainId: 'root-buy',
+          clientOpenOrderId: 'winning-buy',
+          openRetryOfClientOrderId: 'retry-buy',
+          openOrderTime: at('2026-08-14T00:40:06+03:00'),
+          openExecuteTime: at('2026-08-14T13:11:30+03:00'),
+          closeOrderTime: at('2026-08-17T18:00:31+03:00'),
+          closeExecuteTime: at('2026-08-17T18:06:28+03:00'),
+        }),
+      ],
+    };
+
+    const [chain] = build(afterHours);
+    expect(chain.batchDate).toBe('2026-08-14');
+
+    // The next session is the calendar's to decide, not the clock's.
+    const [overHoliday] = build({
+      ...afterHours,
+      holidays: [{ date: '2026-08-14', type: 'full' }],
+    });
+    expect(overHoliday.batchDate).toBe('2026-08-17');
+  });
+
   it('groups retry attempts only by their non-null chainId and retains retry edges', () => {
     const root = canceled({
       id: 1,

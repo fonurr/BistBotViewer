@@ -67,8 +67,9 @@ export function BookPage() {
         canceledOrders: data.canceledOrders,
         positions: data.positions,
         closedTrades: data.closedTrades,
+        holidays: data.holidays,
       }),
-    [data.activeOrders, data.canceledOrders, data.closedTrades, data.positions],
+    [data.activeOrders, data.canceledOrders, data.closedTrades, data.holidays, data.positions],
   );
   const botById = useMemo(() => new Map(data.bots.map((bot) => [bot.id, bot])), [data.bots]);
   const symbolsNeedingPrices = useMemo(

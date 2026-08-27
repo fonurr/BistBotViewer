@@ -120,6 +120,7 @@ export function BotsPage() {
       canceledOrders: [],
       positions: visiblePositions,
       closedTrades: visibleTrades,
+      holidays: data.holidays,
     });
     const latestBatch =
       chains
@@ -169,6 +170,7 @@ export function BotsPage() {
     };
   }, [
     budgets,
+    data.holidays,
     prices.quotes,
     prices.trustworthy,
     visibleBots,
