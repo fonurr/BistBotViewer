@@ -31,9 +31,16 @@ estimates.
   expectancy and no slip, and averaging it in as zero would be the one figure here nobody could
   reproduce.
 
-Execution timestamps are acknowledgement times, not true fill times. A trade learned on a weekend
-or full holiday remains in totals and is bucketed by that observed date; it is never discarded for
-being learned outside a trading session. Missing current-session closing bars are polled so a bar
+Every figure is filed by **batch**: the session a round trip's opening buy could reach, read with
+`domain/calendar`'s rule, so this page and the Book file one chain under one day. A trade counts in
+the batch it was opened in however many sessions later it closed, which is what makes the window a
+set of batches rather than a set of closes — one opened before the window and closed inside it is
+out, one opened inside it and closed after is in. An opening written after hours, at a weekend or
+on a full holiday counts in the next trading session, and the standing note says how many.
+
+Execution timestamps are acknowledgement times, not true fill times. A round trip whose close was
+never observed is excluded, because nothing then places it in time; so is one carrying no opening
+stamp, because nothing names its batch. Missing current-session closing bars are polled so a bar
 written later can replace an earlier unavailable metric.
 
 Bot, account and symbol filters are the Book's own controls from `components/EntityFilters`, so

@@ -60,28 +60,37 @@ function report(options: {
 }
 
 describe('buildPerformanceReport', () => {
-  it('builds an inclusive trailing 90-day series on Istanbul acknowledgement dates', () => {
+  it('builds an inclusive trailing 90-day series on the batch each trade opened into', () => {
     const istanbulNextDay = trade({
       id: 1,
-      closeExecuteTime: at('2026-08-24T21:30:00.000Z'),
+      openOrderTime: at('2026-08-24T21:30:00.000Z'),
+      closeExecuteTime: at('2026-08-25T11:00:00.000Z'),
     });
     const firstWindowDay = trade({
       id: 2,
-      closeExecuteTime: at('2026-05-28T08:00:00.000Z'),
+      openOrderTime: at('2026-05-28T08:00:00.000Z'),
+      openExecuteTime: at('2026-05-28T08:01:00.000Z'),
       averageClosePrice: 105,
     });
     const tooOld = trade({
       id: 3,
-      closeExecuteTime: at('2026-05-27T08:00:00.000Z'),
+      openOrderTime: at('2026-05-27T08:00:00.000Z'),
     });
     const future = trade({
       id: 4,
       closeExecuteTime: at('2026-08-25T13:00:00.000Z'),
     });
     const missingDate = trade({ id: 5, closeExecuteTime: null });
-    const weekendAcknowledgement = trade({
-      id: 6,
-      closeExecuteTime: at('2026-08-23T09:00:00.000Z'),
+    const missingOpeningStamp = trade({ id: 6, openOrderTime: null, openExecuteTime: null });
+    // Written on a Saturday, so its batch is the Monday it could first reach.
+    const weekendOpening = trade({
+      id: 7,
+      openOrderTime: at('2026-08-22T09:00:00.000Z'),
+    });
+    // Written on a Thursday evening, past the last minute the exchange takes an order.
+    const afterHoursOpening = trade({
+      id: 8,
+      openOrderTime: at('2026-08-20T18:30:00.000Z'),
     });
 
     const result = report({
@@ -89,8 +98,10 @@ describe('buildPerformanceReport', () => {
         future,
         tooOld,
         missingDate,
+        missingOpeningStamp,
         istanbulNextDay,
-        weekendAcknowledgement,
+        weekendOpening,
+        afterHoursOpening,
         firstWindowDay,
       ],
     });
@@ -101,13 +112,23 @@ describe('buildPerformanceReport', () => {
       endDate: '2026-08-25',
       calendarVerified: true,
     });
-    expect(result.dateBasis).toBe('close-acknowledgement');
+    expect(result.dateBasis).toBe('opening-batch');
     expect(result.trades.map(({ key, businessDate }) => [key, businessDate])).toEqual([
       ['closed-trade:2', '2026-05-28'],
-      ['closed-trade:6', '2026-08-23'],
+      ['closed-trade:8', '2026-08-21'],
+      ['closed-trade:7', '2026-08-24'],
       ['closed-trade:1', '2026-08-25'],
     ]);
-    expect(result.summary.series.find(({ date }) => date === '2026-08-23')).toMatchObject({
+    expect(result.exclusions).toMatchObject({
+      missingOpeningStampCount: 1,
+      missingCloseAcknowledgementCount: 1,
+      beforeWindowCount: 1,
+      futureCount: 1,
+      openedAfterHoursCount: 2,
+    });
+    // The Saturday opening is counted in Monday's session, and Saturday holds nothing.
+    expect(result.summary.series.find(({ date }) => date === '2026-08-22')).toBeUndefined();
+    expect(result.summary.series.find(({ date }) => date === '2026-08-24')).toMatchObject({
       tradeCount: 1,
       grossPnl: 100,
     });
@@ -117,12 +138,8 @@ describe('buildPerformanceReport', () => {
       calendarVerified: true,
     });
     expect(result.exclusions).toMatchObject({
-      sourceTradeCount: 6,
-      includedTradeCount: 3,
-      beforeWindowCount: 1,
-      futureCount: 1,
-      missingCloseAcknowledgementCount: 1,
-      nonBusinessAcknowledgementCount: 1,
+      sourceTradeCount: 8,
+      includedTradeCount: 4,
     });
   });
 
@@ -203,17 +220,17 @@ describe('buildPerformanceReport', () => {
       trades: [
         trade({
           id: 1,
-          closeExecuteTime: at('2026-08-20T10:00:00.000Z'),
+          openOrderTime: at('2026-08-20T07:00:00.000Z'),
           averageClosePrice: 110,
         }),
         trade({
           id: 2,
-          closeExecuteTime: at('2026-08-21T10:00:00.000Z'),
+          openOrderTime: at('2026-08-21T07:00:00.000Z'),
           averageClosePrice: 96,
         }),
         trade({
           id: 3,
-          closeExecuteTime: at('2026-08-24T10:00:00.000Z'),
+          openOrderTime: at('2026-08-24T07:00:00.000Z'),
           averageClosePrice: 92,
         }),
       ],
@@ -369,7 +386,7 @@ describe('buildPerformanceReport', () => {
     });
   });
 
-  it('keeps acknowledgements observed on a full holiday and counts the half session', () => {
+  it('carries an opening on a full holiday into the next session and counts the half session', () => {
     const baseline = report({ trades: [] });
     const holidays: Holiday[] = [
       calendarCoverage[0]!,
@@ -380,8 +397,18 @@ describe('buildPerformanceReport', () => {
     const result = report({
       holidays,
       trades: [
-        trade({ id: 1, closeExecuteTime: at('2026-08-24T10:00:00.000Z') }),
-        trade({ id: 2, closeExecuteTime: at('2026-08-25T10:00:00.000Z') }),
+        // Written while the exchange was shut for the day, so it belongs to the half day after.
+        trade({
+          id: 1,
+          openOrderTime: at('2026-08-24T10:00:00.000Z'),
+          closeExecuteTime: at('2026-08-25T11:00:00.000Z'),
+        }),
+        // Written inside the half day's own session.
+        trade({
+          id: 2,
+          openOrderTime: at('2026-08-25T06:30:00.000Z'),
+          closeExecuteTime: at('2026-08-25T11:00:00.000Z'),
+        }),
       ],
     });
 
@@ -392,9 +419,12 @@ describe('buildPerformanceReport', () => {
       available: true,
       value: 1,
     });
-    expect(result.trades.map(({ key }) => key)).toEqual(['closed-trade:1', 'closed-trade:2']);
+    expect(result.trades.map(({ key, businessDate }) => [key, businessDate])).toEqual([
+      ['closed-trade:1', '2026-08-25'],
+      ['closed-trade:2', '2026-08-25'],
+    ]);
     expect(result.summary.tradeCount).toBe(2);
-    expect(result.exclusions.nonBusinessAcknowledgementCount).toBe(1);
+    expect(result.exclusions.openedAfterHoursCount).toBe(1);
   });
 
   it('returns null ratio metrics rather than decorative zeroes for an empty report', () => {

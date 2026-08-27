@@ -127,6 +127,10 @@ Chains are built strictly from `chainId`; null links stay independent.
 ## UI contract
 
 - English UI and code only. Turkish number formatting, `dd.MM.yy` dates, Istanbul time.
+- A **batch is a session, not a clock day**: work is filed under the day its opening order could
+  reach the exchange — through five minutes past the close (18:00, or 12:30 on a half day), then
+  the next trading day. `src/domain/calendar.ts` owns that rule; the Book files chains by it and
+  Performance reports every figure by it, so one chain belongs to one batch on both pages.
 - Dark only. Use the vendored Nocturne stylesheet and `src/styles/tokens.css`; never add ad-hoc
   colors, spacing, radii, shadows, or font sizes.
 - Status cells carry only stored statuses in their display form (`By user`, not `CanceledByUser`;

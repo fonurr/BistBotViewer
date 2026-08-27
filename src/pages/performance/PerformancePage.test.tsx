@@ -15,6 +15,7 @@ import {
   makeClosedTrade,
   makePerformanceReadFixture,
 } from '../../test/fixtures';
+import { holidayCalendar } from '../../domain/calendar';
 import { PerformancePage, scopeCanceledRetries, shouldPollClosingBars } from './PerformancePage';
 
 const api = vi.hoisted(() => ({
@@ -116,37 +117,47 @@ describe('Performance source trust', () => {
 });
 
 describe('Performance scope and unavailable values', () => {
-  it('scopes canceled retry edges by bot, symbol, and Istanbul cancellation date', () => {
+  it('scopes canceled retry edges by bot, symbol, and the batch they were aimed at', () => {
     const rows = [
       canceled({ id: 1 }),
       canceled({ id: 2, botId: 'bot-beta' }),
       canceled({ id: 3, symbol: 'GARAN' }),
-      canceled({ id: 4, cancelTime: Date.parse('2026-08-24T12:00:00+03:00') }),
-      canceled({ id: 5, cancelTime: null }),
+      canceled({
+        id: 4,
+        orderTime: Date.parse('2026-08-24T12:00:00+03:00'),
+        sentTime: Date.parse('2026-08-24T11:59:59+03:00'),
+        cancelTime: Date.parse('2026-08-24T12:05:00+03:00'),
+      }),
+      canceled({ id: 5, orderTime: null, sentTime: null, cancelTime: null }),
       canceled({ id: 6, retryOfClientOrderId: null }),
+      // Rejected on the Monday evening, past the last minute an order could reach that
+      // session: this attempt was aimed at Tuesday and belongs in Tuesday's batch.
+      canceled({
+        id: 7,
+        orderTime: Date.parse('2026-08-24T21:30:00+03:00'),
+        sentTime: Date.parse('2026-08-24T21:29:59+03:00'),
+        cancelTime: Date.parse('2026-08-24T21:30:05+03:00'),
+      }),
     ];
-
-    const result = scopeCanceledRetries(rows, {
+    const scope = {
       botIds: new Set(['bot-alpha']),
-      accountScoped: false,
       symbols: new Set(['THYAO']),
       from: FIXTURE_DAY,
       to: FIXTURE_DAY,
-    });
+      calendar: holidayCalendar([]),
+    };
 
-    expect(result.rows.map((row) => row.id)).toEqual([1]);
+    const result = scopeCanceledRetries(rows, { ...scope, accountScoped: false });
+
+    expect(result.rows.map((row) => row.id)).toEqual([1, 7]);
     expect(result.excludedUntimed).toBe(1);
     expect(result.accountAttributionUnavailable).toBe(false);
 
-    expect(
-      scopeCanceledRetries(rows, {
-        botIds: new Set(['bot-alpha']),
-        accountScoped: true,
-        symbols: new Set(['THYAO']),
-        from: FIXTURE_DAY,
-        to: FIXTURE_DAY,
-      }),
-    ).toEqual({ rows: [], excludedUntimed: 0, accountAttributionUnavailable: true });
+    expect(scopeCanceledRetries(rows, { ...scope, accountScoped: true })).toEqual({
+      rows: [],
+      excludedUntimed: 0,
+      accountAttributionUnavailable: true,
+    });
   });
 
   it('keeps identical account numbers at different brokerages separately selectable', async () => {
@@ -292,6 +303,9 @@ describe('Performance curve honesty', () => {
           chainId: 'chain-thyao-second',
           clientOpenOrderId: 'client-thyao-second-open',
           clientCloseOrderId: 'client-thyao-second-close',
+          // A batch of its own, which is the unit the curve walks.
+          openOrderTime: Date.parse('2026-08-24T10:00:00+03:00'),
+          openExecuteTime: Date.parse('2026-08-24T10:00:02+03:00'),
           closeExecuteTime: Date.parse('2026-08-24T15:00:00+03:00'),
           closeOrderTime: Date.parse('2026-08-24T14:59:00+03:00'),
         }),

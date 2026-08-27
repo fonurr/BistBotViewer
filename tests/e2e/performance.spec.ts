@@ -43,7 +43,9 @@ test('keeps unprovable Performance metrics unavailable instead of rendering zero
   const symbolRow = symbolSection.getByRole('row').filter({ hasText: 'THYAO' });
   await expect(symbolRow.getByRole('cell', { name: 'not available' })).toBeVisible();
   await expect(symbolRow.getByRole('cell', { name: '1 boundary bars missing' })).toBeVisible();
-  await expect(page.getByText(/These are acknowledgement dates, not fill times/)).toBeVisible();
+  await expect(
+    page.getByText(/filed by batch: the session the opening buy could reach/),
+  ).toBeVisible();
   await expect(page.getByText(/There is no net result to give/)).toBeVisible();
 
   expect(

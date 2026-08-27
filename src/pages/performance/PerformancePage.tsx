@@ -20,6 +20,7 @@ import {
 } from '../../components/EntityFilters';
 import { PopoverScrim } from '../../components/FilterPopover';
 import { accountIdentityKey } from '../../domain/accounts';
+import { holidayCalendar, sessionBatchDate, type HolidayCalendar } from '../../domain/calendar';
 import {
   formatCompactDuration,
   formatDateKey,
@@ -59,6 +60,7 @@ interface RetryScopeOptions {
   symbols: ReadonlySet<string>;
   from: string;
   to: string;
+  calendar: HolidayCalendar;
 }
 
 export function PerformancePage() {
@@ -152,9 +154,10 @@ export function PerformancePage() {
     [data.bots, selectedAccounts, selectedBotIds],
   );
   const budgets = useBotBudgets(selectedBots, sourceReady);
+  const calendar = useMemo(() => holidayCalendar(data.holidays), [data.holidays]);
   const bounds = useMemo(
-    () => windowBounds(windowMode, scopedTrades, today, rangeFrom, rangeTo),
-    [rangeFrom, rangeTo, scopedTrades, today, windowMode],
+    () => windowBounds(windowMode, scopedTrades, today, rangeFrom, rangeTo, calendar),
+    [calendar, rangeFrom, rangeTo, scopedTrades, today, windowMode],
   );
   const baseReport = useMemo(
     () =>
@@ -238,8 +241,17 @@ export function PerformancePage() {
         symbols: selectedSymbols,
         from: bounds.from,
         to: bounds.to,
+        calendar,
       }),
-    [accountScoped, bounds.from, bounds.to, data.canceledOrders, selectedBotIds, selectedSymbols],
+    [
+      accountScoped,
+      bounds.from,
+      bounds.to,
+      calendar,
+      data.canceledOrders,
+      selectedBotIds,
+      selectedSymbols,
+    ],
   );
   // A bot in scope with no closed round trip carries no figure in the table, and
   // the table says so rather than leaving it to be missed.
@@ -429,12 +441,18 @@ export function scopeCanceledRetries(
     if (!order.chainId || !order.retryOfClientOrderId) continue;
     if (options.botIds !== null && !options.botIds.has(order.botId)) continue;
     if (options.symbols.size > 0 && !options.symbols.has(order.symbol)) continue;
-    if (order.cancelTime === null) {
+    // A dead attempt is placed in the batch it was aimed at, the same way the Book places
+    // the chain it belongs to, so a window holds an evening rejection and the trade its
+    // ladder finally opened together.
+    const batch = sessionBatchDate(
+      order.orderTime ?? order.sentTime ?? order.cancelTime,
+      options.calendar,
+    );
+    if (batch === null) {
       excludedUntimed += 1;
       continue;
     }
-    const canceledDate = toIstanbulDateKey(order.cancelTime);
-    if (canceledDate < options.from || canceledDate > options.to) continue;
+    if (batch < options.from || batch > options.to) continue;
     rows.push(order);
   }
   return { rows, excludedUntimed, accountAttributionUnavailable: false };
@@ -1194,12 +1212,15 @@ function Limitations({
       <article className="card">
         <div className="card-kicker">time boundary</div>
         <p>
-          These are acknowledgement dates, not fill times. Trades are assigned to the Istanbul date
-          when this server learned of the close.{' '}
-          {plural(report.exclusions.missingCloseAcknowledgementCount, 'row')} lacked even that
-          boundary and were excluded. {report.exclusions.nonBusinessAcknowledgementCount} were
-          learned on a weekend or full holiday; they remain included on that observed
-          acknowledgement date because the fill may have happened earlier.
+          Every figure here is filed by batch: the session the opening buy could reach, the day the
+          Book files the same chain under. A round trip counts in the batch its bot opened it in,
+          however many sessions later it closed, so this window holds the batches that opened inside
+          it and not the closes that landed there. {report.exclusions.openedAfterHoursCount} opened
+          after their own day could take an order and count in the next session.{' '}
+          {plural(report.exclusions.missingOpeningStampCount, 'row')} carried no opening stamp and{' '}
+          {plural(report.exclusions.missingCloseAcknowledgementCount, 'row')} no close
+          acknowledgement; neither can be placed in time, and both were excluded. The execute stamps
+          behind hold remain acknowledgement times, not fill times.
         </p>
       </article>
       <article className="card">
@@ -1324,14 +1345,18 @@ function windowBounds(
   today: string,
   rangeFrom: string,
   rangeTo: string,
+  calendar: HolidayCalendar,
 ) {
   if (mode === 'today') return { from: today, to: today };
   if (mode === 'week') return { from: shiftDate(today, -6), to: today };
   if (mode === 'range') return { from: rangeFrom, to: rangeTo };
+  // `all` reaches back to the oldest batch in scope, which is the report's own unit: an
+  // earliest close would leave out the batch of a trade that opened before it.
   const dates = trades
-    .flatMap((trade) =>
-      trade.closeExecuteTime === null ? [] : [toIstanbulDateKey(trade.closeExecuteTime)],
-    )
+    .flatMap((trade) => {
+      const batch = sessionBatchDate(trade.openOrderTime ?? trade.openExecuteTime, calendar);
+      return batch === null ? [] : [batch];
+    })
     .sort();
   return { from: dates[0] ?? today, to: today };
 }

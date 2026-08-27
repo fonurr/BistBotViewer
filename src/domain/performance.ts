@@ -1,6 +1,7 @@
 import type { ClosedTrade, Holiday } from '../bistApi/types';
 import type { AuctionBar, AuctionBarKey } from '../priceApi/types';
 import { accountIdentityKey } from './accounts';
+import { holidayCalendar, istanbulDay, sessionBatchDate } from './calendar';
 import { toIstanbulDate } from './chains';
 
 export const PERFORMANCE_WINDOW_DAYS = 90;
@@ -47,9 +48,12 @@ export interface PerformanceTrade {
   readonly brokerageId: string;
   readonly accountKey: string;
   readonly symbol: string;
-  /** Istanbul date when this server learned that the close had filled. */
+  /**
+   * The batch this round trip belongs to: the session its opening buy could reach, read the
+   * way the Book reads it, so a chain and the trade it became file under one day.
+   */
   readonly businessDate: string;
-  readonly dateBasis: 'close-acknowledgement';
+  readonly dateBasis: 'opening-batch';
   readonly quantity: number;
   readonly costBasis: number;
   readonly grossPnl: number;
@@ -178,7 +182,10 @@ export interface PerformanceExclusions {
   readonly beforeWindowCount: number;
   readonly futureCount: number;
   readonly missingCloseAcknowledgementCount: number;
-  readonly nonBusinessAcknowledgementCount: number;
+  /** Excluded: no opening stamp, so the batch it belongs to cannot be named. */
+  readonly missingOpeningStampCount: number;
+  /** Included: written after its own day could take an order, so it counts in the next session. */
+  readonly openedAfterHoursCount: number;
   readonly calendarUnverifiedTradeCount: number;
 }
 
@@ -191,7 +198,7 @@ export interface ClosingBarCoverage {
 
 export interface PerformanceReport {
   readonly window: PerformanceWindow;
-  readonly dateBasis: 'close-acknowledgement';
+  readonly dateBasis: 'opening-batch';
   readonly trades: readonly PerformanceTrade[];
   readonly summary: PerformanceAggregate;
   readonly byBot: readonly BotPerformanceRollup[];
@@ -248,6 +255,7 @@ export function buildPerformanceReport(input: BuildPerformanceReportInput): Perf
     input.holidays.filter(({ type }) => type === 'full').map(({ date }) => date),
   );
   const calendar = buildCalendarWindow(startDate, endDate, input.holidays, fullHolidays);
+  const calendarDays = holidayCalendar(input.holidays);
   const barsByKey = indexClosingBars(input.closingBars);
   const barSessionDates = new Set(input.closingBars.map(({ sessionDate }) => sessionDate));
 
@@ -255,9 +263,12 @@ export function buildPerformanceReport(input: BuildPerformanceReportInput): Perf
   let beforeWindowCount = 0;
   let futureCount = 0;
   let missingCloseAcknowledgementCount = 0;
-  let nonBusinessAcknowledgementCount = 0;
+  let missingOpeningStampCount = 0;
+  let openedAfterHoursCount = 0;
 
   for (const trade of input.trades) {
+    // A round trip whose close was never observed cannot be placed in time at all — neither
+    // its hold nor the fact that it happened before `asOf` — so it stays out of the report.
     const closeAcknowledgement = trade.closeExecuteTime;
     if (closeAcknowledgement === null || !Number.isFinite(closeAcknowledgement)) {
       missingCloseAcknowledgementCount += 1;
@@ -268,9 +279,10 @@ export function buildPerformanceReport(input: BuildPerformanceReportInput): Perf
       continue;
     }
 
-    const businessDate = toIstanbulDate(closeAcknowledgement);
+    const openingStamp = firstFiniteStamp(trade.openOrderTime, trade.openExecuteTime);
+    const businessDate = sessionBatchDate(openingStamp, calendarDays);
     if (businessDate === null) {
-      missingCloseAcknowledgementCount += 1;
+      missingOpeningStampCount += 1;
       continue;
     }
     if (businessDate < startDate) {
@@ -281,8 +293,8 @@ export function buildPerformanceReport(input: BuildPerformanceReportInput): Perf
       futureCount += 1;
       continue;
     }
-    if (isWeekend(businessDate) || fullHolidays.has(businessDate)) {
-      nonBusinessAcknowledgementCount += 1;
+    if (businessDate !== istanbulDay(openingStamp!)) {
+      openedAfterHoursCount += 1;
     }
 
     included.push(normalizePerformanceTrade(trade, businessDate));
@@ -359,7 +371,7 @@ export function buildPerformanceReport(input: BuildPerformanceReportInput): Perf
       firstBusinessDate,
       lastBusinessDate,
     },
-    dateBasis: 'close-acknowledgement',
+    dateBasis: 'opening-batch',
     trades: included,
     summary,
     byBot,
@@ -373,7 +385,8 @@ export function buildPerformanceReport(input: BuildPerformanceReportInput): Perf
       beforeWindowCount,
       futureCount,
       missingCloseAcknowledgementCount,
-      nonBusinessAcknowledgementCount,
+      missingOpeningStampCount,
+      openedAfterHoursCount,
       calendarUnverifiedTradeCount,
     },
   };
@@ -395,7 +408,7 @@ function normalizePerformanceTrade(trade: ClosedTrade, businessDate: string): Pe
     accountKey: performanceAccountKey(trade.brokerageId, trade.accountId),
     symbol: trade.symbol,
     businessDate,
-    dateBasis: 'close-acknowledgement',
+    dateBasis: 'opening-batch',
     quantity: trade.quantity,
     costBasis,
     grossPnl,
@@ -885,6 +898,11 @@ function datesBetween(startDate: string, endDate: string): string[] {
 function shiftIsoDate(date: string, days: number): string {
   const timestamp = Date.parse(`${date}T00:00:00Z`) + days * 86_400_000;
   return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+/** The first stamp the record actually carries, or null when it carries none. */
+function firstFiniteStamp(...stamps: readonly (number | null)[]): number | null {
+  return stamps.find((stamp): stamp is number => stamp !== null && Number.isFinite(stamp)) ?? null;
 }
 
 function isWeekend(date: string): boolean {
