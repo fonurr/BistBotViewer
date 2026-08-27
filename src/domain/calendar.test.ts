@@ -18,8 +18,8 @@ describe('sessionBatchDate', () => {
 
   it('keeps a closing-auction order on its day and moves the one past the grace', () => {
     expect(sessionBatchDate(at('2026-08-13T18:00:31+03:00'), calendar())).toBe('2026-08-13');
-    expect(sessionBatchDate(at('2026-08-13T18:05:00+03:00'), calendar())).toBe('2026-08-13');
-    expect(sessionBatchDate(at('2026-08-13T18:05:01+03:00'), calendar())).toBe('2026-08-14');
+    expect(sessionBatchDate(at('2026-08-13T18:10:00+03:00'), calendar())).toBe('2026-08-13');
+    expect(sessionBatchDate(at('2026-08-13T18:10:01+03:00'), calendar())).toBe('2026-08-14');
   });
 
   it('files an order written after hours in the next session', () => {
@@ -41,10 +41,10 @@ describe('sessionBatchDate', () => {
     expect(sessionBatchDate(at('2026-08-14T11:00:00+03:00'), calendar())).toBe('2026-08-14');
   });
 
-  it('closes a half day at 12:30, five minutes of entry included', () => {
+  it('closes a half day at 12:30, its ten minutes of grace included', () => {
     const holidays = calendar({ date: '2026-08-14', type: 'half' });
-    expect(sessionBatchDate(at('2026-08-14T12:35:00+03:00'), holidays)).toBe('2026-08-14');
-    expect(sessionBatchDate(at('2026-08-14T13:00:00+03:00'), holidays)).toBe('2026-08-17');
+    expect(sessionBatchDate(at('2026-08-14T12:40:00+03:00'), holidays)).toBe('2026-08-14');
+    expect(sessionBatchDate(at('2026-08-14T12:40:01+03:00'), holidays)).toBe('2026-08-17');
     // A half day opens like any other day.
     expect(sessionBatchDate(at('2026-08-14T09:10:00+03:00'), holidays)).toBe('2026-08-14');
   });

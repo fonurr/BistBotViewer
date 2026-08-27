@@ -44,7 +44,7 @@ test('keeps unprovable Performance metrics unavailable instead of rendering zero
   await expect(symbolRow.getByRole('cell', { name: 'not available' })).toBeVisible();
   await expect(symbolRow.getByRole('cell', { name: '1 boundary bars missing' })).toBeVisible();
   await expect(
-    page.getByText(/filed by batch: the session the opening buy could reach/),
+    page.getByText(/filed by batch: the session the opening buy belongs to/),
   ).toBeVisible();
   await expect(page.getByText(/There is no net result to give/)).toBeVisible();
 

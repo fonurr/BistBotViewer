@@ -1212,11 +1212,11 @@ function Limitations({
       <article className="card">
         <div className="card-kicker">time boundary</div>
         <p>
-          Every figure here is filed by batch: the session the opening buy could reach, the day the
+          Every figure here is filed by batch: the session the opening buy belongs to, the day the
           Book files the same chain under. A round trip counts in the batch its bot opened it in,
           however many sessions later it closed, so this window holds the batches that opened inside
-          it and not the closes that landed there. {report.exclusions.openedAfterHoursCount} opened
-          after their own day could take an order and count in the next session.{' '}
+          it and not the closes that landed there. {report.exclusions.openedAfterHoursCount} were
+          written past their own session and count in the next one.{' '}
           {plural(report.exclusions.missingOpeningStampCount, 'row')} carried no opening stamp and{' '}
           {plural(report.exclusions.missingCloseAcknowledgementCount, 'row')} no close
           acknowledgement; neither can be placed in time, and both were excluded. The execute stamps

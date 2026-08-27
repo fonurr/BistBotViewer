@@ -5,8 +5,8 @@ const MAX_DAYS_AHEAD = 366;
 /** The close: 18:00, or 12:30 on a half day, which only moves the close. */
 const CLOSE_MINUTE = 18 * 60;
 const HALF_DAY_CLOSE_MINUTE = 12 * 60 + 30;
-/** The exchange still takes orders for five minutes past the close. */
-const ORDER_ENTRY_GRACE_MINUTES = 5;
+/** A session keeps the work written for it until ten minutes past its close. */
+const SESSION_GRACE_MINUTES = 10;
 
 export interface TradingDayCount {
   known: boolean;
@@ -66,10 +66,10 @@ export function rollToTradingDay(day: string, holidays: HolidayCalendar): string
 /**
  * The session an order stamped at this moment could reach — the batch it belongs to.
  *
- * The batch is not the clock day the order was written. An order written after the exchange
- * stops taking orders (five minutes past the close), at the weekend, or on a full holiday
- * waits for the next trading day and is that day's business, which is where a batch heading
- * has to file it.
+ * The batch is not the clock day the order was written. An order written more than ten
+ * minutes past the close (so after 18:10, or 12:40 on a half day), at the weekend, or on a
+ * full holiday waits for the next trading day and is that day's business, which is where a
+ * batch heading has to file it.
  */
 export function sessionBatchDate(
   timestamp: number | null,
@@ -83,11 +83,11 @@ export function sessionBatchDate(
   // the only thing the record still supports.
   if (!isTradingDay(stamped, holidays)) return rollToTradingDay(stamped, holidays) ?? stamped;
 
-  const lastEntry = istanbulMinuteAt(
+  const lastMoment = istanbulMinuteAt(
     stamped,
-    closeMinuteOn(stamped, holidays) + ORDER_ENTRY_GRACE_MINUTES,
+    closeMinuteOn(stamped, holidays) + SESSION_GRACE_MINUTES,
   );
-  if (timestamp <= lastEntry) return stamped;
+  if (timestamp <= lastMoment) return stamped;
   return rollToTradingDay(nextDay(stamped), holidays) ?? stamped;
 }
 
