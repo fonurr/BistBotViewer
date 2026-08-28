@@ -228,3 +228,70 @@ describe('BookGrid scope groups', () => {
     expect(screen.getByText(/^Scheduled · in/)).toBeVisible();
   });
 });
+
+describe('BookGrid batches', () => {
+  const DAY_MS = 24 * 60 * 60 * 1_000;
+
+  function twoBatches() {
+    const newer = Date.parse('2026-08-25T06:30:00.000Z');
+    const older = newer - 7 * DAY_MS;
+    return [
+      makeClosedTrade({
+        id: 501,
+        symbol: 'NEWER',
+        chainId: 'chain-newer',
+        clientOpenOrderId: 'client-newer-open',
+        clientCloseOrderId: 'client-newer-close',
+        openOrderTime: newer,
+        openExecuteTime: newer + 2_000,
+        closeOrderTime: newer + 3_600_000,
+        closeExecuteTime: newer + 3_603_000,
+      }),
+      makeClosedTrade({
+        id: 502,
+        symbol: 'OLDER',
+        chainId: 'chain-older',
+        clientOpenOrderId: 'client-older-open',
+        clientCloseOrderId: 'client-older-close',
+        openOrderTime: older,
+        openExecuteTime: older + 2_000,
+        closeOrderTime: older + 3_600_000,
+        closeExecuteTime: older + 3_603_000,
+      }),
+    ];
+  }
+
+  function renderBatches() {
+    return renderGrid(
+      { quotes: new Map() },
+      { activeOrders: [], canceledOrders: [], positions: [], closedTrades: twoBatches() },
+    );
+  }
+
+  it('opens the newest batch and leaves the rest behind their chevron', () => {
+    renderBatches();
+
+    const headings = screen.getAllByRole('button', { expanded: false });
+    expect(screen.getAllByRole('button', { expanded: true })).toHaveLength(1);
+    // The batch still says what it holds while it is shut.
+    expect(within(headings[0]!).getByText('1 chain')).toBeVisible();
+    expect(screen.getAllByLabelText('NEWER chain')).toHaveLength(1);
+    expect(screen.queryByLabelText('OLDER chain')).toBeNull();
+    // One open batch, one column band: the columns belong to their own batch.
+    expect(document.querySelectorAll('.book-columns')).toHaveLength(1);
+  });
+
+  it('opens a batch on its chevron and shuts the newest one on its own', async () => {
+    const user = userEvent.setup();
+    renderBatches();
+
+    await user.click(screen.getAllByRole('button', { expanded: false })[0]!);
+    expect(screen.getByLabelText('OLDER chain')).toBeVisible();
+    expect(screen.getByLabelText('NEWER chain')).toBeVisible();
+    expect(document.querySelectorAll('.book-columns')).toHaveLength(2);
+
+    await user.click(screen.getAllByRole('button', { expanded: true })[0]!);
+    expect(screen.queryByLabelText('NEWER chain')).toBeNull();
+    expect(screen.getByLabelText('OLDER chain')).toBeVisible();
+  });
+});

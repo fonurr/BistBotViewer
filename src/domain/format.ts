@@ -48,17 +48,29 @@ export function formatQuantity(value: number): string {
   return formatNumber(value, 0);
 }
 
+/*
+ * Building an `Intl.DateTimeFormat` costs far more than using one, and the Book
+ * formats two stamps per row and a weekday per batch. Both are built once, the
+ * way the number formatters above already are.
+ */
+const stampFormatter = new Intl.DateTimeFormat('en-GB', {
+  timeZone: TIME_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+const weekdayFormatter = new Intl.DateTimeFormat('en-GB', {
+  timeZone: TIME_ZONE,
+  weekday: 'long',
+});
+
 function dateParts(timestamp: number): Record<string, string> {
   return Object.fromEntries(
-    new Intl.DateTimeFormat('en-GB', {
-      timeZone: TIME_ZONE,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hourCycle: 'h23',
-    })
+    stampFormatter
       .formatToParts(timestamp)
       .filter((part) => part.type !== 'literal')
       .map((part) => [part.type, part.value]),
@@ -82,10 +94,7 @@ export function formatDateKey(dateKey: string): string {
 export function weekdayName(dateKey: string): string {
   const timestamp = Date.parse(`${dateKey}T12:00:00+03:00`);
   if (!Number.isFinite(timestamp)) return '';
-  return new Intl.DateTimeFormat('en-GB', {
-    timeZone: TIME_ZONE,
-    weekday: 'long',
-  }).format(timestamp);
+  return weekdayFormatter.format(timestamp);
 }
 
 export function formatDate(timestamp: number): string {

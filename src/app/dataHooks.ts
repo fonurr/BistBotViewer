@@ -1,5 +1,5 @@
 import { useQueries, useQuery } from '@tanstack/react-query';
-import { useEffect, useId } from 'react';
+import { useEffect, useId, useMemo } from 'react';
 
 import { bistApi } from '../bistApi/client';
 import type { Bot, BotBudget, ErrorRow } from '../bistApi/types';
@@ -230,6 +230,11 @@ export function useFleetPrices(symbols: readonly string[], enabled: boolean) {
     retry: false,
   });
 
+  const quoteMap = useMemo(
+    () => new Map((quotes.data ?? []).map((quote) => [quote.symbol, quote])),
+    [quotes.data],
+  );
+
   const trustworthy =
     !status.isError &&
     !quotes.isError &&
@@ -253,7 +258,9 @@ export function useFleetPrices(symbols: readonly string[], enabled: boolean) {
 
   return {
     status: status.data ?? null,
-    quotes: new Map((quotes.data ?? []).map((quote) => [quote.symbol, quote])),
+    // Kept by identity: the Book hands this map to every row it draws, and a
+    // fresh map on every render would redraw all of them.
+    quotes: quoteMap,
     trustworthy,
     error: status.error ?? quotes.error ?? null,
     isPending: status.isPending || quotes.isPending,

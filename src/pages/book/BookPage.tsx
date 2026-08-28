@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { useBookData, useBotBudgets, useFleetPrices } from '../../app/dataHooks';
@@ -139,6 +139,29 @@ export function BookPage() {
     [botById, chains, filters, filteredEmpty],
   );
   const resolvedOpenChain = useMemo(() => resolveOpenChain(chains, openChain), [chains, openChain]);
+
+  // An open batch draws every chain it holds, and the rows only stay memoized
+  // while the callbacks handed to them keep their identity between renders.
+  const toggleCanceledChain = useCallback((key: string) => {
+    setCanceledOverrides((current) => toggleValue(current, key));
+  }, []);
+  const openChainFromGrid = useCallback((chain: BookChain, action?: OrderDialogAction) => {
+    setOpenChain({
+      chainKey: chain.key,
+      chainSnapshot: chain,
+      ...(action
+        ? {
+            action: {
+              kind: action.kind,
+              rowKey: action.row.key,
+              clientOrderId: action.row.clientOrderId,
+              disabled: action.disabled,
+              disabledReason: action.disabledReason,
+            },
+          }
+        : {}),
+    });
+  }, []);
 
   // A bot card's `Open book` arrives as ?bot=<id>. The deep link seeds the bot
   // filter once; from then on the toolbar owns it, so any hand-made change
@@ -310,26 +333,8 @@ export function BookPage() {
           writesHeldReason={writesHeldReason}
           showCanceled={showCanceled}
           openCanceledChains={canceledOverrides}
-          onToggleCanceledChain={(key) =>
-            setCanceledOverrides((current) => toggleValue(current, key))
-          }
-          onOpenChain={(chain, action) =>
-            setOpenChain({
-              chainKey: chain.key,
-              chainSnapshot: chain,
-              ...(action
-                ? {
-                    action: {
-                      kind: action.kind,
-                      rowKey: action.row.key,
-                      clientOrderId: action.row.clientOrderId,
-                      disabled: action.disabled,
-                      disabledReason: action.disabledReason,
-                    },
-                  }
-                : {}),
-            })
-          }
+          onToggleCanceledChain={toggleCanceledChain}
+          onOpenChain={openChainFromGrid}
         />
       ) : null}
       {snapshotAvailable && filters.noClosingOrder && visibleChains.length > 0 ? (

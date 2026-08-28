@@ -1,5 +1,5 @@
-import { Warning } from '@phosphor-icons/react';
-import { useEffect, useRef, useState } from 'react';
+import { CaretDown, CaretRight, Warning } from '@phosphor-icons/react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { Account, Bot } from '../../bistApi/types';
 import type { Quote } from '../../priceApi/types';
@@ -63,118 +63,193 @@ const columnLabels = [
 
 export function BookGrid(props: BookGridProps) {
   const now = useMinuteClock();
-  const botById = new Map(props.bots.map((bot) => [bot.id, bot]));
-  const accountById = new Map(props.accounts.map((account) => [account.accountId, account]));
-  const groups = groupChains(props.chains);
-  const positions = new Map(
-    props.chains
-      .flatMap((chain) => chain.sources.positions)
-      .map((position) => [position.id, position]),
+  const botById = useMemo(() => new Map(props.bots.map((bot) => [bot.id, bot])), [props.bots]);
+  const accountById = useMemo(
+    () => new Map(props.accounts.map((account) => [account.accountId, account])),
+    [props.accounts],
   );
-  const activeOrders = new Map(
-    props.chains.flatMap((chain) => chain.sources.activeOrders).map((order) => [order.id, order]),
-  );
-  const closedTrades = new Map(
-    props.chains.flatMap((chain) => chain.sources.closedTrades).map((trade) => [trade.id, trade]),
-  );
-  const pnlState = deriveFilledPnlState(
-    [...positions.values()],
-    [...activeOrders.values()],
-    [...closedTrades.values()],
-  );
+  const groups = useMemo(() => groupChains(props.chains), [props.chains]);
+  // The P&L state reads every source the visible chains own, so it is derived
+  // once per snapshot rather than once per render: it is the one figure on this
+  // page that cannot be answered a row at a time.
+  const pnlState = useMemo(() => {
+    const positions = new Map(
+      props.chains
+        .flatMap((chain) => chain.sources.positions)
+        .map((position) => [position.id, position]),
+    );
+    const activeOrders = new Map(
+      props.chains.flatMap((chain) => chain.sources.activeOrders).map((order) => [order.id, order]),
+    );
+    const closedTrades = new Map(
+      props.chains.flatMap((chain) => chain.sources.closedTrades).map((trade) => [trade.id, trade]),
+    );
+    return deriveFilledPnlState(
+      [...positions.values()],
+      [...activeOrders.values()],
+      [...closedTrades.values()],
+    );
+  }, [props.chains]);
+  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
+  const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
 
   return (
     <div className="book-grid-wrap" role="table" aria-label="Order, position and trade chains">
-      {groups.map((dateGroup) => (
-        <section className="book-date-group" role="rowgroup" key={dateGroup.date}>
-          {/*
-           * The batch heading comes first and the column band sits under it:
-           * the columns belong to the batch they head, not to the whole page.
-           */}
-          <header className="book-date-heading">
-            <span>
-              {dateGroup.date === 'unknown' ? 'Date unknown' : formatDateKey(dateGroup.date)}
-            </span>
-            <span className="kicker">
-              batch{dateGroup.date === 'unknown' ? '' : ` · ${weekdayName(dateGroup.date)}`}
-            </span>
-            <span className="muted">{plural(dateGroup.chains.length, 'chain')}</span>
-          </header>
-          <div className="book-columns" role="row">
-            {columnLabels.map((label, index) => (
-              <div
-                key={`${label}:${index}`}
-                role="columnheader"
-                className={(index >= 4 && index <= 7) || index === 11 ? 'align-right' : ''}
-              >
-                {label}
-              </div>
-            ))}
-          </div>
-          {dateGroup.bots.map((botGroup) => {
-            const bot = botById.get(botGroup.botId);
-            const account = bot?.accountId ? accountById.get(bot.accountId) : undefined;
-            return (
-              <section
-                className="book-bot-group"
-                role="presentation"
-                key={`${dateGroup.date}:${botGroup.botId}`}
-              >
-                <header className="book-bot-heading">
-                  <span className="book-bot-name" title={bot?.description ?? undefined}>
-                    {botGroup.botId}
-                  </span>
-                  <span className="muted" title={account?.owner || undefined}>
-                    {bot?.accountId ?? 'account unset'}
-                    {bot?.brokerageId ? ` · ${bot.brokerageId}` : ''}
-                  </span>
-                  <span className="book-bot-rule" />
-                </header>
-                {botGroup.scopes.map((scopeGroup) => (
-                  <section
-                    className="book-scope-group"
-                    role="presentation"
-                    key={`${dateGroup.date}:${botGroup.botId}:${scopeGroup.scope}`}
-                  >
-                    {props.showScopeHeadings === false ? null : (
-                      <ScopeHeading
-                        scope={scopeGroup.scope}
-                        chains={scopeGroup.chains}
-                        pnlState={pnlState}
-                        quotes={props.quotes}
-                        pricesTrustworthy={props.pricesTrustworthy}
-                      />
-                    )}
-                    {scopeGroup.chains.map((chain) => (
-                      <ChainRows
-                        {...props}
-                        chain={chain}
-                        pnlState={pnlState}
-                        now={now}
-                        key={chain.key}
-                      />
-                    ))}
-                  </section>
-                ))}
-              </section>
-            );
-          })}
-        </section>
-      ))}
+      {groups.map((dateGroup, dateIndex) => {
+        /*
+         * The newest batch is the one being worked, so it opens itself and the
+         * rest wait behind their chevron. Both sets are kept: `opened` is what
+         * a reader asked for, `closed` is the newest batch they shut, and the
+         * default follows the newest batch whatever the filters make it.
+         */
+        const openByDefault = dateIndex === 0;
+        const open = openByDefault ? !closed.has(dateGroup.date) : opened.has(dateGroup.date);
+        const toggle = () => {
+          const target = dateGroup.date;
+          if (open) {
+            setOpened((current) => without(current, target));
+            setClosed((current) => with_(current, target));
+          } else {
+            setOpened((current) => with_(current, target));
+            setClosed((current) => without(current, target));
+          }
+        };
+        return (
+          <section className="book-date-group" role="rowgroup" key={dateGroup.date}>
+            {/*
+             * The batch heading comes first and the column band sits under it:
+             * the columns belong to the batch they head, not to the whole page.
+             */}
+            <button
+              type="button"
+              className="book-date-heading"
+              aria-expanded={open}
+              onClick={toggle}
+            >
+              {open ? (
+                <CaretDown size={14} weight="bold" aria-hidden="true" />
+              ) : (
+                <CaretRight size={14} weight="bold" aria-hidden="true" />
+              )}
+              <span className="book-batch-date">
+                {dateGroup.date === 'unknown' ? 'Date unknown' : formatDateKey(dateGroup.date)}
+              </span>
+              <span className="kicker">
+                batch{dateGroup.date === 'unknown' ? '' : ` · ${weekdayName(dateGroup.date)}`}
+              </span>
+              <span className="muted">{plural(dateGroup.chains.length, 'chain')}</span>
+            </button>
+            {open ? (
+              <>
+                <div className="book-columns" role="row">
+                  {columnLabels.map((label, index) => (
+                    <div
+                      key={`${label}:${index}`}
+                      role="columnheader"
+                      className={(index >= 4 && index <= 7) || index === 11 ? 'align-right' : ''}
+                    >
+                      {label}
+                    </div>
+                  ))}
+                </div>
+                {dateGroup.bots.map((botGroup) => {
+                  const bot = botById.get(botGroup.botId);
+                  const account = bot?.accountId ? accountById.get(bot.accountId) : undefined;
+                  return (
+                    <section
+                      className="book-bot-group"
+                      role="presentation"
+                      key={`${dateGroup.date}:${botGroup.botId}`}
+                    >
+                      <header className="book-bot-heading">
+                        <span className="book-bot-name" title={bot?.description ?? undefined}>
+                          {botGroup.botId}
+                        </span>
+                        <span className="muted" title={account?.owner || undefined}>
+                          {bot?.accountId ?? 'account unset'}
+                          {bot?.brokerageId ? ` · ${bot.brokerageId}` : ''}
+                        </span>
+                        <span className="book-bot-rule" />
+                      </header>
+                      {botGroup.scopes.map((scopeGroup) => (
+                        <section
+                          className="book-scope-group"
+                          role="presentation"
+                          key={`${dateGroup.date}:${botGroup.botId}:${scopeGroup.scope}`}
+                        >
+                          {props.showScopeHeadings === false ? null : (
+                            <ScopeHeading
+                              scope={scopeGroup.scope}
+                              chains={scopeGroup.chains}
+                              pnlState={pnlState}
+                              quotes={props.quotes}
+                              pricesTrustworthy={props.pricesTrustworthy}
+                            />
+                          )}
+                          {scopeGroup.chains.map((chain) => (
+                            <ChainRows
+                              chain={chain}
+                              pnlState={pnlState}
+                              quotes={props.quotes}
+                              pricesTrustworthy={props.pricesTrustworthy}
+                              writesHeldReason={props.writesHeldReason}
+                              showCanceled={props.showCanceled}
+                              canceledOpen={props.openCanceledChains.has(chain.key)}
+                              now={now}
+                              onToggleCanceledChain={props.onToggleCanceledChain}
+                              onOpenChain={props.onOpenChain}
+                              key={chain.key}
+                            />
+                          ))}
+                        </section>
+                      ))}
+                    </section>
+                  );
+                })}
+              </>
+            ) : null}
+          </section>
+        );
+      })}
     </div>
   );
 }
 
-function ChainRows(
-  props: BookGridProps & { chain: BookChain; pnlState: FilledPnlState; now: number },
-) {
+function with_(current: ReadonlySet<string>, value: string): ReadonlySet<string> {
+  if (current.has(value)) return current;
+  const next = new Set(current);
+  next.add(value);
+  return next;
+}
+
+function without(current: ReadonlySet<string>, value: string): ReadonlySet<string> {
+  if (!current.has(value)) return current;
+  const next = new Set(current);
+  next.delete(value);
+  return next;
+}
+
+interface ChainRowsProps {
+  chain: BookChain;
+  pnlState: FilledPnlState;
+  quotes: ReadonlyMap<string, Quote>;
+  pricesTrustworthy: boolean;
+  writesHeldReason: string | null;
+  showCanceled: boolean;
+  canceledOpen: boolean;
+  now: number;
+  onToggleCanceledChain: (chainKey: string) => void;
+  onOpenChain: BookGridProps['onOpenChain'];
+}
+
+const ChainRows = memo(function ChainRows(props: ChainRowsProps) {
   const { chain } = props;
   // A scope selects whole chains, so every leg a chain owns is drawn once the
   // chain is in view. The only rows a toggle may withhold are the canceled
   // ones, and that is the canceled toggle's own job (SPEC 3).
   const nonCanceledRows = chain.rows.filter((row) => row.source !== 'canceled');
   const canceledRows = chain.canceledRows;
-  const visibleCanceled = props.showCanceled !== props.openCanceledChains.has(chain.key);
+  const visibleCanceled = props.showCanceled !== props.canceledOpen;
 
   return (
     <article className="book-chain" aria-label={`${chain.symbol} chain`}>
@@ -247,7 +322,7 @@ function ChainRows(
       ) : null}
     </article>
   );
-}
+});
 
 /** `+3 canceled sells` where the tail is all one side, `+3 canceled` otherwise. */
 function canceledTailLabel(rows: readonly BookChainRow[]): string {
@@ -257,7 +332,7 @@ function canceledTailLabel(rows: readonly BookChainRow[]): string {
   return `${rows.length} canceled${side === null ? '' : ` ${side}s`}`;
 }
 
-function BookRow({
+const BookRow = memo(function BookRow({
   row,
   chain,
   opener,
@@ -421,7 +496,7 @@ function BookRow({
       ) : null}
     </div>
   );
-}
+});
 
 function rowFlashSignature(row: BookChainRow): string {
   return [
@@ -448,6 +523,53 @@ export interface RowPnlFigure {
   marketBased: boolean;
 }
 
+interface PnlIndex {
+  readonly exposures: ReadonlyMap<string, FilledPnlState['exposures'][number]>;
+  readonly partialSells: ReadonlyMap<number, FilledPnlState['partialSellFills'][number]>;
+}
+
+/*
+ * A row asks the P&L state exactly one question about itself, and an open batch
+ * can hold hundreds of rows: scanning the exposures per row made the grid
+ * quadratic in the batch. The index is derived once per state object and kept
+ * beside it, so `bookRowPnlFigure` keeps its plain signature.
+ */
+const pnlIndexes = new WeakMap<FilledPnlState, PnlIndex>();
+
+function indexPnlState(state: FilledPnlState): PnlIndex {
+  const known = pnlIndexes.get(state);
+  if (known) return known;
+  const index: PnlIndex = {
+    exposures: new Map(
+      state.exposures.map((exposure) => [`${exposure.source}:${exposure.sourceId}`, exposure]),
+    ),
+    partialSells: new Map(state.partialSellFills.map((fill) => [fill.sourceId, fill])),
+  };
+  pnlIndexes.set(state, index);
+  return index;
+}
+
+/** The round trip a chain's own row carries, derived once per chain. */
+const roundTrips = new WeakMap<BookChain, RowPnlFigure | null>();
+
+function chainRoundTrip(chain: BookChain): RowPnlFigure | null {
+  const known = roundTrips.get(chain);
+  if (known !== undefined) return known;
+  const trades = new Map(chain.sources.closedTrades.map((trade) => [trade.id, trade] as const));
+  let figure: RowPnlFigure | null = null;
+  if (trades.size > 0) {
+    let value = 0;
+    let costBasis = 0;
+    for (const trade of trades.values()) {
+      value += realizedPnl(trade.quantity, trade.averageOpenPrice, trade.averageClosePrice);
+      costBasis += trade.quantity * trade.averageOpenPrice;
+    }
+    figure = { value, costBasis, marketBased: false };
+  }
+  roundTrips.set(chain, figure);
+  return figure;
+}
+
 export function bookRowPnlFigure(
   row: BookChainRow,
   pnlState: FilledPnlState,
@@ -456,27 +578,11 @@ export function bookRowPnlFigure(
   openerChain?: BookChain,
 ): RowPnlFigure | null {
   if (row.source === 'closed-trade' && row.leg === 'open' && openerChain) {
-    const trades = new Map(
-      openerChain.sources.closedTrades.map((trade) => [trade.id, trade] as const),
-    );
-    if (trades.size === 0) return null;
-    return {
-      value: [...trades.values()].reduce(
-        (sum, trade) =>
-          sum + realizedPnl(trade.quantity, trade.averageOpenPrice, trade.averageClosePrice),
-        0,
-      ),
-      costBasis: [...trades.values()].reduce(
-        (sum, trade) => sum + trade.quantity * trade.averageOpenPrice,
-        0,
-      ),
-      marketBased: false,
-    };
+    return chainRoundTrip(openerChain);
   }
+  const index = indexPnlState(pnlState);
   if (row.source === 'position') {
-    const exposure = pnlState.exposures.find(
-      (candidate) => candidate.source === 'position' && candidate.sourceId === row.raw.id,
-    );
+    const exposure = index.exposures.get(`position:${row.raw.id}`);
     if (!exposure) return null;
     return {
       value: marketPrice === null ? null : unrealizedPnl(exposure, marketPrice),
@@ -485,9 +591,7 @@ export function bookRowPnlFigure(
     };
   }
   if (row.source === 'active' && row.direction === 'buy') {
-    const exposure = pnlState.exposures.find(
-      (candidate) => candidate.source === 'partial-buy' && candidate.sourceId === row.raw.id,
-    );
+    const exposure = index.exposures.get(`partial-buy:${row.raw.id}`);
     if (!exposure) return null;
     return {
       value: marketPrice === null ? null : unrealizedPnl(exposure, marketPrice),
@@ -496,7 +600,7 @@ export function bookRowPnlFigure(
     };
   }
   if (row.source === 'active' && row.direction === 'sell') {
-    const fill = pnlState.partialSellFills.find((candidate) => candidate.sourceId === row.raw.id);
+    const fill = index.partialSells.get(row.raw.id);
     if (!fill) return null;
     return {
       value: realizedPnl(fill.quantity, fill.averageOpenPrice, fill.averageClosePrice),

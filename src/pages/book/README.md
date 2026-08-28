@@ -22,7 +22,16 @@ order belongs to. A session keeps what is written for it until ten minutes past 
 to the next trading day. `domain/calendar.ts` owns that rule and reads it against the
 `GetHolidays` calendar; without one it still rolls off a weekend and off the close, since an
 absent holiday row cannot prove a weekday was open. A row whose own day is not the batch date
-then states its date beside the clock, which is what `formatRowTime` already does. The scope line (`waiting · 3 chains · 6 buy orders, nothing bought yet`) **opens its own
+then states its date beside the clock, which is what `formatRowTime` already does.
+
+A batch heading is the control that opens its batch: the whole line is a button with a chevron
+and `aria-expanded`, and the column band and every bot under it are drawn only while it is open.
+**The newest batch opens itself and the rest wait behind their chevron** — that is the one batch
+being worked, and it is what keeps the Book quick when every date is selected and `trades` is
+switched on. A shut batch still names its date, its weekday and how many chains it holds, so
+nothing is hidden that a reader has to open the batch to learn. `BookGrid` keeps two sets rather
+than one: `opened` is what a reader asked for and `closed` is the newest batch they shut, so the
+default follows the newest batch whatever the filters make it. The scope line (`waiting · 3 chains · 6 buy orders, nothing bought yet`) **opens its own
 group**, immediately above the chains it counts, names the side when the waiting orders all go
 one way, and carries that group's aggregate — unrealized for positions, realized for trades. The
 focused `no closing order` list spans scopes on purpose, so it groups by bot alone.

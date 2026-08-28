@@ -131,7 +131,8 @@ Chains are built strictly from `chainId`; null links stay independent.
   belongs to — one that keeps what is written for it until ten minutes past the close (18:10, or
   12:40 on a half day), after which the next trading day takes it. `src/domain/calendar.ts` owns
   that rule; the Book files chains by it and Performance reports every figure by it, so one chain
-  belongs to one batch on both pages.
+  belongs to one batch on both pages. In the Book a batch is collapsible and only the newest one
+  opens itself, which is what keeps the page quick across a year of them.
 - Dark only. Use the vendored Nocturne stylesheet and `src/styles/tokens.css`; never add ad-hoc
   colors, spacing, radii, shadows, or font sizes.
 - Status cells carry only stored statuses in their display form (`By user`, not `CanceledByUser`;
