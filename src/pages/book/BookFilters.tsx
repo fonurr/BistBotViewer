@@ -2,7 +2,12 @@ import { Warning } from '@phosphor-icons/react';
 import { useMemo, useState } from 'react';
 
 import type { Account, Bot } from '../../bistApi/types';
-import { accountOptions, MultiSelectFilter, SymbolFilter } from '../../components/EntityFilters';
+import {
+  accountOptions,
+  botPicks,
+  MultiSelectFilter,
+  SymbolFilter,
+} from '../../components/EntityFilters';
 import { FilterPopover, PopoverHeading, PopoverScrim } from '../../components/FilterPopover';
 import { accountIdentityKey } from '../../domain/accounts';
 import type { BookChain, BookScope } from '../../domain/chains';
@@ -127,6 +132,7 @@ export function BookFilters(props: BookFiltersProps) {
             ),
             count: chainCountByBot.get(bot.id) ?? 0,
           }))}
+          picks={botPicks(props.bots)}
           selected={filters.botIds}
           onChange={(botIds) => onChange({ ...filters, botIds, noClosingOrder: false })}
           one="bot"

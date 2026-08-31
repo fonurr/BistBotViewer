@@ -320,6 +320,38 @@ describe('Performance curve honesty', () => {
   });
 });
 
+describe('Performance bot picks', () => {
+  it('selects the active or inactive half, and says why an empty scope draws no report', async () => {
+    const fixture = makePerformanceReadFixture();
+    const off = makeBot({ id: 'bot-beta', active: false });
+    useFixture({
+      ...fixture,
+      bots: [...fixture.bots, off],
+      budgets: { ...fixture.budgets, [off.id]: makeBotBudget() },
+    });
+    const user = userEvent.setup();
+    renderPerformance();
+    await screen.findByText('cumulative realized');
+
+    await user.click(screen.getByRole('button', { name: '2 bots' }));
+    await user.click(screen.getByRole('button', { name: 'inactive' }));
+    // One bot left is the deep-link scope, so the cross-comparison tables leave.
+    expect(document.querySelector('.filter-trigger')!.textContent).toContain('1 bot');
+    expect(
+      screen.getByText('No closed round trip in this scope.', { selector: 'strong' }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'active' }));
+    await screen.findByText('cumulative realized');
+
+    await user.click(screen.getByRole('button', { name: 'none' }));
+    expect(screen.getByText('No bot is selected.', { selector: 'strong' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'all' }));
+    await screen.findByText('cumulative realized');
+  });
+});
+
 function renderPerformance(entry = '/performance') {
   const queryClient = new QueryClient({
     defaultOptions: {

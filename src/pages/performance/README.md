@@ -46,7 +46,9 @@ written later can replace an earlier unavailable metric.
 Bot, account and symbol filters are the Book's own controls from `components/EntityFilters`, so
 all three pages carry one shape. The page is read-only. A bot-card deep link uses `?bot=<id>`,
 which is the same state as selecting exactly one bot in the filter; it recomputes the whole report
-and the fleet comparison tables disappear for that scope.
+and the fleet comparison tables disappear for that scope. The bot popover offers `all`, `none`,
+`active` and `inactive`; picking a split that lands on exactly one bot is the same state as that
+deep link and updates `?bot=` with it.
 
 Budget context sits with the standing statements at the foot rather than among the figures: it is
 a configured limit, not a result, and the window and symbol filters do not change it.

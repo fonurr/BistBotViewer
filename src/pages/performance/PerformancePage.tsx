@@ -14,6 +14,7 @@ import {
 } from '../../domain/performance';
 import {
   accountOptions,
+  botPicks,
   MultiSelectFilter,
   SymbolFilter,
   type FilterSelection,
@@ -336,6 +337,7 @@ export function PerformancePage() {
               label: bot.id,
               count: tripsByBot.get(bot.id) ?? 0,
             }))}
+            picks={botPicks(data.bots)}
             selected={selectedBotIds}
             onChange={pickBots}
             one="bot"
@@ -398,6 +400,22 @@ export function PerformancePage() {
               ? bars.error.message
               : 'bars.db failed without a readable reply.'}
           </span>
+        </div>
+      ) : null}
+      {sourceReady && barReadState !== 'pending' && report.summary.tradeCount === 0 ? (
+        /* A scope with no round trip draws no report: every figure in it would
+           be a zero no trade supports, and the page says that rather than
+           going blank under a filter someone just set. */
+        <div className="performance-empty">
+          <strong>
+            {selectedBotIds !== null && selectedBotIds.size === 0
+              ? 'No bot is selected.'
+              : 'No closed round trip in this scope.'}
+          </strong>
+          <p>
+            Nothing here is computed over an empty scope. Widen the bot, account, symbol or date
+            filter to get the report back.
+          </p>
         </div>
       ) : null}
       {sourceReady && barReadState !== 'pending' && report.summary.tradeCount > 0 ? (

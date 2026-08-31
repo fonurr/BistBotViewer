@@ -52,3 +52,62 @@ describe('BookFilters account identity', () => {
     );
   });
 });
+
+describe('BookFilters bot picks', () => {
+  const renderFilters = (onChange: () => void) =>
+    render(
+      <BookFilters
+        filters={defaultBookFilters}
+        onChange={onChange}
+        bots={[
+          makeBot({ id: 'bot-on', active: true }),
+          makeBot({ id: 'bot-off', active: false }),
+          makeBot({ id: 'bot-also-off', active: false }),
+        ]}
+        accounts={[makeAccount()]}
+        chains={[]}
+        noClosingOrderCount={0}
+        mismatchCount={0}
+        canceledCount={0}
+        canceledVisible={false}
+        manualOpenLegs={0}
+        manualClosedChains={0}
+        onToggleCanceled={vi.fn()}
+        onOpenMismatch={vi.fn()}
+      />,
+    );
+
+  it('selects exactly the bots behind each pick, and none is an empty set, not every bot', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    renderFilters(onChange);
+
+    await user.click(screen.getByRole('button', { name: '3 bots' }));
+
+    await user.click(screen.getByRole('button', { name: 'active' }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ botIds: new Set(['bot-on']) }),
+    );
+
+    await user.click(screen.getByRole('button', { name: 'inactive' }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ botIds: new Set(['bot-off', 'bot-also-off']) }),
+    );
+
+    await user.click(screen.getByRole('button', { name: 'none' }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ botIds: new Set<string>() }),
+    );
+  });
+
+  it('keeps all meaning every bot rather than ticking the ones on screen', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    renderFilters(onChange);
+
+    await user.click(screen.getByRole('button', { name: '3 bots' }));
+    await user.click(screen.getByRole('button', { name: 'all' }));
+
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ botIds: null }));
+  });
+});

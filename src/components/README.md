@@ -16,7 +16,11 @@ components; shared components never import a page.
   Performance use those same components rather than shapes of their own. `MultiSelectFilter`
   treats `null` as every option — which is not the same set as all of them ticked, because a page
   that gains a bot keeps meaning _every bot_ until someone narrows it — and its trigger counts the
-  selection instead of naming it. `SymbolFilter` never accepts free text: a symbol the loaded rows
+  selection instead of naming it. Given `picks`, it moves `all` out of the heading corner onto a
+  row of whole-set shortcuts; `botPicks` builds the bot row the Book and Performance share
+  (`all`, `none`, `active`, `inactive`). A pick states the set it selects at the moment it is
+  taken, so a bot switched on afterwards does not join a selection made as `active` — only `all`
+  keeps meaning every bot. `SymbolFilter` never accepts free text: a symbol the loaded rows
   do not name cannot be filtered to, and a typed one would silently return nothing.
 - `useMinuteClock` ticks relative copy — a scheduled countdown, how early a `fire now` goes —
   on the minute boundary, because a quiet snapshot does not re-render on its own.

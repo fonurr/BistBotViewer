@@ -456,7 +456,12 @@ export function narrowingsThatEmptiedTheBook(
     candidates.push({
       key: 'bots',
       phrase: 'the bot filter',
-      sentence: `The ${plural(filters.botIds.size, 'selected bot')} have no chain in this view.`,
+      /* `none` is a real selection, and it is not a bot that has no chains —
+         it is no bot at all, which is the honest thing to say about it. */
+      sentence:
+        filters.botIds.size === 0
+          ? 'No bot is selected.'
+          : `The ${plural(filters.botIds.size, 'selected bot')} have no chain in this view.`,
       clear: (current) => ({ ...current, botIds: null }),
     });
   }

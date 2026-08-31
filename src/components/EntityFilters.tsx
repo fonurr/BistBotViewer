@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 
-import type { Account } from '../bistApi/types';
+import type { Account, Bot } from '../bistApi/types';
 import { accountIdentityKey } from '../domain/accounts';
 import { plural } from '../domain/format';
 import { FilterPopover, PopoverHeading } from './FilterPopover';
@@ -18,6 +18,18 @@ export interface FilterOption {
  */
 export type FilterSelection = ReadonlySet<string> | null;
 
+/**
+ * A whole-set shortcut offered beside `all`, for a split the page can name
+ * itself — `active` and `inactive` over a bot list. It states the resulting
+ * selection outright rather than a predicate, so the component never has to
+ * know what a bot is.
+ */
+export interface FilterPick {
+  label: string;
+  /** `null` is every option; an empty set is the deliberate none. */
+  select: FilterSelection;
+}
+
 interface MultiSelectFilterProps {
   name: string;
   open: boolean;
@@ -28,6 +40,11 @@ interface MultiSelectFilterProps {
   /** The same, but below — where the fact is about what the list leaves out. */
   note?: ReactNode;
   options: readonly FilterOption[];
+  /**
+   * Whole-set shortcuts shown on their own row under the heading, which then
+   * carries `all` alongside them instead of in its corner.
+   */
+  picks?: readonly FilterPick[];
   selected: FilterSelection;
   onChange: (selection: FilterSelection) => void;
   one: string;
@@ -49,6 +66,7 @@ export function MultiSelectFilter({
   help,
   note,
   options,
+  picks,
   selected,
   onChange,
   one,
@@ -71,7 +89,28 @@ export function MultiSelectFilter({
       setOpen={setOpen}
       align={align}
     >
-      <PopoverHeading label={heading} action="all" onAction={() => onChange(null)} />
+      <PopoverHeading
+        label={heading}
+        action={picks ? undefined : 'all'}
+        onAction={picks ? undefined : () => onChange(null)}
+      />
+      {picks ? (
+        <div className="filter-picks">
+          <button type="button" className="btn btn-ghost" onClick={() => onChange(null)}>
+            all
+          </button>
+          {picks.map((pick) => (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              key={pick.label}
+              onClick={() => onChange(pick.select)}
+            >
+              {pick.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {help ? <p className="filter-help">{help}</p> : null}
       {options.map((option) => (
         <label
@@ -214,6 +253,20 @@ export function SymbolFilter({
       ) : null}
     </FilterPopover>
   );
+}
+
+/**
+ * The bot shortcuts every page offers beside `all`: `none`, and the two halves
+ * of the switch. Each names the exact set it selects at the moment it is
+ * offered — a bot that is turned on afterwards is not retroactively in a set
+ * chosen as `active`, which is the honest reading of a stored selection.
+ */
+export function botPicks(bots: readonly Bot[]): FilterPick[] {
+  return [
+    { label: 'none', select: new Set<string>() },
+    { label: 'active', select: new Set(bots.filter((bot) => bot.active).map((bot) => bot.id)) },
+    { label: 'inactive', select: new Set(bots.filter((bot) => !bot.active).map((bot) => bot.id)) },
+  ];
 }
 
 /** One option per account, in the identity shape every selector keys on. */

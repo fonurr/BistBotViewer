@@ -54,7 +54,9 @@ them.
 bot, account and symbol controls are `components/EntityFilters`, which the Bots and Performance
 pages import unchanged — the Book defines the shape, and no page reimplements it. A trigger states
 the current selection as a count (`4 bots`, `2 accounts`), and an unset symbol filter reads
-`any symbol` in placeholder ink. The **needs-a-human** pill lives at the right of
+`any symbol` in placeholder ink. The bot popover carries `all`, `none`, `active` and `inactive`
+over its heading; `none` empties the book and the reason panel names the bot narrowing that did
+it, while `all` returns to meaning every bot rather than ticking today's. The **needs-a-human** pill lives at the right of
 that same toolbar row — a dead-tinted pill with its warning glyph, its clickable counts, and the
 word `unfiltered`, said once. Its counts never follow the filters.
 Account selection uses the stored account and brokerage together; matching account numbers at

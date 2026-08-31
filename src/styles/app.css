@@ -349,6 +349,25 @@ a:hover {
   text-transform: none;
 }
 
+/* Whole-set shortcuts under a multi-select heading. They sit on their own row
+   because the heading is a sentence, and four actions crowded beside it wrap
+   it into three lines at the popover's 288px. */
+.filter-heading:has(+ .filter-picks) {
+  padding-bottom: var(--space-2);
+}
+
+.filter-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+}
+
+.filter-picks .btn {
+  padding: 1px 5px;
+  font-size: var(--font-meta);
+}
+
 .filter-option {
   display: grid;
   grid-template-columns: 16px 1fr;
