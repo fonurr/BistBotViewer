@@ -31,7 +31,7 @@ export function formatSignedNumber(value: number, decimals = 2): string {
   return trueMinus(numberFormatter(decimals, 'always').format(value));
 }
 
-export function formatPercentage(value: number, decimals = 1, signed = true): string {
+export function formatPercentage(value: number, decimals = 2, signed = true): string {
   return `${signed ? formatSignedNumber(value, decimals) : formatNumber(value, decimals)}%`;
 }
 
@@ -60,6 +60,7 @@ const stampFormatter = new Intl.DateTimeFormat('en-GB', {
   day: '2-digit',
   hour: '2-digit',
   minute: '2-digit',
+  second: '2-digit',
   hourCycle: 'h23',
 });
 
@@ -106,11 +107,24 @@ export function formatTime(timestamp: number): string {
   return `${parts.hour}:${parts.minute}`;
 }
 
-export function formatRowTime(timestamp: number | null, batchDate: string): string | null {
+/**
+ * A row time is read as a minute and settled by its seconds: two orders in the
+ * same minute are only told apart by them. So the two are returned separately —
+ * the caller that can draw the seconds quieter does, and one that cannot (plain
+ * text) joins them or drops them.
+ */
+export function formatRowTimeParts(
+  timestamp: number | null,
+  batchDate: string,
+): { minute: string; seconds: string } | null {
   if (timestamp === null) return null;
-  if (toIstanbulDateKey(timestamp) === batchDate) return formatTime(timestamp);
   const parts = dateParts(timestamp);
-  return `${parts.day}.${parts.month} ${parts.hour}:${parts.minute}`;
+  const day = toIstanbulDateKey(timestamp) === batchDate ? '' : `${parts.day}.${parts.month} `;
+  return { minute: `${day}${parts.hour}:${parts.minute}`, seconds: `:${parts.second}` };
+}
+
+export function formatRowTime(timestamp: number | null, batchDate: string): string | null {
+  return formatRowTimeParts(timestamp, batchDate)?.minute ?? null;
 }
 
 export function formatRelativeAge(timestamp: number | null, now = Date.now()): string {

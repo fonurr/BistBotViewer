@@ -905,7 +905,7 @@ function RetryLedger({
   // more money than the window realized is stated against the figure itself.
   const share =
     grossRealized > 0 && Math.abs(figures.net) <= grossRealized
-      ? `${formatPercentage((figures.net / grossRealized) * 100, 0, false)} of everything realized`
+      ? `${formatPercentage((figures.net / grossRealized) * 100, 2, false)} of everything realized`
       : `against ${formatSignedNumber(grossRealized, 0)} realized in this window`;
   return (
     <article className="card elev-sm performance-card performance-card-dead">
@@ -1319,7 +1319,7 @@ function metricMoney(metric: PerformanceMetric, signed = true): string {
 function metricText(metric: PerformanceMetric, percent = false): string {
   return metric.available
     ? percent
-      ? formatPercentage(metric.value, 1, false)
+      ? formatPercentage(metric.value, 2, false)
       : formatNumber(metric.value)
     : 'not available';
 }

@@ -22,7 +22,9 @@ order belongs to. A session keeps what is written for it until ten minutes past 
 to the next trading day. `domain/calendar.ts` owns that rule and reads it against the
 `GetHolidays` calendar; without one it still rolls off a weekend and off the close, since an
 absent holiday row cannot prove a weekday was open. A row whose own day is not the batch date
-then states its date beside the clock, which is what `formatRowTime` already does.
+then states its date beside the clock, which is what `formatRowTime` already does. Ord time and
+ack time carry their seconds: the minute is what a reader scans, so `formatRowTimeParts` hands
+the seconds back separately and the cell draws them — their colon with them — at half opacity.
 
 A batch heading is the control that opens its batch: the whole line is a button with a chevron
 and `aria-expanded`, and the column band and every bot under it are drawn only while it is open.

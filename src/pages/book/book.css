@@ -446,6 +446,15 @@
 }
 
 /*
+ * Seconds tell two orders in the same minute apart and nothing else, so they
+ * ride behind the minute at half strength — the colon that joins them belongs
+ * to the seconds, not to the minute, and fades with them.
+ */
+.book-time-seconds {
+  opacity: 0.5;
+}
+
+/*
  * The status word carries its hue, not extra weight — the reference sets 500
  * on exactly one status, the position with no closing order, so that the one
  * row that needs a human is the only one that gets louder.

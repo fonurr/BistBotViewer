@@ -9,7 +9,7 @@ import {
   formatPercentage,
   formatQuantity,
   formatSlip,
-  formatRowTime,
+  formatRowTimeParts,
   formatSignedNumber,
   formatNumber,
   plural,
@@ -450,12 +450,10 @@ const BookRow = memo(function BookRow({
         role="cell"
         className={row.source === 'scheduled' ? 'status-wait book-time' : 'muted book-time'}
       >
-        {orderTime === null ? '' : (formatRowTime(orderTime, batchDate) ?? '')}
+        <RowTime timestamp={orderTime} batchDate={batchDate} />
       </div>
       <div role="cell" className="muted book-time">
-        {row.acknowledgementTime === null
-          ? ''
-          : (formatRowTime(row.acknowledgementTime, batchDate) ?? '')}
+        <RowTime timestamp={row.acknowledgementTime} batchDate={batchDate} />
       </div>
       <div
         role="cell"
@@ -497,6 +495,22 @@ const BookRow = memo(function BookRow({
     </div>
   );
 });
+
+/*
+ * The minute is what a reader scans down the column; the seconds only settle
+ * which of two orders in that minute came first, so they and their colon are
+ * drawn at half strength behind it. A missing time stays an empty cell.
+ */
+function RowTime({ timestamp, batchDate }: { timestamp: number | null; batchDate: string }) {
+  const parts = formatRowTimeParts(timestamp, batchDate);
+  if (parts === null) return null;
+  return (
+    <>
+      {parts.minute}
+      <span className="book-time-seconds">{parts.seconds}</span>
+    </>
+  );
+}
 
 function rowFlashSignature(row: BookChainRow): string {
   return [

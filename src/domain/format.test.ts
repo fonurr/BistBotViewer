@@ -4,6 +4,7 @@ import {
   formatPercentage,
   formatRelativeAge,
   formatRowTime,
+  formatRowTimeParts,
   formatSignedNumber,
   parseTurkishNumber,
   plural,
@@ -15,7 +16,7 @@ describe('Turkish presentation formatting', () => {
     expect(formatNumber(9315.5, 2)).toBe('9.315,50');
     expect(formatSignedNumber(31204.8, 2)).toBe('+31.204,80');
     expect(formatSignedNumber(-1428, 2)).toBe('−1.428,00');
-    expect(formatPercentage(1.9)).toBe('+1,9%');
+    expect(formatPercentage(1.9)).toBe('+1,90%');
   });
 
   it('formats dates and suppresses the batch day in row times', () => {
@@ -24,6 +25,19 @@ describe('Turkish presentation formatting', () => {
     expect(formatDate(timestamp)).toBe('15.08.26');
     expect(formatRowTime(timestamp, '2026-08-15')).toBe('09:41');
     expect(formatRowTime(timestamp, '2026-08-14')).toBe('15.08 09:41');
+  });
+
+  it('hands the seconds back apart from the minute, colon included', () => {
+    const timestamp = Date.parse('2026-08-15T06:41:07Z');
+    expect(formatRowTimeParts(timestamp, '2026-08-15')).toEqual({
+      minute: '09:41',
+      seconds: ':07',
+    });
+    expect(formatRowTimeParts(timestamp, '2026-08-14')).toEqual({
+      minute: '15.08 09:41',
+      seconds: ':07',
+    });
+    expect(formatRowTimeParts(null, '2026-08-15')).toBeNull();
   });
 
   it('uses the fixed relative-age vocabulary', () => {
