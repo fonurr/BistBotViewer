@@ -1,4 +1,4 @@
-import { FIXTURE_NOW_MS } from '../../src/test/fixtures';
+import { FIXTURE_NOW_MS, makeActiveOrder, makeBookReadFixture } from '../../src/test/fixtures';
 import { expect, makeBrowserScenario, test } from './safeHarness';
 
 test.describe('The Book safety smoke', () => {
@@ -110,6 +110,37 @@ test.describe('The Book safety smoke', () => {
     ).toBeVisible();
     await expect(dialog.getByRole('button', { name: 'edit', exact: true })).toBeDisabled();
     await expect(dialog.getByRole('button', { name: 'cancel', exact: true })).toBeDisabled();
+  });
+
+  test('reads a guarded order out loud in the view a symbol click opens', async ({
+    page,
+    safeBridge,
+  }) => {
+    const base = makeBookReadFixture();
+    safeBridge.useScenario(
+      makeBrowserScenario({
+        bist: {
+          ...base,
+          activeOrders: [
+            makeActiveOrder({
+              openPrice: '{"upperLimit":9.8,"lowerLimit":-9.8}',
+              closePrice: '{"stopLoss":{"limit":-2,"base":"actualPrice"}}',
+            }),
+          ],
+        },
+      }),
+    );
+    await page.goto('/book');
+    await safeBridge.stream.open();
+
+    await page.locator('article[aria-label="AKBNK chain"] .book-symbol').click();
+    const dialog = page.getByRole('dialog', { name: /AKBNK.*chain/i });
+
+    await expect(
+      dialog.getByText('entry · buy between −9,80% and +9,80% of the previous close'),
+    ).toBeVisible();
+    await expect(dialog.getByText('exit · stop loss at −2,00% of the average fill')).toBeVisible();
+    await expect(dialog.getByText(/The server may add narrower ones of its own/)).toBeVisible();
   });
 
   test('traps modal focus, closes the top layer with Escape, and returns focus', async ({

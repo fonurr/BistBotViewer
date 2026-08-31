@@ -472,6 +472,229 @@ describe('OrderDialog write safety', () => {
   });
 });
 
+describe('OrderDialog price rules', () => {
+  const BAND = '{"upperLimit":9.8,"lowerLimit":-9.8}';
+  const EXIT = '{"stopLoss":{"limit":-2,"base":"actualPrice"}}';
+
+  const guardedScheduled = (overrides: Partial<ActiveOrder> = {}) =>
+    makeActiveOrder({
+      status: 'Scheduled',
+      matriksOrderId: null,
+      orderTime: null,
+      sentTime: null,
+      scheduledTime: Date.now() + 60_000,
+      whenType: 'AtOpen',
+      openPrice: BAND,
+      closePrice: EXIT,
+      ...overrides,
+    });
+
+  it('prefills a stored rule and leaves an untouched one out of the edit', async () => {
+    const user = userEvent.setup();
+    const chain = chainFor({ activeOrders: [makeActiveOrder({ openPrice: BAND })] });
+    api.editOrders.mockResolvedValue({});
+    renderDialog(chain, { kind: 'edit', row: chain.activeRows[0]! });
+
+    expect(screen.getByLabelText('Buy at or below (%)')).toHaveValue('9,8');
+    expect(screen.getByLabelText('Buy at or above (%)')).toHaveValue('-9,8');
+
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(api.editOrders).toHaveBeenCalledTimes(1));
+    // Omitting the key is what leaves the stored rule alone.
+    expect(api.editOrders.mock.calls[0]![0].stocks[0]).not.toHaveProperty('openPrice');
+  });
+
+  it('sends the whole rule once a limit is changed', async () => {
+    const user = userEvent.setup();
+    const chain = chainFor({ activeOrders: [makeActiveOrder({ openPrice: BAND })] });
+    api.editOrders.mockResolvedValue({});
+    renderDialog(chain, { kind: 'edit', row: chain.activeRows[0]! });
+
+    const upper = screen.getByLabelText('Buy at or below (%)');
+    await user.clear(upper);
+    await user.type(upper, '5');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(api.editOrders).toHaveBeenCalledTimes(1));
+    expect(api.editOrders).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stocks: [expect.objectContaining({ openPrice: { upperLimit: 5, lowerLimit: -9.8 } })],
+      }),
+    );
+  });
+
+  it('sends an explicit null only when a stored rule is removed', async () => {
+    const user = userEvent.setup();
+    const chain = chainFor({ activeOrders: [makeActiveOrder({ openPrice: BAND })] });
+    api.editOrders.mockResolvedValue({});
+    renderDialog(chain, { kind: 'edit', row: chain.activeRows[0]! });
+
+    await user.click(screen.getByRole('button', { name: 'remove the entry band' }));
+    expect(screen.getByText(/The entry band will be cleared\./)).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(api.editOrders).toHaveBeenCalledTimes(1));
+    expect(api.editOrders).toHaveBeenCalledWith(
+      expect.objectContaining({ stocks: [expect.objectContaining({ openPrice: null })] }),
+    );
+  });
+
+  it('refuses to disarm a stored band by blanking it', async () => {
+    const user = userEvent.setup();
+    const chain = chainFor({ activeOrders: [makeActiveOrder({ openPrice: BAND })] });
+    renderDialog(chain, { kind: 'edit', row: chain.activeRows[0]! });
+
+    await user.clear(screen.getByLabelText('Buy at or below (%)'));
+    await user.clear(screen.getByLabelText('Buy at or above (%)'));
+
+    expect(
+      screen.getByText(
+        'Blanking these limits would disarm the entry band. Use “remove” to clear it, or restore its limits.',
+      ),
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(api.editOrders).not.toHaveBeenCalled();
+  });
+
+  it('refuses a stop loss at or above a take profit on the same base', async () => {
+    const user = userEvent.setup();
+    const chain = chainFor({ activeOrders: [makeActiveOrder()] });
+    renderDialog(chain, { kind: 'edit', row: chain.activeRows[0]! });
+
+    await user.type(screen.getByLabelText('Take profit (%)'), '2');
+    await user.type(screen.getByLabelText('Stop loss (%)'), '3');
+
+    expect(
+      screen.getByText(
+        'The stop loss must be below the take profit when both are measured against the same price.',
+      ),
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+  });
+
+  it('refuses a band on an Opening auction buy, where no price could ever judge it', async () => {
+    const user = userEvent.setup();
+    const chain = chainFor({ activeOrders: [guardedScheduled({ whenType: 'OpeningAuction' })] });
+    renderDialog(chain, { kind: 'edit', row: chain.activeRows[0]! });
+
+    expect(screen.getByText(/An entry band cannot guard an Opening auction buy/)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+
+    // Clearing the band in the same edit is the way out, exactly as the API says.
+    await user.click(screen.getByRole('button', { name: 'remove the entry band' }));
+
+    expect(screen.queryByText(/An entry band cannot guard/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+  });
+
+  it('draws no guards on a sell, which the server refuses them on', () => {
+    const chain = chainFor({ positions: [makePosition()] });
+    renderDialog(chain, { kind: 'sell', row: chain.positionRows[0]! });
+
+    expect(screen.queryByLabelText('Buy at or below (%)')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Take profit (%)')).not.toBeInTheDocument();
+  });
+
+  it('carries the guards into the order a fire now creates', async () => {
+    const user = userEvent.setup();
+    const scheduled = guardedScheduled();
+    const chain = chainFor({ activeOrders: [scheduled] });
+    proveScheduledRemoval(scheduled);
+    api.cancelOrders.mockResolvedValue({});
+    api.sendOrders.mockResolvedValue({
+      toOrder: [{ symbol: 'AKBNK', quantity: 40 }],
+      skippedList: [],
+    });
+    renderDialog(chain, { kind: 'fire', row: chain.activeRows[0]! });
+
+    expect(screen.getByText(/It goes out as guarded as it stands/)).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Fire now' }));
+
+    await waitFor(() => expect(api.sendOrders).toHaveBeenCalledTimes(1));
+    expect(api.sendOrders).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stocks: [
+          expect.objectContaining({
+            openPrice: { upperLimit: 9.8, lowerLimit: -9.8 },
+            closePrice: { stopLoss: { limit: -2, base: 'actualPrice' } },
+          }),
+        ],
+      }),
+    );
+  });
+
+  it('does not fire at all when the schedule carries a rule it cannot re-express', async () => {
+    const user = userEvent.setup();
+    const scheduled = guardedScheduled({ openPrice: '{not json' });
+    const chain = chainFor({ activeOrders: [scheduled] });
+    api.getActiveOrders.mockResolvedValue([scheduled]);
+    renderDialog(chain, { kind: 'fire', row: chain.activeRows[0]! });
+
+    await user.click(screen.getByRole('button', { name: 'Fire now' }));
+
+    expect(await screen.findByText(/cannot re-express/)).toBeVisible();
+    expect(api.cancelOrders).not.toHaveBeenCalled();
+    expect(api.sendOrders).not.toHaveBeenCalled();
+  });
+
+  it('does not fire when a rule changed between confirmation and the preflight', async () => {
+    const user = userEvent.setup();
+    const scheduled = guardedScheduled();
+    const chain = chainFor({ activeOrders: [scheduled] });
+    api.getActiveOrders.mockResolvedValue([{ ...scheduled, openPrice: '{"upperLimit":5}' }]);
+    renderDialog(chain, { kind: 'fire', row: chain.activeRows[0]! });
+
+    await user.click(screen.getByRole('button', { name: 'Fire now' }));
+
+    expect(await screen.findByText(/Review the fresh row before firing it\./)).toBeVisible();
+    expect(api.cancelOrders).not.toHaveBeenCalled();
+    expect(api.sendOrders).not.toHaveBeenCalled();
+  });
+
+  it('reads a chain out loud in the view a symbol click opens', () => {
+    const chain = chainFor({
+      activeOrders: [guardedScheduled()],
+      positions: [makePosition({ symbol: 'AKBNK', chainId: 'chain-akbnk', closePrice: EXIT })],
+    });
+    renderWithClient(
+      <OrderDialog
+        open
+        chain={chain}
+        bot={makeBot()}
+        budget={makeBotBudget()}
+        holidays={[]}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByText('entry · buy between −9,80% and +9,80% of the previous close'),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText('exit · stop loss at −2,00% of the average fill').length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByText(/The server may add narrower ones of its own/)).toBeVisible();
+  });
+
+  it('says nothing at all about a chain that carries no rule', () => {
+    const chain = chainFor({ activeOrders: [makeActiveOrder()] });
+    renderWithClient(
+      <OrderDialog
+        open
+        chain={chain}
+        bot={makeBot()}
+        budget={makeBotBudget()}
+        holidays={[]}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText('guards')).not.toBeInTheDocument();
+    expect(screen.queryByText(/The server may add narrower ones/)).not.toBeInTheDocument();
+  });
+});
+
 describe('OrderDialog copy', () => {
   it('names the orders that claim the shares the sell form cannot have', () => {
     const chain = chainFor({

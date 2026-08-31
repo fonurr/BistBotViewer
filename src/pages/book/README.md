@@ -74,6 +74,19 @@ rendered as themselves.
 page that performs writes; it keeps the view → form/confirm → sending → result sequence and
 never retries a write automatically.
 
+**Price rules** (`openPrice`, `closePrice`) are the one thing on a row the server acts on by
+itself: an entry band keeps guarding a buy after it rests, so a buy can disappear without anyone
+asking, and a reached exit cancels the position's scheduled sells and sells it at market. Both are
+buy-only, so the guards fieldset is drawn for a buy and for nothing else. The view step states what
+a row carries — opener, legs, and the position that inherited a `closePrice` — beneath a standing
+note that the server may add narrower rules of its own, because the block is a floor and never a
+complete account. **Disarming a guard has to be asked for.** An edit prefills from the stored rule
+and omits it while it is untouched; `remove` is what sends the explicit `null` that clears it, and a
+stored rule whose fields are merely blanked is refused with the sentence that says so. `fire now`
+carries the schedule's rules into its replacement and compares them in the preflight, and refuses to
+cancel anything at all when a stored rule cannot be re-expressed — a replacement that went out
+unguarded is the one outcome that path may never produce.
+
 Price values are trusted only while DailyDataAggregator reports a live feed. The page remains a
 frozen, timestamped snapshot and holds every write when the MatriksOrder event stream is down.
 Partially filled buys and sells contribute their confirmed filled shares to row and aggregate P&L

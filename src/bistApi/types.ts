@@ -41,6 +41,117 @@ export const scheduleSpecSchema = z
 
 export type ScheduleSpec = z.infer<typeof scheduleSpecSchema>;
 
+export const priceBaseSchema = z.enum(['previousClose', 'orderPrice', 'actualPrice']);
+export type PriceBase = z.infer<typeof priceBaseSchema>;
+
+/**
+ * What a scheduled buy does at its fire time when no price can be trusted:
+ * send it unguarded, drop it, or keep waiting that many minutes for one.
+ */
+export const whenPriceFeedDownSchema = z.union([
+  z.enum(['buy', 'cancel']),
+  z.number().int().min(1).max(600),
+]);
+export type WhenPriceFeedDown = z.infer<typeof whenPriceFeedDownSchema>;
+
+/**
+ * A price rule is a signed percentage against a base, never a lira figure. A
+ * percentage read off the previous close is bounded by the exchange's own
+ * ±10% daily cap, because outside it the rule could never fire; one read off
+ * the order or the fill only has to be a sane number. Zero is never a limit.
+ */
+export const BAND_LIMIT_PERCENT = 10;
+export const SANITY_LIMIT_PERCENT = 100;
+
+function limitPercent(bound: number) {
+  return z
+    .number()
+    .min(-bound)
+    .max(bound)
+    .refine((value) => value !== 0, { message: 'A limit of 0 is not a limit.' });
+}
+
+/** Where a buy may be filled. Buy-only, and refused on an Opening auction. */
+export const openPriceRuleSchema = z
+  .object({
+    upperLimit: limitPercent(BAND_LIMIT_PERCENT).optional(),
+    lowerLimit: limitPercent(BAND_LIMIT_PERCENT).optional(),
+    whenPriceFeedDown: whenPriceFeedDownSchema.optional(),
+  })
+  .strict()
+  .refine((rule) => Object.values(rule).some((value) => value !== undefined), {
+    message: 'An entry band must name a limit, or what to do without a price.',
+  })
+  .refine(
+    (rule) =>
+      rule.upperLimit === undefined ||
+      rule.lowerLimit === undefined ||
+      rule.lowerLimit < rule.upperLimit,
+    { message: "The entry band's lower limit must be below its upper limit." },
+  );
+
+export type OpenPriceRule = z.infer<typeof openPriceRuleSchema>;
+
+export const priceTargetSchema = z
+  .object({ limit: z.number(), base: priceBaseSchema })
+  .strict()
+  .refine((target) => target.limit !== 0, { message: 'A limit of 0 is not a limit.' })
+  .refine(
+    (target) =>
+      Math.abs(target.limit) <=
+      (target.base === 'previousClose' ? BAND_LIMIT_PERCENT : SANITY_LIMIT_PERCENT),
+    { message: 'The percentage is outside what its base allows.' },
+  );
+
+export type PriceTarget = z.infer<typeof priceTargetSchema>;
+
+/** Where the position a buy opens is closed again. Buy-only. */
+export const closePriceRuleSchema = z
+  .object({ takeProfit: priceTargetSchema.optional(), stopLoss: priceTargetSchema.optional() })
+  .strict()
+  .refine((rule) => rule.takeProfit !== undefined || rule.stopLoss !== undefined, {
+    message: 'Exit targets must name at least one of a take profit and a stop loss.',
+  })
+  .refine(
+    (rule) =>
+      rule.takeProfit === undefined ||
+      rule.stopLoss === undefined ||
+      rule.takeProfit.base !== rule.stopLoss.base ||
+      rule.stopLoss.limit < rule.takeProfit.limit,
+    {
+      message:
+        'The stop loss must be below the take profit when both are measured against the same price.',
+    },
+  );
+
+export type ClosePriceRule = z.infer<typeof closePriceRuleSchema>;
+
+/**
+ * How a stored rule comes back: the JSON the request supplied, echoed
+ * verbatim. It is read as text today, so this stays deliberately lenient —
+ * like `orderStatusSchema`, a shape we do not recognize must cost one rule,
+ * never the whole table read. `domain/priceRules.ts` decides what it means.
+ */
+export const storedPriceRuleSchema = z
+  .union([z.string(), z.object({}).passthrough()])
+  .nullable()
+  .optional();
+
+export type StoredPriceRule = z.infer<typeof storedPriceRuleSchema>;
+
+/** An explicit `null` clears a stored rule; that is the only way to disarm one. */
+const writtenOpenPriceSchema = openPriceRuleSchema.nullable().optional();
+const writtenClosePriceSchema = closePriceRuleSchema.nullable().optional();
+
+/** Whether a rule would guard a price, as opposed to only naming a fallback. */
+export function hasBandLimits(rule: OpenPriceRule | null | undefined): boolean {
+  return (
+    rule !== null &&
+    rule !== undefined &&
+    (rule.upperLimit !== undefined || rule.lowerLimit !== undefined)
+  );
+}
+
 export const botSchema = z
   .object({
     id: botIdSchema,
@@ -102,6 +213,8 @@ export const activeOrderSchema = z
     cancelAtFloor: z.boolean(),
     scheduledTime: z.number().nullable().optional(),
     whenType: whenTypeSchema.nullable().optional(),
+    openPrice: storedPriceRuleSchema,
+    closePrice: storedPriceRuleSchema,
   })
   .merge(chainLinksSchema)
   .passthrough();
@@ -130,6 +243,8 @@ export const canceledOrderSchema = z
     retryCount: z.number().int(),
     intentType: orderTypeSchema,
     cancelAtFloor: z.boolean(),
+    openPrice: storedPriceRuleSchema,
+    closePrice: storedPriceRuleSchema,
   })
   .merge(chainLinksSchema)
   .passthrough();
@@ -151,6 +266,7 @@ export const positionSchema = z
     quantity: z.number().int(),
     averagePrice: z.number(),
     orderPrice: z.number(),
+    closePrice: storedPriceRuleSchema,
     chainId: z.string().nullable(),
     retryOfClientOrderId: z.string().nullable(),
   })
@@ -197,6 +313,8 @@ export const sendStockSchema = z
     openTime: scheduleSpecSchema.optional(),
     closeTime: scheduleSpecSchema.optional(),
     cancelAtFloor: z.boolean().optional(),
+    openPrice: writtenOpenPriceSchema,
+    closePrice: writtenClosePriceSchema,
   })
   .strict();
 
@@ -211,6 +329,8 @@ export const sendOrdersRequestSchema = z
     budgetPercentagePerStock: z.number().positive().optional(),
     openTime: scheduleSpecSchema.optional(),
     closeTime: scheduleSpecSchema.optional(),
+    openPrice: writtenOpenPriceSchema,
+    closePrice: writtenClosePriceSchema,
     stocks: z.array(sendStockSchema).min(1),
   })
   .strict()
@@ -226,6 +346,13 @@ export const sendOrdersRequestSchema = z
         context.addIssue({
           code: 'custom',
           message: 'Sell requests cannot carry buy budgets or openTime.',
+        });
+      }
+      if (request.openPrice !== undefined || request.closePrice !== undefined) {
+        context.addIssue({
+          code: 'custom',
+          message:
+            'Sell requests cannot carry price rules: both describe a position and the buy that opens it.',
         });
       }
     }
@@ -244,6 +371,28 @@ export const sendOrdersRequestSchema = z
           message: 'A sell stock cannot carry openTime.',
         });
       }
+      for (const field of ['openPrice', 'closePrice'] as const) {
+        if (request.direction === 'sell' && stock[field] !== undefined) {
+          context.addIssue({
+            code: 'custom',
+            path: ['stocks', index, field],
+            message: `A sell stock cannot carry ${field}.`,
+          });
+        }
+      }
+      // A rule inherits from the request unless the stock names its own, and
+      // an Opening auction buy is matched at 09:55 with no price in between,
+      // so a band could never act on it.
+      const openTime = stock.openTime ?? request.openTime;
+      const openPrice = stock.openPrice === undefined ? request.openPrice : stock.openPrice;
+      if (openTime?.type === 'OpeningAuction' && hasBandLimits(openPrice)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['stocks', index, 'openPrice'],
+          message:
+            'An entry band cannot guard an Opening auction buy: it is sent at 09:00 and matched at 09:55, so no price exists while the band could still act.',
+        });
+      }
     });
   });
 
@@ -257,6 +406,8 @@ export const editStockSchema = z
     orderId: z.string().min(1),
     time: scheduleSpecSchema.optional(),
     cancelAtFloor: z.boolean().optional(),
+    openPrice: writtenOpenPriceSchema,
+    closePrice: writtenClosePriceSchema,
   })
   .strict();
 
@@ -284,6 +435,23 @@ export const editOrdersRequestSchema = z
           code: 'custom',
           path: ['stocks', index, 'price'],
           message: 'This edit requires a positive price.',
+        });
+      }
+      for (const field of ['openPrice', 'closePrice'] as const) {
+        if (request.direction === 'sell' && stock[field] !== undefined) {
+          context.addIssue({
+            code: 'custom',
+            path: ['stocks', index, field],
+            message: `A sell stock cannot carry ${field}.`,
+          });
+        }
+      }
+      if (stock.time?.type === 'OpeningAuction' && hasBandLimits(stock.openPrice)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['stocks', index, 'openPrice'],
+          message:
+            'Moving this buy to an Opening auction would strand its entry band; clear the band in the same edit.',
         });
       }
     });

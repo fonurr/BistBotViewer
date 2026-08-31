@@ -104,6 +104,81 @@ describe('bistApi write errors', () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it('refuses a price rule the server would refuse, before any request is made', () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    // The request never becomes a promise: the schema refuses it first.
+    // Both rules describe a position and the buy that opens it.
+    expect(() =>
+      bistApi.sendOrders({
+        botId: 'bot-1',
+        direction: 'sell',
+        type: 'limit',
+        stocks: [{ symbol: 'AKBNK', price: 38.16, quantity: 10, openPrice: { upperLimit: 5 } }],
+      }),
+    ).toThrow(/sell stock cannot carry openPrice/);
+
+    // An Opening auction is matched at 09:55; a band could never act on it.
+    expect(() =>
+      bistApi.sendOrders({
+        botId: 'bot-1',
+        direction: 'buy',
+        type: 'limit',
+        openPrice: { lowerLimit: -9.8 },
+        stocks: [
+          {
+            symbol: 'AKBNK',
+            price: 38.16,
+            openTime: { day: '2026-08-25', type: 'OpeningAuction' },
+          },
+        ],
+      }),
+    ).toThrow(/Opening auction/);
+
+    // The exchange's own daily cap bounds a percentage read off the previous close.
+    expect(() =>
+      bistApi.editOrders({
+        botId: 'bot-1',
+        direction: 'buy',
+        type: 'limit',
+        orderIds: ['order-1'],
+        stocks: [
+          { symbol: 'AKBNK', orderId: 'order-1', price: 38.16, openPrice: { upperLimit: 10.5 } },
+        ],
+      }),
+    ).toThrow();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('carries a rule through, and lets an explicit null disarm one', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await bistApi.editOrders({
+      botId: 'bot-1',
+      direction: 'buy',
+      type: 'limit',
+      orderIds: ['order-1'],
+      stocks: [
+        {
+          symbol: 'AKBNK',
+          orderId: 'order-1',
+          price: 38.16,
+          openPrice: null,
+          closePrice: { stopLoss: { limit: -2, base: 'actualPrice' } },
+        },
+      ],
+    });
+
+    const body = JSON.parse(String(fetchMock.mock.calls.at(-1)![1].body));
+    expect(body.stocks[0]).toMatchObject({
+      openPrice: null,
+      closePrice: { stopLoss: { limit: -2, base: 'actualPrice' } },
+    });
+  });
 });
 
 function jsonResponse(value: unknown): Response {

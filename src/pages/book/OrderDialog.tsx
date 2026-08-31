@@ -5,16 +5,22 @@ import { useViewerRuntime } from '../../app/ViewerRuntime';
 import { bistKeys } from '../../app/queryKeys';
 import { bistApi } from '../../bistApi/client';
 import { asBistApiError } from '../../bistApi/errors';
+import { hasBandLimits } from '../../bistApi/types';
 import type {
   ActiveOrder,
   Bot,
   BotBudget,
   CanceledOrder,
+  ClosePriceRule,
   Holiday,
+  OpenPriceRule,
   OrderType,
+  PriceBase,
   ScheduleSpec,
   ScheduleType,
   SendOrdersRequest,
+  StoredPriceRule,
+  WhenType,
 } from '../../bistApi/types';
 import { Modal } from '../../components/Modal';
 import { useMinuteClock } from '../../components/useMinuteClock';
@@ -32,6 +38,28 @@ import {
   plural,
   toIstanbulDateKey,
 } from '../../domain/format';
+import {
+  EMPTY_CLOSE_PRICE_DRAFT,
+  EMPTY_OPEN_PRICE_DRAFT,
+  closePriceDraftFrom,
+  describeClosePrice,
+  describeOpenPrice,
+  isNeutralClosePriceDraft,
+  isNeutralOpenPriceDraft,
+  openPriceDraftFrom,
+  parseClosePrice,
+  parseOpenPrice,
+  readClosePrice,
+  readClosePriceDraft,
+  readOpenPrice,
+  readOpenPriceDraft,
+  sameClosePrice,
+  sameOpenPrice,
+  sameStoredRule,
+  type ClosePriceDraft,
+  type OpenPriceDraft,
+  type RuleDraft,
+} from '../../domain/priceRules';
 import {
   deriveFilledPnlState,
   effectivePerPositionCap,
@@ -75,6 +103,42 @@ interface Draft {
   resendMode: 'same' | 'change';
   keepClose: boolean;
   changeSchedule: boolean;
+  openPrice: RuleDraft<OpenPriceDraft>;
+  closePrice: RuleDraft<ClosePriceDraft>;
+}
+
+/**
+ * Where a row keeps its price rules. A position carries only the exit rule its
+ * opening buy handed it; a closed trade carries neither.
+ */
+function rowRules(row: BookChain['rows'][number]): {
+  open: StoredPriceRule;
+  close: StoredPriceRule;
+} {
+  if (row.source === 'active' || row.source === 'scheduled' || row.source === 'canceled') {
+    return { open: row.raw.openPrice, close: row.raw.closePrice };
+  }
+  if (row.source === 'position') return { open: undefined, close: row.raw.closePrice };
+  return { open: undefined, close: undefined };
+}
+
+interface StoredRules {
+  open: OpenPriceRule | null;
+  close: ClosePriceRule | null;
+  /** The row carries a rule in a form this viewer cannot re-express. */
+  unreadable: boolean;
+}
+
+function storedRulesFor(action: OrderDialogAction | undefined): StoredRules {
+  if (!action) return { open: null, close: null, unreadable: false };
+  const raw = rowRules(action.row);
+  const open = readOpenPrice(raw.open);
+  const close = readClosePrice(raw.close);
+  return {
+    open: open.kind === 'rule' ? open.rule : null,
+    close: close.kind === 'rule' ? close.rule : null,
+    unreadable: open.kind === 'unreadable' || close.kind === 'unreadable',
+  };
 }
 
 export function OrderDialog({
@@ -523,6 +587,7 @@ function ChainView({
   const sellAction = chain.positionRows
     .flatMap((row) => orderActionsForRow(row, chain))
     .find((candidate) => candidate.kind === 'sell');
+  const anyGuards = rows.some((row) => guardsFor(row).any);
   return (
     <div className="chain-dialog-view">
       {opener ? (
@@ -558,6 +623,7 @@ function ChainView({
                   </button>
                 ))}
               </span>
+              <RowGuards row={row} />
             </div>
           );
         })}
@@ -585,6 +651,12 @@ function ChainView({
               — the count only grows once the cancel is confirmed, never when it is asked.
             </>
           )}
+        </p>
+      ) : null}
+      {anyGuards ? (
+        <p className="dialog-note">
+          Only the rules these orders carry are shown. The server may add narrower ones of its own —
+          the tighter of the two always wins.
         </p>
       ) : null}
       {writesHeldReason ? (
@@ -683,6 +755,7 @@ function ChainOpener({
           </div>
         ))}
       </div>
+      <RowGuards row={row} />
       {/* The opener keeps its status sentence and its own actions: the kicker
           names the kind of row, not what is happening to it right now, and an
           opener is often the only leg a chain has. */}
@@ -715,6 +788,46 @@ function ChainOpener({
         </div>
       ))}
     </div>
+  );
+}
+
+interface RowGuardLines {
+  entry: string[];
+  exit: string[];
+  unreadable: boolean;
+  any: boolean;
+}
+
+/**
+ * What this row will do on its own. Only what the order itself carries is
+ * read: the server adds guards of its own that are never written down here,
+ * so the block states a floor, never a complete account — which is why the
+ * standing note beneath the chain says so out loud.
+ */
+function guardsFor(row: BookChain['rows'][number]): RowGuardLines {
+  const raw = rowRules(row);
+  const entry = describeOpenPrice(parseOpenPrice(raw.open));
+  const exit = describeClosePrice(parseClosePrice(raw.close));
+  const unreadable =
+    readOpenPrice(raw.open).kind === 'unreadable' ||
+    readClosePrice(raw.close).kind === 'unreadable';
+  return { entry, exit, unreadable, any: entry.length > 0 || exit.length > 0 || unreadable };
+}
+
+function RowGuards({ row }: { row: BookChain['rows'][number] }) {
+  const guards = guardsFor(row);
+  if (!guards.any) return null;
+  return (
+    <dl className="chain-dialog-guards">
+      <dt className="kicker">guards</dt>
+      {guards.entry.length > 0 ? <dd>entry · {guards.entry.join(' · ')}</dd> : null}
+      {guards.exit.length > 0 ? <dd>exit · {guards.exit.join(' · ')}</dd> : null}
+      {guards.unreadable ? (
+        <dd className="status-warn">
+          This row carries a price rule in a form this viewer cannot read.
+        </dd>
+      ) : null}
+    </dl>
   );
 }
 
@@ -915,6 +1028,14 @@ function ActionForm({
           Create a linked reversing sell at BeforeClose −30m
         </label>
       ) : null}
+      {direction === 'buy' ? (
+        <GuardFields
+          draft={draft}
+          setDraft={setDraft}
+          stored={storedRulesFor(action)}
+          disabled={isResend && draft.resendMode === 'same'}
+        />
+      ) : null}
       <p className="bounding-copy">{validation.boundCopy}</p>
       {isResend ? (
         <p className="dialog-note">
@@ -937,6 +1058,229 @@ function ActionForm({
         </button>
       </div>
     </div>
+  );
+}
+
+const BASE_OPTIONS: ReadonlyArray<{ value: PriceBase; label: string }> = [
+  { value: 'actualPrice', label: 'the average fill' },
+  { value: 'orderPrice', label: 'the order price' },
+  { value: 'previousClose', label: 'the previous close' },
+];
+
+/**
+ * The two rules a buy can carry. They are percentages against a base, never
+ * lira, and they are the only fields on this form the server acts on by itself
+ * — a band can pull a resting buy off the exchange and an exit can sell the
+ * position out — so each group states what it will do, not only what it is.
+ */
+function GuardFields({
+  draft,
+  setDraft,
+  stored,
+  disabled,
+}: {
+  draft: Draft;
+  setDraft: (draft: Draft) => void;
+  stored: StoredRules;
+  disabled: boolean;
+}) {
+  const open = draft.openPrice;
+  const close = draft.closePrice;
+  const setOpen = (value: OpenPriceDraft) =>
+    setDraft({ ...draft, openPrice: { state: 'edit', value } });
+  const setClose = (value: ClosePriceDraft) =>
+    setDraft({ ...draft, closePrice: { state: 'edit', value } });
+  return (
+    <>
+      {stored.unreadable ? (
+        <p className="dialog-note status-warn">
+          This order carries a price rule in a form this viewer cannot read. Leaving these fields
+          alone keeps it as it is; anything entered here replaces it.
+        </p>
+      ) : null}
+      <fieldset className="guard-fields" disabled={disabled}>
+        <legend className="kicker">
+          entry band
+          {stored.open !== null && open.state === 'edit' ? (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              aria-label="remove the entry band"
+              onClick={() => setDraft({ ...draft, openPrice: { state: 'cleared' } })}
+            >
+              remove
+            </button>
+          ) : null}
+        </legend>
+        {open.state === 'cleared' ? (
+          <p className="guard-cleared">
+            The entry band will be cleared.{' '}
+            <button
+              type="button"
+              className="btn btn-ghost"
+              aria-label="keep the entry band"
+              onClick={() =>
+                setDraft({
+                  ...draft,
+                  openPrice: { state: 'edit', value: openPriceDraftFrom(stored.open) },
+                })
+              }
+            >
+              undo
+            </button>
+          </p>
+        ) : (
+          <>
+            <label className="field">
+              <span>Buy at or below (%)</span>
+              <input
+                className="input"
+                inputMode="decimal"
+                value={open.value.upperLimit}
+                onChange={(event) => setOpen({ ...open.value, upperLimit: event.target.value })}
+              />
+            </label>
+            <label className="field">
+              <span>Buy at or above (%)</span>
+              <input
+                className="input"
+                inputMode="decimal"
+                value={open.value.lowerLimit}
+                onChange={(event) => setOpen({ ...open.value, lowerLimit: event.target.value })}
+              />
+            </label>
+            <label className="field">
+              <span>Without a price at fire</span>
+              <select
+                className="input"
+                value={open.value.feedDown}
+                onChange={(event) =>
+                  setOpen({
+                    ...open.value,
+                    feedDown: event.target.value as OpenPriceDraft['feedDown'],
+                  })
+                }
+              >
+                <option value="buy">send it unguarded</option>
+                <option value="cancel">drop it</option>
+                <option value="wait">wait for one</option>
+              </select>
+            </label>
+            {open.value.feedDown === 'wait' ? (
+              <label className="field">
+                <span>Wait (minutes)</span>
+                <input
+                  className="input"
+                  inputMode="numeric"
+                  value={open.value.waitMinutes}
+                  onChange={(event) => setOpen({ ...open.value, waitMinutes: event.target.value })}
+                />
+              </label>
+            ) : null}
+            <p className="guard-note">
+              Both limits are percentages of the previous close, between −10 and 10. A band keeps
+              guarding this buy after it rests, so the server can pull it off the exchange on its
+              own.
+            </p>
+          </>
+        )}
+      </fieldset>
+      <fieldset className="guard-fields" disabled={disabled}>
+        <legend className="kicker">
+          exit targets
+          {stored.close !== null && close.state === 'edit' ? (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              aria-label="remove the exit targets"
+              onClick={() => setDraft({ ...draft, closePrice: { state: 'cleared' } })}
+            >
+              remove
+            </button>
+          ) : null}
+        </legend>
+        {close.state === 'cleared' ? (
+          <p className="guard-cleared">
+            The exit targets will be cleared.{' '}
+            <button
+              type="button"
+              className="btn btn-ghost"
+              aria-label="keep the exit targets"
+              onClick={() =>
+                setDraft({
+                  ...draft,
+                  closePrice: { state: 'edit', value: closePriceDraftFrom(stored.close) },
+                })
+              }
+            >
+              undo
+            </button>
+          </p>
+        ) : (
+          <>
+            <label className="field">
+              <span>Take profit (%)</span>
+              <input
+                className="input"
+                inputMode="decimal"
+                value={close.value.takeProfitLimit}
+                onChange={(event) =>
+                  setClose({ ...close.value, takeProfitLimit: event.target.value })
+                }
+              />
+            </label>
+            <label className="field">
+              <span>Take profit of</span>
+              <select
+                className="input"
+                value={close.value.takeProfitBase}
+                onChange={(event) =>
+                  setClose({ ...close.value, takeProfitBase: event.target.value as PriceBase })
+                }
+              >
+                {BASE_OPTIONS.map((option) => (
+                  <option value={option.value} key={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Stop loss (%)</span>
+              <input
+                className="input"
+                inputMode="decimal"
+                value={close.value.stopLossLimit}
+                onChange={(event) =>
+                  setClose({ ...close.value, stopLossLimit: event.target.value })
+                }
+              />
+            </label>
+            <label className="field">
+              <span>Stop loss of</span>
+              <select
+                className="input"
+                value={close.value.stopLossBase}
+                onChange={(event) =>
+                  setClose({ ...close.value, stopLossBase: event.target.value as PriceBase })
+                }
+              >
+                {BASE_OPTIONS.map((option) => (
+                  <option value={option.value} key={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="guard-note">
+              A reached target cancels this position&rsquo;s scheduled sells and sells the whole
+              position at market. A stop loss is best-effort: an exit that cannot see the price does
+              nothing at all.
+            </p>
+          </>
+        )}
+      </fieldset>
+    </>
   );
 }
 
@@ -1004,6 +1348,11 @@ function ActionConfirm({
           (row) => row.parentClientOrderId === action.row.clientOrderId && row.direction === 'sell',
         )
       : undefined;
+  const rowGuards = guardsFor(action.row);
+  const firedGuards =
+    action.kind === 'fire' && action.row.direction === 'buy'
+      ? [...rowGuards.entry, ...rowGuards.exit]
+      : [];
   return (
     <div>
       <p className="dialog-context">
@@ -1031,6 +1380,11 @@ function ActionConfirm({
               Only after the scheduled cancel lands, create the same {action.row.direction}{' '}
               immediately. Quantity and price resolve now; the new order gets its own id and chain.
             </span>
+            {firedGuards.length > 0 ? (
+              <span className="muted">
+                It goes out as guarded as it stands: {firedGuards.join(' · ')}.
+              </span>
+            ) : null}
           </li>
         ) : null}
       </ol>
@@ -1250,6 +1604,16 @@ function validateDraft(
       quantity: finalQuantity,
       price: finalPrice,
     };
+  if (direction === 'buy') {
+    const ruleError = priceRuleError(action, effectiveDraft, effectiveWhenType);
+    if (ruleError)
+      return {
+        error: ruleError,
+        boundCopy: boundCopy(action, chain, budget),
+        quantity: finalQuantity,
+        price: finalPrice,
+      };
+  }
   if (action.kind === 'edit' && action.row.source === 'scheduled' && resolvedSchedule?.ok) {
     const orderingError = scheduledEditOrderingError(action, chain, resolvedSchedule.fireTime);
     if (orderingError)
@@ -1291,6 +1655,42 @@ function validateDraft(
     quantity: finalQuantity,
     price: finalPrice,
   };
+}
+
+/**
+ * The rules a buy carries, judged before anything is sent. Disarming a guard
+ * has to be asked for: a stored rule whose fields were merely blanked is a
+ * refusal, not a silent clear, because the request that would follow is the
+ * same one `remove` sends and nothing on screen would say so.
+ */
+function priceRuleError(
+  action: Exclude<OrderDialogAction, { kind: 'cancel' | 'fire' }>,
+  draft: Draft,
+  effectiveWhenType: WhenType | ScheduleType | null | undefined,
+): string | null {
+  const stored = storedRulesFor(action);
+  const isEdit = action.kind === 'edit';
+
+  if (draft.openPrice.state === 'edit') {
+    const reading = readOpenPriceDraft(draft.openPrice.value);
+    if (!reading.ok) return reading.error;
+    if (isEdit && stored.open !== null && isNeutralOpenPriceDraft(draft.openPrice.value)) {
+      return 'Blanking these limits would disarm the entry band. Use “remove” to clear it, or restore its limits.';
+    }
+    if (effectiveWhenType === 'OpeningAuction' && hasBandLimits(reading.rule)) {
+      return 'An entry band cannot guard an Opening auction buy: it is sent at 09:00 and matched at 09:55, so no price exists while the band could still act.';
+    }
+  }
+
+  if (draft.closePrice.state === 'edit') {
+    const reading = readClosePriceDraft(draft.closePrice.value);
+    if (!reading.ok) return reading.error;
+    if (isEdit && stored.close !== null && isNeutralClosePriceDraft(draft.closePrice.value)) {
+      return 'Blanking these targets would disarm the exit. Use “remove” to clear it, or restore its targets.';
+    }
+  }
+
+  return null;
 }
 
 function boundCopy(
@@ -1421,6 +1821,51 @@ function scheduledEditOrderingError(
   return null;
 }
 
+/**
+ * The three states EditOrders draws apart: omitting a rule leaves the stored
+ * one alone, an object replaces it wholesale, and an explicit null is the only
+ * way to disarm one. A send has no stored rule to leave alone, so it only ever
+ * omits or names — never nulls.
+ */
+function rulePayloads(
+  action: Exclude<OrderDialogAction, { kind: 'cancel' | 'fire' }>,
+  draft: Pick<Draft, 'openPrice' | 'closePrice'>,
+  forEdit: boolean,
+): { openPrice?: OpenPriceRule | null; closePrice?: ClosePriceRule | null } {
+  if (actionDirection(action) !== 'buy') return {};
+  const stored = storedRulesFor(action);
+  const payload: { openPrice?: OpenPriceRule | null; closePrice?: ClosePriceRule | null } = {};
+
+  if (draft.openPrice.state === 'cleared') {
+    if (forEdit && stored.open !== null) payload.openPrice = null;
+  } else {
+    const reading = readOpenPriceDraft(draft.openPrice.value);
+    // An unreadable draft never reaches here: validateDraft blocks the submit.
+    if (
+      reading.ok &&
+      reading.rule !== null &&
+      !(forEdit && sameOpenPrice(reading.rule, stored.open))
+    ) {
+      payload.openPrice = reading.rule;
+    }
+  }
+
+  if (draft.closePrice.state === 'cleared') {
+    if (forEdit && stored.close !== null) payload.closePrice = null;
+  } else {
+    const reading = readClosePriceDraft(draft.closePrice.value);
+    if (
+      reading.ok &&
+      reading.rule !== null &&
+      !(forEdit && sameClosePrice(reading.rule, stored.close))
+    ) {
+      payload.closePrice = reading.rule;
+    }
+  }
+
+  return payload;
+}
+
 function buildEditRequest(
   action: Extract<OrderDialogAction, { kind: 'edit' }>,
   draft: Draft,
@@ -1444,6 +1889,7 @@ function buildEditRequest(
         ...(action.row.source === 'scheduled' && action.row.direction === 'buy'
           ? { cancelAtFloor: validation.cancelAtFloor }
           : {}),
+        ...rulePayloads(action, validation, true),
       },
     ],
   };
@@ -1472,6 +1918,7 @@ function buildSendRequest(
       ? { closeTime: { day: values.day, type: 'BeforeClose' as const, diff: 30 } }
       : {}),
     ...(direction === 'buy' && values.scheduled ? { cancelAtFloor: values.cancelAtFloor } : {}),
+    ...rulePayloads(action, values, false),
   };
   return {
     botId: chain.botId,
@@ -1531,6 +1978,32 @@ async function fireScheduled(
           tone: 'not-sent',
           word: 'Not fired',
           detail: 'Neither write call was made.',
+        },
+      ]);
+      return;
+    }
+    // Firing early may not quietly disarm what the schedule was carrying. If
+    // the rule cannot be re-expressed it cannot be re-sent, so nothing moves.
+    if (
+      readOpenPrice(freshRow.openPrice).kind === 'unreadable' ||
+      readClosePrice(freshRow.closePrice).kind === 'unreadable'
+    ) {
+      setResultTitle('Not fired · guard unreadable');
+      setResults([
+        {
+          id: 'cancel',
+          label: `1 · Remove scheduled ${action.row.symbol}`,
+          tone: 'not-sent',
+          detail:
+            'The schedule carries a price rule in a form this viewer cannot re-express. CancelOrders was not called.',
+        },
+        {
+          id: 'send',
+          label: `2 · Send ${action.row.symbol} now`,
+          tone: 'not-sent',
+          word: 'Not fired',
+          detail:
+            'A replacement would have gone out without that guard, so neither write call was made.',
         },
       ]);
       return;
@@ -1673,6 +2146,18 @@ async function fireScheduled(
           ...(freshScheduled.orderQuantity === null
             ? {}
             : { quantity: freshScheduled.orderQuantity }),
+          // The guards travel with the order. A buy fired early is the same
+          // buy, and it stays as guarded as the schedule left it.
+          ...(freshScheduled.direction === 'buy'
+            ? {
+                ...(parseOpenPrice(freshScheduled.openPrice) === null
+                  ? {}
+                  : { openPrice: parseOpenPrice(freshScheduled.openPrice)! }),
+                ...(parseClosePrice(freshScheduled.closePrice) === null
+                  ? {}
+                  : { closePrice: parseClosePrice(freshScheduled.closePrice)! }),
+              }
+            : {}),
         },
       ],
     };
@@ -1797,7 +2282,10 @@ function draftFor(action: OrderDialogAction | undefined, chain?: BookChain): Dra
       resendMode: 'same',
       keepClose: false,
       changeSchedule: false,
+      openPrice: { state: 'edit', value: EMPTY_OPEN_PRICE_DRAFT },
+      closePrice: { state: 'edit', value: EMPTY_CLOSE_PRICE_DRAFT },
     };
+  const stored = storedRulesFor(action);
   return {
     type: action.row.orderType ?? action.row.intentType ?? 'limit',
     price: action.row.orderPrice === null ? '' : editableNumber(action.row.orderPrice),
@@ -1821,6 +2309,8 @@ function draftFor(action: OrderDialogAction | undefined, chain?: BookChain): Dra
         : 'same',
     keepClose: false,
     changeSchedule: false,
+    openPrice: { state: 'edit', value: openPriceDraftFrom(stored.open) },
+    closePrice: { state: 'edit', value: closePriceDraftFrom(stored.close) },
   };
 }
 
@@ -1857,9 +2347,13 @@ function sameActionRowState(
     left.source === 'active' || left.source === 'scheduled' ? left.raw.cancelAtFloor : null;
   const rightCancelAtFloor =
     right.source === 'active' || right.source === 'scheduled' ? right.raw.cancelAtFloor : null;
+  const leftRules = rowRules(left);
+  const rightRules = rowRules(right);
   return (
     left.key === right.key &&
     left.source === right.source &&
+    sameStoredRule(leftRules.open, rightRules.open) &&
+    sameStoredRule(leftRules.close, rightRules.close) &&
     left.status === right.status &&
     left.direction === right.direction &&
     left.quantity === right.quantity &&
@@ -1886,6 +2380,8 @@ function sameScheduledFireTerms(left: ActiveOrder, right: ActiveOrder): boolean 
     left.orderQuantity === right.orderQuantity &&
     left.timeInForce === right.timeInForce &&
     left.cancelAtFloor === right.cancelAtFloor &&
+    sameStoredRule(left.openPrice, right.openPrice) &&
+    sameStoredRule(left.closePrice, right.closePrice) &&
     (left.scheduledTime ?? null) === (right.scheduledTime ?? null) &&
     (left.whenType ?? null) === (right.whenType ?? null)
   );
