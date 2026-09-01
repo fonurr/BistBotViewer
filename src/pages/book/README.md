@@ -40,7 +40,9 @@ focused `no closing order` list spans scopes on purpose, so it groups by bot alo
 
 Row vocabulary follows the visual reference: an opener carries its symbol alone and a leg carries
 nothing in that column — the opener above already said the symbol and the hairline says where the
-chain ends, so a leg only speaks its symbol to a screen reader. **No id is printed in the grid.**
+chain ends, so a leg only speaks its symbol to a screen reader. A **sell row leaves the qty column
+empty** when its size is the buy's whole size — an `auto` sell, or one whose quantity equals the
+chain's opening buy; only a partial sell writes a number there. **No id is printed in the grid.**
 Both the chain id and every order's client-order id are read in the chain dialog, opened from the
 symbol, and there they are given in full rather than abbreviated to a tail. The
 **The asked price is gray and the fill is not**: `order` is only the setting a row was sent

@@ -412,7 +412,9 @@ const BookRow = memo(function BookRow({
         )}
       </div>
       <div role="cell">
-        {row.quantity === null ? (
+        {redundantSellQuantity(row, chain) ? (
+          ''
+        ) : row.quantity === null ? (
           <span className="captured-value">auto</span>
         ) : (
           formatQuantity(row.quantity)
@@ -534,6 +536,23 @@ function rowFlashSignature(row: BookChainRow): string {
 function actionLabel(kind: OrderDialogAction['kind']): string {
   if (kind === 'fire') return 'fire now';
   return kind;
+}
+
+/**
+ * A sell that takes the whole position adds nothing in the qty column — its
+ * size is the buy's size, and an `auto` sell resolves to exactly that at fire.
+ * Only a sell for less than the buy asked for writes a number here.
+ */
+function redundantSellQuantity(row: BookChainRow, chain: BookChain): boolean {
+  if (row.direction !== 'sell') return false;
+  if (row.quantity === null) return true;
+  const buyQuantity = chainBuyQuantity(chain);
+  return buyQuantity !== null && row.quantity === buyQuantity;
+}
+
+/** The quantity the chain's opening buy asked for, or null when it has no buy leg. */
+function chainBuyQuantity(chain: BookChain): number | null {
+  return chain.rows.find((row) => row.direction === 'buy')?.quantity ?? null;
 }
 
 export interface RowPnlFigure {
