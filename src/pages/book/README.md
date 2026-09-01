@@ -38,8 +38,11 @@ group**, immediately above the chains it counts, names the side when the waiting
 one way, and carries that group's aggregate — unrealized for positions, realized for trades. The
 focused `no closing order` list spans scopes on purpose, so it groups by bot alone.
 
-Row vocabulary follows the visual reference: an opener carries its symbol with the client-order
-id beneath it, a leg carries `↳ …id` alone (the opener above already said the symbol), and the
+Row vocabulary follows the visual reference: an opener carries its symbol alone and a leg carries
+nothing in that column — the opener above already said the symbol and the hairline says where the
+chain ends, so a leg only speaks its symbol to a screen reader. **No id is printed in the grid.**
+Both the chain id and every order's client-order id are read in the chain dialog, opened from the
+symbol, and there they are given in full rather than abbreviated to a tail. The
 status cell states its qualifier **inline** in muted ink after a middle dot — `New · resting 22m
 · 0 of 150 filled`, `Position · held 3d 2h`, `By user · canceled in the MatriksIQ terminal`. A
 resting time is read off `orderTime`, the exchange's own registration stamp, never off the ack

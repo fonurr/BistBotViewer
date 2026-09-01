@@ -510,7 +510,7 @@ function chainHeader(chain: BookChain, marketPrice: number | null) {
   return {
     kicker: `chain · ${plural(orderCount, 'order')}`,
     subtitle: [
-      chain.chainId ? `chain …${chain.chainId.slice(-6)}` : 'chain link unknown',
+      chain.chainId ? `chain ${chain.chainId}` : 'chain link unknown',
       chain.batchDate === null ? 'batch date unknown' : `batch ${formatDateKey(chain.batchDate)}`,
       chain.botId,
     ].join(' · '),
@@ -606,6 +606,7 @@ function ChainView({
             <div className={`chain-dialog-row ${statusClass(presentation.role)}`} key={row.key}>
               <span className="chain-dialog-status">{presentation.label}</span>
               <span className="chain-dialog-terms">{legTerms(row)}</span>
+              <span className="chain-dialog-id">{row.clientOrderId ?? 'no client id'}</span>
               {presentation.detail ? (
                 <span className="chain-dialog-note">{presentation.detail}</span>
               ) : null}
@@ -743,9 +744,9 @@ function ChainOpener({
     <div className={`chain-dialog-opener ${statusClass(presentation.role)}`}>
       <div className="chain-dialog-opener-head">
         <span className="kicker">opener · {openerWord(row)}</span>
-        <span className="muted">
-          {row.clientOrderId ? `…${row.clientOrderId.slice(-6)}` : 'no client id'}
-        </span>
+        {/* The grid prints no id at all, so this dialog is where an id is
+            read: it is given in full, never an abbreviation to match up. */}
+        <span className="muted chain-dialog-id">{row.clientOrderId ?? 'no client id'}</span>
       </div>
       <div className="chain-dialog-opener-stats">
         {stats.map((stat) => (
@@ -875,8 +876,7 @@ function ActionForm({
   return (
     <div>
       <p className="dialog-context">
-        {direction} {action.row.symbol} ·{' '}
-        {action.row.clientOrderId ? `…${action.row.clientOrderId.slice(-8)}` : 'fresh order'}
+        {direction} {action.row.symbol} · {action.row.clientOrderId ?? 'fresh order'}
       </p>
       {isResend ? (
         <>
@@ -1390,8 +1390,8 @@ function ActionConfirm({
       </ol>
       {linkedSell ? (
         <p className="form-block-reason">
-          Canceling this scheduled buy also cancels its linked reversing sell …
-          {linkedSell.clientOrderId?.slice(-8)}.
+          Canceling this scheduled buy also cancels its linked reversing sell{' '}
+          {linkedSell.clientOrderId ?? 'with no client id'}.
         </p>
       ) : null}
       {blockedReason ? <p className="form-block-reason">{blockedReason}</p> : null}

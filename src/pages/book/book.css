@@ -364,11 +364,6 @@
   padding-bottom: var(--space-3);
 }
 
-/* The elbow sits where the reference indents a leg: --space-8 from the edge. */
-.book-row-leg .book-symbol {
-  padding-left: calc(var(--space-8) - var(--space-2));
-}
-
 .book-spine {
   width: 3px;
   align-self: stretch;
@@ -387,22 +382,6 @@
 
 .book-symbol:hover {
   color: var(--color-accent-300);
-}
-
-.book-symbol span {
-  display: block;
-  color: var(--mut);
-  font-size: 11px;
-  font-weight: 400;
-}
-
-.book-symbol-leg {
-  color: var(--mut);
-  font-size: var(--font-small);
-  font-weight: 400;
-  /* The elbow and the id are one token; a break after the ellipsis pushed the
-     whole row band taller for no gain. */
-  white-space: nowrap;
 }
 
 .align-right {
@@ -716,6 +695,19 @@
 .chain-dialog-note {
   color: var(--mut);
   font-size: var(--font-meta);
+}
+
+/*
+ * An id is printed nowhere in the grid, so the dialog gives it whole: tabular
+ * so two of them can be compared digit by digit, and never wrapped, because
+ * half an id on each of two lines is worse than one that scrolls.
+ */
+.chain-dialog-id {
+  flex: none;
+  color: var(--mut);
+  font-size: var(--font-meta);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .chain-dialog-actions {

@@ -398,21 +398,17 @@ const BookRow = memo(function BookRow({
         {opener ? (
           <button type="button" className="book-symbol" onClick={() => onOpenChain(chain)}>
             {row.symbol}
-            {row.clientOrderId ? <span>…{row.clientOrderId.slice(-6)}</span> : null}
           </button>
         ) : (
           /*
-           * A leg never repeats the chain's symbol: the opener above already
-           * said it, and the id is the only thing that tells legs apart.
+           * A leg carries nothing here: the opener above already said the
+           * symbol, and the chain's hairline says where the chain ends. Ids
+           * are not a column at all — the chain dialog, opened from the
+           * symbol, is where the chain id and every order id are read in
+           * full. The symbol is still spoken, so a leg read on its own out of
+           * the chain's `article` label still names its stock.
            */
-          <button
-            type="button"
-            className="book-symbol book-symbol-leg"
-            onClick={() => onOpenChain(chain)}
-          >
-            <span className="sr-only">{row.symbol} </span>
-            {row.clientOrderId ? `↳ …${row.clientOrderId.slice(-6)}` : '↳'}
-          </button>
+          <span className="sr-only">{row.symbol}</span>
         )}
       </div>
       <div role="cell">
