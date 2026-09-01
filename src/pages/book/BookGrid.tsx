@@ -355,7 +355,7 @@ const BookRow = memo(function BookRow({
 }) {
   const quote = quotes.get(row.symbol);
   const displayType = row.orderType;
-  const pnlFigure = bookRowPnlFigure(row, pnlState, quote?.son ?? null, opener ? chain : undefined);
+  const pnlFigure = bookRowPnlFigure(row, pnlState, quote?.son ?? null);
   const pnl = pnlFigure?.value ?? null;
   const pnlPercent = rowPnlPercent(pnlFigure);
   const slip =
@@ -587,49 +587,20 @@ function indexPnlState(state: FilledPnlState): PnlIndex {
   return index;
 }
 
-/** The round trip a chain's own row carries, derived once per chain. */
-const roundTrips = new WeakMap<BookChain, RowPnlFigure | null>();
-
-function chainRoundTrip(chain: BookChain): RowPnlFigure | null {
-  const known = roundTrips.get(chain);
-  if (known !== undefined) return known;
-  const trades = new Map(chain.sources.closedTrades.map((trade) => [trade.id, trade] as const));
-  let figure: RowPnlFigure | null = null;
-  if (trades.size > 0) {
-    let value = 0;
-    let costBasis = 0;
-    for (const trade of trades.values()) {
-      value += realizedPnl(trade.quantity, trade.averageOpenPrice, trade.averageClosePrice);
-      costBasis += trade.quantity * trade.averageOpenPrice;
-    }
-    figure = { value, costBasis, marketBased: false };
-  }
-  roundTrips.set(chain, figure);
-  return figure;
-}
-
+/**
+ * The p&l column carries a figure only on a Position row (unrealized, all or
+ * nothing) and on a filled sell (realized). A buy order — resting, scheduled,
+ * canceled, or the opening leg of a closed round trip — never shows one: the
+ * result of a chain is read off the sell that closed it.
+ */
 export function bookRowPnlFigure(
   row: BookChainRow,
   pnlState: FilledPnlState,
   marketPrice: number | null,
-  /** Present on a chain's own row, which carries the whole round trip (SPEC 3). */
-  openerChain?: BookChain,
 ): RowPnlFigure | null {
-  if (row.source === 'closed-trade' && row.leg === 'open' && openerChain) {
-    return chainRoundTrip(openerChain);
-  }
   const index = indexPnlState(pnlState);
   if (row.source === 'position') {
     const exposure = index.exposures.get(`position:${row.raw.id}`);
-    if (!exposure) return null;
-    return {
-      value: marketPrice === null ? null : unrealizedPnl(exposure, marketPrice),
-      costBasis: exposure.quantity * exposure.averagePrice,
-      marketBased: true,
-    };
-  }
-  if (row.source === 'active' && row.direction === 'buy') {
-    const exposure = index.exposures.get(`partial-buy:${row.raw.id}`);
     if (!exposure) return null;
     return {
       value: marketPrice === null ? null : unrealizedPnl(exposure, marketPrice),

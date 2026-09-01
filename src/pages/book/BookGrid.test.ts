@@ -7,7 +7,7 @@ import { bookRowPnlFigure } from './BookGrid';
 import { bookRowPresentation } from './rowPresentation';
 
 describe('Book row P&L', () => {
-  it('shows market P&L on the shares filled by a partial buy', () => {
+  it('carries no row P&L on a partial buy — only a Position or a filled sell does', () => {
     const partialBuy = makeActiveOrder({
       status: 'PartiallyFilled',
       orderQuantity: 10,
@@ -22,11 +22,7 @@ describe('Book row P&L', () => {
     });
     const state = deriveFilledPnlState([], [partialBuy]);
 
-    expect(bookRowPnlFigure(chain!.activeRows[0]!, state, 110)).toEqual({
-      value: 40,
-      costBasis: 400,
-      marketBased: true,
-    });
+    expect(bookRowPnlFigure(chain!.activeRows[0]!, state, 110)).toBeNull();
   });
 
   it('splits a partial sell into realized fill and remaining Position exposure', () => {

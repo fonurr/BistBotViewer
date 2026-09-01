@@ -164,9 +164,9 @@ describe('BookGrid row vocabulary', () => {
     // SPEC 2: the chain's own row reads `Closed`; `Filled` is the leg word.
     expect(screen.getByText('Closed')).toBeVisible();
     expect(screen.getByText('Filled')).toBeVisible();
-    // The chain row carries the round trip, the closing leg carries its own
-    // share, and the trades group states the same total once more.
-    expect(screen.getAllByText('+600')).toHaveLength(2);
+    // The closing sell leg carries the realized result; the opening buy leg
+    // shows no P&L, and the trades group states the same total once more.
+    expect(screen.getAllByText('+600')).toHaveLength(1);
     expect(screen.getByText('+600,00')).toBeVisible();
     expect(document.querySelectorAll('.book-actions button')).toHaveLength(0);
   });

@@ -98,5 +98,8 @@ unguarded is the one outcome that path may never produce.
 
 Price values are trusted only while DailyDataAggregator reports a live feed. The page remains a
 frozen, timestamped snapshot and holds every write when the MatriksOrder event stream is down.
-Partially filled buys and sells contribute their confirmed filled shares to row and aggregate P&L
-without double-counting the full Position that remains stored during a partial sell.
+The **p&l column carries a figure only on a Position row** (unrealized, all-or-nothing) **and on a
+filled sell** (realized — a partial sell's confirmed shares, a closed round trip's closing leg). A
+buy order never shows one, and the round trip is read off the sell that closed it, not off the
+opening leg. Partial fills still contribute their confirmed shares to the scope-heading and
+stat-strip aggregates, without double-counting the full Position stored during a partial sell.
