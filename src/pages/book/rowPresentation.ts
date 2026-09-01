@@ -109,11 +109,13 @@ export function bookRowPresentation(
     // How long it has rested is read off the exchange's own registration
     // stamp, never off the ack column (SPEC 3: ack is an upper bound).
     const resting = heldFor(row.orderTime, now, 'resting');
+    // Only a genuine partial fill earns the `x of y filled` clause: a resting
+    // order with nothing filled says so by resting, and a fully filled one is
+    // not waiting at all.
+    const filled = Math.max(0, row.filledQuantity ?? 0);
     const progress =
-      opener && row.quantity !== null
-        ? `${formatQuantity(Math.max(0, row.filledQuantity ?? 0))} of ${formatQuantity(
-            row.quantity,
-          )} filled`
+      opener && row.quantity !== null && filled > 0 && filled < row.quantity
+        ? `${formatQuantity(filled)} of ${formatQuantity(row.quantity)} filled`
         : undefined;
     detail = [resting, progress].filter((part) => part !== undefined).join(' · ') || undefined;
   }
