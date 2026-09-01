@@ -422,10 +422,19 @@ const BookRow = memo(function BookRow({
         <span className={row.direction === 'buy' ? 'side-buy' : 'side-sell'}>{row.direction}</span>
         {displayType ? ` ${displayType}` : ''}
       </div>
-      <div role="cell" className={`align-right${capturedPrice ? ' captured-value' : ''}`}>
+      {/*
+       * What an order asked for is gray and what it got is in body ink: the
+       * asked price is only the setting a row was sent with, and once it fills
+       * the fill is the figure the slip and the p&l beside it are both read
+       * off. A market order's captured price keeps its italic on top of that.
+       */}
+      <div
+        role="cell"
+        className={`align-right book-order-price${capturedPrice ? ' captured-value' : ''}`}
+      >
         {row.orderPrice === null ? '' : formatNumber(row.orderPrice)}
       </div>
-      <div role="cell" className="align-right">
+      <div role="cell" className="align-right book-fill-price">
         {row.averagePrice === null ? '' : formatNumber(row.averagePrice)}
       </div>
       <div role="cell" className="align-right book-slip">

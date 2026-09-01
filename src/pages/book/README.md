@@ -43,6 +43,10 @@ nothing in that column — the opener above already said the symbol and the hair
 chain ends, so a leg only speaks its symbol to a screen reader. **No id is printed in the grid.**
 Both the chain id and every order's client-order id are read in the chain dialog, opened from the
 symbol, and there they are given in full rather than abbreviated to a tail. The
+**The asked price is gray and the fill is not**: `order` is only the setting a row was sent
+with, while `fill` is the figure the `slip` and `p&l` beside it are both read off, so the fill
+column keeps the row's ink and weight and the order column steps back into muted (a market
+order's captured price keeps its italic over that). The
 status cell states its qualifier **inline** in muted ink after a middle dot — `New · resting 22m
 · 0 of 150 filled`, `Position · held 3d 2h`, `By user · canceled in the MatriksIQ terminal`. A
 resting time is read off `orderTime`, the exchange's own registration stamp, never off the ack

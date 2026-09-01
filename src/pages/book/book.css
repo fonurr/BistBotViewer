@@ -397,6 +397,20 @@
   font-size: var(--font-leg);
 }
 
+/*
+ * The asked price is a setting, the fill is a result: the column that says
+ * what the order got carries the row's ink and weight, and the one that says
+ * what it asked for steps back into muted. `captured-value` still adds its
+ * italic over this for a market order's price.
+ */
+.book-order-price {
+  color: var(--mut);
+}
+
+.book-fill-price {
+  font-weight: 500;
+}
+
 .book-pnl {
   font-weight: 500;
   white-space: nowrap;
