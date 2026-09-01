@@ -85,8 +85,9 @@ function rawColumn(
 
 /*
  * Reading order follows the reference: time, then what it was, then whose
- * account, then the text. Every field is still a column (SPEC 3) — the id
- * simply stops leading, because nobody reads a log by its row id.
+ * account, then the text. No table shows the row id — nobody reads a log by
+ * it — and the wire and API tables also drop the redundant Istanbul-time
+ * string and lead with the payload instead.
  */
 const ERROR_COLUMNS: readonly LogColumn[] = [
   rawColumn('time', 'time', 150, 'timestamp'),
@@ -95,13 +96,11 @@ const ERROR_COLUMNS: readonly LogColumn[] = [
   rawColumn('information', 'information', 330),
   rawColumn('brokerageId', 'brokerage id', 160),
   rawColumn('context', 'context', 240),
-  rawColumn('id', 'id', 72, 'integer'),
 ];
 
 const WIRE_COLUMNS: readonly LogColumn[] = [
-  rawColumn('id', 'id', 72, 'integer'),
   rawColumn('at', 'time', 150, 'timestamp'),
-  rawColumn('atText', 'Istanbul time', 188),
+  rawColumn('body', 'payload', 320, 'payload'),
   rawColumn('target', 'target', 96),
   rawColumn('direction', 'direction', 92),
   rawColumn('type', 'type', 112),
@@ -116,22 +115,19 @@ const WIRE_COLUMNS: readonly LogColumn[] = [
   rawColumn('orderId', 'order id', 160),
   rawColumn('ordStatus', 'order status', 120),
   rawColumn('note', 'note', 260),
-  rawColumn('body', 'payload', 320, 'payload'),
   rawColumn('truncated', 'truncated', 104, 'integer'),
 ];
 
 const API_COLUMNS: readonly LogColumn[] = [
-  rawColumn('id', 'id', 72, 'integer'),
   rawColumn('at', 'time', 150, 'timestamp'),
-  rawColumn('atText', 'Istanbul time', 188),
+  rawColumn('requestBody', 'request payload', 300, 'payload'),
+  rawColumn('responseBody', 'response payload', 300, 'payload'),
   rawColumn('type', 'type', 112),
   rawColumn('method', 'method', 92),
   rawColumn('path', 'path', 220),
   rawColumn('botId', 'bot id', 180),
   rawColumn('status', 'status', 88, 'integer'),
   rawColumn('durationMs', 'duration ms', 116, 'integer'),
-  rawColumn('requestBody', 'request payload', 300, 'payload'),
-  rawColumn('responseBody', 'response payload', 300, 'payload'),
   rawColumn('errorType', 'error type', 180),
   rawColumn('note', 'note', 260),
   rawColumn('truncated', 'truncated', 104, 'integer'),

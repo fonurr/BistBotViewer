@@ -32,10 +32,11 @@ session. Nothing is persisted.
 
 The three source tabs expose every contracted database field. Wide tables scroll horizontally.
 Error columns read time → type → account → information, the order the reference puts them in;
-every remaining stored field still has a column of its own after those, id included.
-Headers sort loaded rows and each column has a pointer/keyboard resize separator. Wire/API body
-fields expand below their row, pretty-print JSON when possible, and copy only after an explicit
-user action. Display sorting never changes the server-ordered paging cursor, and the footer names
+every remaining stored field still has a column of its own after those. No table shows the row id.
+The wire and API tables also drop the redundant Istanbul-time string, and lead with the payload
+column(s) right after time. Headers sort loaded rows and each column has a pointer/keyboard resize
+separator. Wire/API body fields expand below their row, pretty-print JSON when possible, and copy
+only after an explicit user action. Display sorting never changes the server-ordered paging cursor, and the footer names
 the active display order.
 
 ## Modal behavior
