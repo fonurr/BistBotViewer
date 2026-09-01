@@ -34,4 +34,6 @@ export const priceKeys = {
   quotes: (symbols: readonly string[]) =>
     ['price', 'quotes', [...symbols].sort().join(',')] as const,
   closingBars: (key: string) => ['price', 'closingBars', key] as const,
+  latestBars: (symbols: readonly string[]) =>
+    ['price', 'latestBars', [...symbols].sort().join(',')] as const,
 };

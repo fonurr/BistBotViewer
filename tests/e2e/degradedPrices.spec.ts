@@ -1,18 +1,44 @@
 import {
   FIXTURE_NOW_MS,
   makeBookReadFixture,
+  makeLatestBar,
+  makePosition,
   makePriceReadFixture,
   makePriceStatus,
 } from '../../src/test/fixtures';
 import { expect, makeBrowserScenario, test } from './safeHarness';
 
+/**
+ * A price the viewer cannot produce at all — no quote and no stored bar — is the one thing that
+ * still withholds a figure. THYAO is priced off its stored close and draws its own P&L; GARAN
+ * cannot be priced, so the fleet total is not available and THYAO's figure loses its colour.
+ */
 test('keeps an untrusted P&L inside its own column and out of colour', async ({
   page,
   safeBridge,
 }) => {
+  const book = makeBookReadFixture();
   safeBridge.useScenario(
     makeBrowserScenario({
-      price: makePriceReadFixture({ status: makePriceStatus({ feed: 'stalled' }) }),
+      bist: {
+        ...book,
+        positions: [
+          ...book.positions,
+          makePosition({
+            id: 202,
+            symbol: 'GARAN',
+            clientOrderId: 'client-garan-open-000001',
+            matriksOrderId: 'mx-garan-open-000001',
+            positionId: 'position-garan-000001',
+            chainId: 'chain-garan',
+          }),
+        ],
+      },
+      price: makePriceReadFixture({
+        status: makePriceStatus({ feed: 'stalled' }),
+        quotes: [],
+        latestBars: [makeLatestBar({ symbol: 'THYAO', close: 305.5 })],
+      }),
     }),
   );
   await page.clock.setFixedTime(new Date(FIXTURE_NOW_MS));
@@ -20,9 +46,11 @@ test('keeps an untrusted P&L inside its own column and out of colour', async ({
   await page.goto('/book');
   await safeBridge.stream.open();
 
+  await expect(page.getByText('not available').first()).toBeVisible();
+
   const row = page.locator('.book-row').filter({ hasText: 'THYAO' }).first();
   const pnl = row.locator('.book-pnl');
-  await expect(pnl).toContainText('last known');
+  await expect(pnl).toContainText('+400');
 
   // TOKENS rule 2: a figure we cannot defend is muted, never inked by sign.
   const tones = await pnl.evaluate((cell) => {

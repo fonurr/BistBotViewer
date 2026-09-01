@@ -10,7 +10,13 @@ import type {
   PendingOrderRequest,
   Position,
 } from '../../bistApi/types';
-import type { AuctionBar, ProducerStatus, Quote } from '../../priceApi/types';
+import type {
+  AuctionBar,
+  LatestBar,
+  ProducerStatus,
+  Quote,
+  ResolvedPrice,
+} from '../../priceApi/types';
 
 export const FIXTURE_NOW_MS = Date.parse('2026-08-25T09:00:00.000Z');
 export const FIXTURE_DAY = '2026-08-25';
@@ -32,6 +38,7 @@ export interface PriceReadFixture {
   status: ProducerStatus;
   quotes: Quote[];
   closingBars: AuctionBar[];
+  latestBars: LatestBar[];
 }
 
 export function makeBot(overrides: Partial<Bot> = {}): Bot {
@@ -213,7 +220,29 @@ export function makeQuote(overrides: Partial<Quote> = {}): Quote {
     price_change_age_ms: 250,
     trade_age_ms: 250,
     feed: 'live',
-    server_ts: FIXTURE_NOW_MS,
+    // Upstream stamps `server_ts` in Unix seconds, not milliseconds.
+    server_ts: FIXTURE_NOW_MS / 1_000,
+    ...overrides,
+  };
+}
+
+export function makeResolvedPrice(overrides: Partial<ResolvedPrice> = {}): ResolvedPrice {
+  return {
+    symbol: 'THYAO',
+    price: 305.5,
+    source: 'live',
+    asOf: FIXTURE_NOW_MS,
+    ...overrides,
+  };
+}
+
+export function makeLatestBar(overrides: Partial<LatestBar> = {}): LatestBar {
+  return {
+    symbol: 'THYAO',
+    sessionDate: '2026-02-13',
+    close: 305.5,
+    barType: 'CLOSING_AUCTION',
+    barTs: Math.round(FIXTURE_NOW_MS / 1_000),
     ...overrides,
   };
 }
@@ -293,6 +322,7 @@ export function makePriceReadFixture(overrides: Partial<PriceReadFixture> = {}):
     status: makePriceStatus(),
     quotes: [makeQuote()],
     closingBars: [],
+    latestBars: [makeLatestBar()],
     ...overrides,
   };
 }

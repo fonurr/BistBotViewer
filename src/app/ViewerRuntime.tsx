@@ -15,9 +15,9 @@ import { recordBistWriteEvent } from '../bistApi/eventJournal';
 import { subscribeToBistEvents } from '../bistApi/live';
 import { applyWriteEvent } from './liveUpdates';
 import { bistKeys } from './queryKeys';
+import { usePriceFeed, type PriceFeedValue } from './usePriceFeed';
 
 export type StreamState = 'connecting' | 'live' | 'down';
-export type PriceHealth = 'unused' | 'loading' | 'live' | 'unavailable';
 export type ToastTone = 'live' | 'wait' | 'dead' | 'warn';
 
 export interface ViewerToast {
@@ -28,9 +28,8 @@ export interface ViewerToast {
   persistent?: boolean;
 }
 
-interface RuntimeValue {
+interface RuntimeValue extends PriceFeedValue {
   streamState: StreamState;
-  priceHealth: PriceHealth;
   lastUpdateTime: number | null;
   refreshing: boolean;
   refreshFailed: boolean;
@@ -43,7 +42,6 @@ interface RuntimeValue {
   closeLogs: () => void;
   pushToast: (toast: Omit<ViewerToast, 'id'>) => void;
   dismissToast: (id: number) => void;
-  reportPriceHealth: (sourceId: string, health: Exclude<PriceHealth, 'unused'> | null) => void;
 }
 
 const RuntimeContext = createContext<RuntimeValue | null>(null);
@@ -51,8 +49,7 @@ const RuntimeContext = createContext<RuntimeValue | null>(null);
 export function ViewerRuntimeProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [streamState, setStreamState] = useState<StreamState>('connecting');
-  const [priceHealth, setPriceHealth] = useState<PriceHealth>('unused');
-  const priceReports = useRef(new Map<string, Exclude<PriceHealth, 'unused'>>());
+  const priceFeed = usePriceFeed();
   const [lastUpdateTime, setLastUpdateTime] = useState<number | null>(null);
   const lastUpdateRef = useRef<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -93,24 +90,6 @@ export function ViewerRuntimeProvider({ children }: { children: ReactNode }) {
   const dismissToast = useCallback((id: number) => {
     setToasts((current) => current.filter((toast) => toast.id !== id));
   }, []);
-
-  const reportPriceHealth = useCallback(
-    (sourceId: string, health: Exclude<PriceHealth, 'unused'> | null) => {
-      const reports = priceReports.current;
-      if (health === null) reports.delete(sourceId);
-      else reports.set(sourceId, health);
-      const values = [...reports.values()];
-      const aggregate: PriceHealth = values.includes('unavailable')
-        ? 'unavailable'
-        : values.includes('loading')
-          ? 'loading'
-          : values.includes('live')
-            ? 'live'
-            : 'unused';
-      setPriceHealth((current) => (current === aggregate ? current : aggregate));
-    },
-    [],
-  );
 
   useEffect(() => {
     let snapshotInFlight = true;
@@ -253,8 +232,8 @@ export function ViewerRuntimeProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<RuntimeValue>(
     () => ({
+      ...priceFeed,
       streamState,
-      priceHealth,
       lastUpdateTime,
       refreshing,
       refreshFailed,
@@ -270,15 +249,13 @@ export function ViewerRuntimeProvider({ children }: { children: ReactNode }) {
       closeLogs: () => setLogsOpen(false),
       pushToast,
       dismissToast,
-      reportPriceHealth,
     }),
     [
       dismissToast,
       lastUpdateTime,
       logsOpen,
-      priceHealth,
+      priceFeed,
       pushToast,
-      reportPriceHealth,
       refreshing,
       refreshFailed,
       requestRefresh,

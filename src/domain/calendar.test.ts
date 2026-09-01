@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Holiday } from '../bistApi/types';
-import { holidayCalendar, sessionBatchDate } from './calendar';
+import {
+  areLivePricesExpected,
+  holidayCalendar,
+  isProducerExpectedUp,
+  lastCompletedSessionDate,
+  sessionBatchDate,
+} from './calendar';
 
 const at = (iso: string): number => Date.parse(iso);
 const calendar = (...holidays: Holiday[]) => holidayCalendar(holidays);
@@ -52,5 +58,65 @@ describe('sessionBatchDate', () => {
   it('has no batch for a moment that is not one', () => {
     expect(sessionBatchDate(null, calendar())).toBeNull();
     expect(sessionBatchDate(Number.NaN, calendar())).toBeNull();
+  });
+});
+
+/**
+ * The price windows. 13.08.2026 is a Thursday; 14.08 is given as a half day, 17.08 as a full
+ * holiday, and 15.08 is a Saturday.
+ */
+describe('the price session windows', () => {
+  const holidays = calendar(
+    { date: '2026-08-14', type: 'half' },
+    { date: '2026-08-17', type: 'full' },
+  );
+
+  it('opens with the producer at 09:35 and closes with the auction at 18:15', () => {
+    expect(isProducerExpectedUp(at('2026-08-13T09:34:59+03:00'), holidays)).toBe(false);
+    expect(isProducerExpectedUp(at('2026-08-13T09:35:00+03:00'), holidays)).toBe(true);
+    expect(isProducerExpectedUp(at('2026-08-13T18:15:00+03:00'), holidays)).toBe(true);
+    expect(isProducerExpectedUp(at('2026-08-13T18:15:01+03:00'), holidays)).toBe(false);
+  });
+
+  it('owes a live price only from the continuous open, not from the producer start', () => {
+    expect(areLivePricesExpected(at('2026-08-13T09:40:00+03:00'), holidays)).toBe(false);
+    expect(areLivePricesExpected(at('2026-08-13T10:00:00+03:00'), holidays)).toBe(true);
+    expect(areLivePricesExpected(at('2026-08-13T18:15:00+03:00'), holidays)).toBe(true);
+    expect(areLivePricesExpected(at('2026-08-13T18:15:01+03:00'), holidays)).toBe(false);
+  });
+
+  it('moves both ends of a half day with its close', () => {
+    expect(areLivePricesExpected(at('2026-08-14T12:45:00+03:00'), holidays)).toBe(true);
+    expect(areLivePricesExpected(at('2026-08-14T12:45:01+03:00'), holidays)).toBe(false);
+    expect(isProducerExpectedUp(at('2026-08-14T12:45:01+03:00'), holidays)).toBe(false);
+    expect(isProducerExpectedUp(at('2026-08-14T14:00:00+03:00'), holidays)).toBe(false);
+  });
+
+  it('never opens on a weekend or a full holiday', () => {
+    for (const day of ['2026-08-15', '2026-08-17']) {
+      expect(isProducerExpectedUp(at(`${day}T12:00:00+03:00`), holidays)).toBe(false);
+      expect(areLivePricesExpected(at(`${day}T12:00:00+03:00`), holidays)).toBe(false);
+    }
+  });
+});
+
+describe('lastCompletedSessionDate', () => {
+  const holidays = calendar(
+    { date: '2026-08-14', type: 'half' },
+    { date: '2026-08-17', type: 'full' },
+  );
+
+  it('is yesterday until this session s own auction has finished', () => {
+    expect(lastCompletedSessionDate(at('2026-08-13T18:14:59+03:00'), holidays)).toBe('2026-08-12');
+    expect(lastCompletedSessionDate(at('2026-08-13T18:15:00+03:00'), holidays)).toBe('2026-08-13');
+  });
+
+  it('reads a half day s close off its own shorter session', () => {
+    expect(lastCompletedSessionDate(at('2026-08-14T12:44:59+03:00'), holidays)).toBe('2026-08-13');
+    expect(lastCompletedSessionDate(at('2026-08-14T12:45:00+03:00'), holidays)).toBe('2026-08-14');
+  });
+
+  it('skips back over a weekend and a full holiday', () => {
+    expect(lastCompletedSessionDate(at('2026-08-17T20:00:00+03:00'), holidays)).toBe('2026-08-14');
   });
 });

@@ -2,7 +2,7 @@ import { CaretDown, CaretRight, Warning } from '@phosphor-icons/react';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { Account, Bot } from '../../bistApi/types';
-import type { Quote } from '../../priceApi/types';
+import type { ResolvedPrice } from '../../priceApi/types';
 import { type BookChain, type BookChainRow, type BookScope } from '../../domain/chains';
 import {
   formatDateKey,
@@ -37,7 +37,7 @@ interface BookGridProps {
    */
   showScopeHeadings?: boolean;
   accounts: readonly Account[];
-  quotes: ReadonlyMap<string, Quote>;
+  prices: ReadonlyMap<string, ResolvedPrice>;
   pricesTrustworthy: boolean;
   writesHeldReason: string | null;
   showCanceled: boolean;
@@ -182,7 +182,7 @@ export function BookGrid(props: BookGridProps) {
                               scope={scopeGroup.scope}
                               chains={scopeGroup.chains}
                               pnlState={pnlState}
-                              quotes={props.quotes}
+                              prices={props.prices}
                               pricesTrustworthy={props.pricesTrustworthy}
                             />
                           )}
@@ -190,7 +190,7 @@ export function BookGrid(props: BookGridProps) {
                             <ChainRows
                               chain={chain}
                               pnlState={pnlState}
-                              quotes={props.quotes}
+                              prices={props.prices}
                               pricesTrustworthy={props.pricesTrustworthy}
                               writesHeldReason={props.writesHeldReason}
                               showCanceled={props.showCanceled}
@@ -232,7 +232,7 @@ function without(current: ReadonlySet<string>, value: string): ReadonlySet<strin
 interface ChainRowsProps {
   chain: BookChain;
   pnlState: FilledPnlState;
-  quotes: ReadonlyMap<string, Quote>;
+  prices: ReadonlyMap<string, ResolvedPrice>;
   pricesTrustworthy: boolean;
   writesHeldReason: string | null;
   showCanceled: boolean;
@@ -259,7 +259,7 @@ const ChainRows = memo(function ChainRows(props: ChainRowsProps) {
           row={row}
           chain={chain}
           opener={index === 0}
-          quotes={props.quotes}
+          prices={props.prices}
           pnlState={props.pnlState}
           pricesTrustworthy={props.pricesTrustworthy}
           writesHeldReason={props.writesHeldReason}
@@ -280,7 +280,7 @@ const ChainRows = memo(function ChainRows(props: ChainRowsProps) {
                 row={row}
                 chain={chain}
                 opener={nonCanceledRows.length === 0 && row === canceledRows[0]}
-                quotes={props.quotes}
+                prices={props.prices}
                 pnlState={props.pnlState}
                 pricesTrustworthy={props.pricesTrustworthy}
                 writesHeldReason={props.writesHeldReason}
@@ -336,7 +336,7 @@ const BookRow = memo(function BookRow({
   row,
   chain,
   opener,
-  quotes,
+  prices,
   pnlState,
   pricesTrustworthy,
   writesHeldReason,
@@ -346,16 +346,16 @@ const BookRow = memo(function BookRow({
   row: BookChainRow;
   chain: BookChain;
   opener: boolean;
-  quotes: ReadonlyMap<string, Quote>;
+  prices: ReadonlyMap<string, ResolvedPrice>;
   pnlState: FilledPnlState;
   pricesTrustworthy: boolean;
   writesHeldReason: string | null;
   now: number;
   onOpenChain: BookGridProps['onOpenChain'];
 }) {
-  const quote = quotes.get(row.symbol);
+  const price = prices.get(row.symbol.toUpperCase());
   const displayType = row.orderType;
-  const pnlFigure = bookRowPnlFigure(row, pnlState, quote?.son ?? null);
+  const pnlFigure = bookRowPnlFigure(row, pnlState, price?.price ?? null);
   const pnl = pnlFigure?.value ?? null;
   const pnlPercent = rowPnlPercent(pnlFigure);
   const slip =
@@ -716,16 +716,16 @@ function ScopeHeading({
   scope,
   chains,
   pnlState,
-  quotes,
+  prices,
   pricesTrustworthy,
 }: {
   scope: BookScope;
   chains: readonly BookChain[];
   pnlState: FilledPnlState;
-  quotes: ReadonlyMap<string, Quote>;
+  prices: ReadonlyMap<string, ResolvedPrice>;
   pricesTrustworthy: boolean;
 }) {
-  const summary = scopeGroupSummary(scope, chains, pnlState, quotes, pricesTrustworthy);
+  const summary = scopeGroupSummary(scope, chains, pnlState, prices, pricesTrustworthy);
   return (
     <header className="book-scope-heading">
       <span className="kicker">{scope}</span>
@@ -745,7 +745,7 @@ export function scopeGroupSummary(
   scope: BookScope,
   chains: readonly BookChain[],
   pnlState: FilledPnlState,
-  quotes: ReadonlyMap<string, Quote>,
+  prices: ReadonlyMap<string, ResolvedPrice>,
   pricesTrustworthy: boolean,
 ): { detail: string; aggregate: string | null; note?: string; tone: string } {
   if (scope === 'waiting') {
@@ -772,7 +772,7 @@ export function scopeGroupSummary(
     let everyPriceKnown = true;
     for (const exposure of pnlState.exposures) {
       if (!exposureKeys.has(`${exposure.source}:${exposure.sourceId}`)) continue;
-      const marketPrice = quotes.get(exposure.symbol)?.son;
+      const marketPrice = prices.get(exposure.symbol.toUpperCase())?.price;
       if (marketPrice === null || marketPrice === undefined) everyPriceKnown = false;
       else unrealized += unrealizedPnl(exposure, marketPrice);
     }

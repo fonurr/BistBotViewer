@@ -1,4 +1,8 @@
-import { FIXTURE_LOG_DAY_START_MS, FIXTURE_NOW_MS, makeLogReadFixture } from '../../src/test/fixtures';
+import {
+  FIXTURE_LOG_DAY_START_MS,
+  FIXTURE_NOW_MS,
+  makeLogReadFixture,
+} from '../../src/test/fixtures';
 import type { WireLogQueryResult } from '../../src/bistApi/logTypes';
 import { expect, makeBrowserScenario, test } from './safeHarness';
 

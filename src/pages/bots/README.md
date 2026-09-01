@@ -5,7 +5,7 @@ all-bot snapshot for identities, accounts, active and scheduled orders, position
 trades, and queued baskets. Budget reads begin only after that snapshot is complete, skip
 incomplete bots, and are limited to bots visible under the current filters. A cached budget is
 withheld while invalidated, refetching, stale, or failed. Live quotes are requested for every
-visible Position and partially filled exposure.
+visible Position and partially filled exposure; the runtime owns the one stream that serves them.
 
 The toolbar's account filter is the Book's own `MultiSelectFilter`, so the control, its label, its
 `all` action, Escape, click-away and focus return behave identically on every page. It carries one
@@ -16,8 +16,10 @@ Cards use the server's `complete` flag for health. The `buys` and `positions` co
 counts — only rows that can still execute — while `BotRowCounts` stays a raw row count, because
 that is what decides delete versus deactivate. Counts and P&L are derived only after every
 fleet table read succeeds; an incomplete read is rendered as unavailable, never as a false zero.
-Unrealized P&L is all-or-nothing: the producer and every required quote must be live and carry a
-price. Description text is displayed unchanged and is also the bot-name tooltip.
+Unrealized P&L is all-or-nothing: **every** required symbol must resolve to a price, from the live
+stream or from its newest stored bar. One symbol the viewer cannot price at all withholds the whole
+figure and greys the ones it could compute. How old the prices are is stated once, in the header,
+never on a row. Description text is displayed unchanged and is also the bot-name tooltip.
 
 `Open book` and `Performance` both deep-link with `?bot=<id>`: the Book opens narrowed to that
 bot, and Performance recomputes for it.

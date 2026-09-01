@@ -1,8 +1,21 @@
 import { z } from 'zod';
 
-import { auctionBarSchema, producerStatusSchema, quoteSchema, type AuctionBarKey } from './types';
+import {
+  auctionBarSchema,
+  latestBarSchema,
+  producerStatusSchema,
+  quoteSchema,
+  type AuctionBarKey,
+} from './types';
 
 const bridgeBase = '/bridge/price';
+
+/** The producer accepts at most this many symbols on one stream and rejects the whole change over it. */
+export const MAX_STREAM_SYMBOLS = 200;
+
+export function normalizeSymbols(symbols: readonly string[]): string[] {
+  return [...new Set(symbols.map((symbol) => symbol.trim().toUpperCase()).filter(Boolean))].sort();
+}
 
 export class PriceApiError extends Error {
   constructor(message: string, options?: ErrorOptions) {
@@ -48,14 +61,33 @@ async function get<T>(path: string, schema: z.ZodType<T>): Promise<T> {
   return parseResponse(response, schema);
 }
 
+/**
+ * The stream's address. An empty set is never sent: upstream reads a missing `symbols` as no
+ * symbols on `/stream` and as every symbol on `/quotes`, so the caller decides not to connect.
+ */
+export function priceStreamUrl(symbols: readonly string[]): string | null {
+  const unique = normalizeSymbols(symbols);
+  if (unique.length === 0 || unique.length > MAX_STREAM_SYMBOLS) return null;
+  return `${bridgeBase}/stream?symbols=${encodeURIComponent(unique.join(','))}`;
+}
+
 export const priceApi = {
   getStatus: () => get('/status', producerStatusSchema),
   getQuotes: async (symbols: readonly string[]) => {
-    const unique = [
-      ...new Set(symbols.map((symbol) => symbol.trim().toUpperCase()).filter(Boolean)),
-    ];
+    const unique = normalizeSymbols(symbols);
     if (unique.length === 0) return [];
     return get(`/quotes?symbols=${encodeURIComponent(unique.join(','))}`, z.array(quoteSchema));
+  },
+  getLatestBars: async (symbols: readonly string[]) => {
+    const unique = normalizeSymbols(symbols);
+    if (unique.length === 0) return [];
+    const response = await fetch(`${bridgeBase}/bars/latest`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbols: unique }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    return parseResponse(response, z.array(latestBarSchema));
   },
   getClosingAuctionBars: async (keys: readonly AuctionBarKey[]) => {
     const unique = [

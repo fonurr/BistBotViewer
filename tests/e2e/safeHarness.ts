@@ -22,10 +22,12 @@ export interface ObservedBridgeRequest {
   body: unknown;
 }
 
+export type FakeStreamKind = 'orders' | 'prices';
+
 interface FakeStreamController {
-  open: (lastUpdateTime?: number) => Promise<void>;
-  down: () => Promise<void>;
-  emit: (type: string, payload: unknown) => Promise<void>;
+  open: (lastUpdateTime?: number, kind?: FakeStreamKind) => Promise<void>;
+  down: (kind?: FakeStreamKind) => Promise<void>;
+  emit: (type: string, payload: unknown, kind?: FakeStreamKind) => Promise<void>;
 }
 
 interface SafeBridgeHarness {
@@ -115,25 +117,37 @@ export const test = base.extend<HarnessFixtures>({
         }
       }
 
+      // Two streams reach the page now — the order stream and the price stream — and they fail
+      // independently, so every control names which one it is driving.
+      const paths: Record<string, string> = {
+        orders: '/bridge/bist/events',
+        prices: '/bridge/price/stream',
+      };
+
       const fixtureState = {
         sources: [] as FixtureEventSource[],
-        active() {
-          return this.sources.filter((source) => source.readyState !== FixtureEventSource.CLOSED);
+        active(kind = 'orders') {
+          const path = paths[kind] ?? paths.orders;
+          return this.sources.filter(
+            (source) =>
+              source.readyState !== FixtureEventSource.CLOSED &&
+              new URL(source.url).pathname === path,
+          );
         },
-        activeCount() {
-          return this.active().length;
+        activeCount(kind = 'orders') {
+          return this.active(kind).length;
         },
-        open(lastUpdateTime: number) {
-          for (const source of this.active()) {
+        open(lastUpdateTime: number, kind = 'orders') {
+          for (const source of this.active(kind)) {
             source.fixtureOpen();
-            source.fixtureEmit('status', { status: '', lastUpdateTime });
+            if (kind === 'orders') source.fixtureEmit('status', { status: '', lastUpdateTime });
           }
         },
-        down() {
-          for (const source of this.active()) source.fixtureDown();
+        down(kind = 'orders') {
+          for (const source of this.active(kind)) source.fixtureDown();
         },
-        emit(type: string, payload: unknown) {
-          for (const source of this.active()) source.fixtureEmit(type, payload);
+        emit(type: string, payload: unknown, kind = 'orders') {
+          for (const source of this.active(kind)) source.fixtureEmit(type, payload);
         },
       };
 
@@ -192,6 +206,9 @@ export const test = base.extend<HarnessFixtures>({
         if (url.pathname === '/bridge/price/bars/closing' && request.method() === 'POST') {
           return fulfillJson(route, scenario.price.closingBars);
         }
+        if (url.pathname === '/bridge/price/bars/latest' && request.method() === 'POST') {
+          return fulfillJson(route, scenario.price.latestBars);
+        }
         if (url.pathname === '/bridge/bist/logs/extents' && request.method() === 'GET') {
           return fulfillJson(route, scenario.logs.extents);
         }
@@ -218,14 +235,15 @@ export const test = base.extend<HarnessFixtures>({
     };
     await context.route('**/bridge/**', bridgeRoute);
 
-    const waitForSource = () =>
+    const waitForSource = (kind: FakeStreamKind) =>
       page.waitForFunction(
-        () =>
+        (streamKind) =>
           ((
             window as typeof window & {
-              __BOT_VIEWER_FAKE_EVENTS__?: { activeCount: () => number };
+              __BOT_VIEWER_FAKE_EVENTS__?: { activeCount: (kind: string) => number };
             }
-          ).__BOT_VIEWER_FAKE_EVENTS__?.activeCount() ?? 0) > 0,
+          ).__BOT_VIEWER_FAKE_EVENTS__?.activeCount(streamKind) ?? 0) > 0,
+        kind,
       );
 
     await use({
@@ -234,42 +252,45 @@ export const test = base.extend<HarnessFixtures>({
         scenario = nextScenario;
       },
       stream: {
-        async open(lastUpdateTime = FIXTURE_NOW_MS) {
-          await waitForSource();
-          await page.evaluate((timestamp) => {
-            const controller = (
-              window as typeof window & {
-                __BOT_VIEWER_FAKE_EVENTS__: { open: (value: number) => void };
-              }
-            ).__BOT_VIEWER_FAKE_EVENTS__;
-            controller.open(timestamp);
-          }, lastUpdateTime);
-        },
-        async down() {
-          await waitForSource();
-          await page.evaluate(() => {
-            const controller = (
-              window as typeof window & {
-                __BOT_VIEWER_FAKE_EVENTS__: { down: () => void };
-              }
-            ).__BOT_VIEWER_FAKE_EVENTS__;
-            controller.down();
-          });
-        },
-        async emit(type, payload) {
-          await waitForSource();
+        async open(lastUpdateTime = FIXTURE_NOW_MS, kind: FakeStreamKind = 'orders') {
+          await waitForSource(kind);
           await page.evaluate(
-            ({ eventType, eventPayload }) => {
+            ({ timestamp, streamKind }) => {
+              const controller = (
+                window as typeof window & {
+                  __BOT_VIEWER_FAKE_EVENTS__: { open: (value: number, kind: string) => void };
+                }
+              ).__BOT_VIEWER_FAKE_EVENTS__;
+              controller.open(timestamp, streamKind);
+            },
+            { timestamp: lastUpdateTime, streamKind: kind },
+          );
+        },
+        async down(kind: FakeStreamKind = 'orders') {
+          await waitForSource(kind);
+          await page.evaluate((streamKind) => {
+            const controller = (
+              window as typeof window & {
+                __BOT_VIEWER_FAKE_EVENTS__: { down: (kind: string) => void };
+              }
+            ).__BOT_VIEWER_FAKE_EVENTS__;
+            controller.down(streamKind);
+          }, kind);
+        },
+        async emit(type, payload, kind: FakeStreamKind = 'orders') {
+          await waitForSource(kind);
+          await page.evaluate(
+            ({ eventType, eventPayload, streamKind }) => {
               const controller = (
                 window as typeof window & {
                   __BOT_VIEWER_FAKE_EVENTS__: {
-                    emit: (name: string, value: unknown) => void;
+                    emit: (name: string, value: unknown, kind: string) => void;
                   };
                 }
               ).__BOT_VIEWER_FAKE_EVENTS__;
-              controller.emit(eventType, eventPayload);
+              controller.emit(eventType, eventPayload, streamKind);
             },
-            { eventType: type, eventPayload: payload },
+            { eventType: type, eventPayload: payload, streamKind: kind },
           );
         },
       },

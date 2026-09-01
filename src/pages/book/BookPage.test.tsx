@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { Quote } from '../../priceApi/types';
+import type { ResolvedPrice } from '../../priceApi/types';
 import {
   makeAccount,
   makeActiveOrder,
@@ -13,7 +13,7 @@ import {
   makeErrorRow,
   makePendingOrderRequest,
   makePosition,
-  makeQuote,
+  makeResolvedPrice,
 } from '../../test/fixtures';
 import { BookPage } from './BookPage';
 
@@ -21,8 +21,7 @@ const book = vi.hoisted(() => ({
   data: {} as Record<string, unknown>,
   prices: {
     trustworthy: true,
-    quotes: new Map<string, Quote>(),
-    status: null,
+    prices: new Map<string, ResolvedPrice>(),
     error: null,
     isPending: false,
   },
@@ -71,8 +70,7 @@ function emptyRead() {
 beforeEach(() => {
   book.prices = {
     trustworthy: true,
-    quotes: new Map([['THYAO', makeQuote()]]),
-    status: null,
+    prices: new Map([['THYAO', makeResolvedPrice()]]),
     error: null,
     isPending: false,
   };

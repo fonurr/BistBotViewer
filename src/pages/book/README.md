@@ -98,8 +98,11 @@ carries the schedule's rules into its replacement and compares them in the prefl
 cancel anything at all when a stored rule cannot be re-expressed — a replacement that went out
 unguarded is the one outcome that path may never produce.
 
-Price values are trusted only while DailyDataAggregator reports a live feed. The page remains a
-frozen, timestamped snapshot and holds every write when the MatriksOrder event stream is down.
+A price is either a live streamed quote or the newest stored bar for that symbol, and the row is
+drawn the same way whichever it is — how old the prices are is stated once in the header and never
+in a cell. A symbol that resolves to neither has no price at all: its figure is withheld, and the
+fleet totals beside it go untrusted. The page remains a frozen, timestamped snapshot and holds
+every write when the MatriksOrder event stream is down.
 The **p&l column carries a figure only on a Position row** (unrealized, all-or-nothing) **and on a
 filled sell** (realized — a partial sell's confirmed shares, a closed round trip's closing leg). A
 buy order never shows one, and the round trip is read off the sell that closed it, not off the

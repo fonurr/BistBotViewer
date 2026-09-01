@@ -83,7 +83,7 @@ export function BookPage() {
     ],
     [data.activeOrders, data.positions],
   );
-  const prices = useFleetPrices(symbolsNeedingPrices, symbolsNeedingPrices.length > 0);
+  const priceFeed = useFleetPrices(symbolsNeedingPrices, symbolsNeedingPrices.length > 0);
   const budgets = useBotBudgets(data.bots);
   const snapshotAvailable = !data.isPending && data.error === null;
   const writesHeldReason =
@@ -123,8 +123,8 @@ export function BookPage() {
     [botById, data.pendingRequests, filters],
   );
   const summary = useMemo(
-    () => summarize(visibleChains, prices.quotes, prices.trustworthy, budgets.data, botById),
-    [botById, budgets.data, prices.quotes, prices.trustworthy, visibleChains],
+    () => summarize(visibleChains, priceFeed.prices, priceFeed.trustworthy, budgets.data, botById),
+    [botById, budgets.data, priceFeed.prices, priceFeed.trustworthy, visibleChains],
   );
   const chips = filterChips(filters, data.bots.length, data.accounts.length);
   const genuineEmpty = chains.length === 0 && data.pendingRequests.length === 0;
@@ -328,8 +328,8 @@ export function BookPage() {
           showScopeHeadings={!filters.noClosingOrder}
           bots={data.bots}
           accounts={data.accounts}
-          quotes={prices.quotes}
-          pricesTrustworthy={prices.trustworthy}
+          prices={priceFeed.prices}
+          pricesTrustworthy={priceFeed.trustworthy}
           writesHeldReason={writesHeldReason}
           showCanceled={showCanceled}
           openCanceledChains={canceledOverrides}
@@ -353,8 +353,8 @@ export function BookPage() {
           holidays={data.holidays}
           writesHeldReason={writesHeldReason}
           marketPrice={
-            prices.trustworthy
-              ? (prices.quotes.get(resolvedOpenChain.chain.symbol)?.son ?? null)
+            priceFeed.trustworthy
+              ? (priceFeed.prices.get(resolvedOpenChain.chain.symbol.toUpperCase())?.price ?? null)
               : null
           }
           onClose={() => setOpenChain(null)}
@@ -526,7 +526,7 @@ function accountKeyForBot(bot: Bot | undefined): string | null {
 
 function summarize(
   chains: readonly BookChain[],
-  quotes: ReturnType<typeof useFleetPrices>['quotes'],
+  prices: ReturnType<typeof useFleetPrices>['prices'],
   pricesTrustworthy: boolean,
   budgets: ReadonlyMap<
     string,
@@ -573,7 +573,7 @@ function summarize(
   let unrealized = 0;
   let hasEveryPrice = true;
   for (const exposure of filledState.exposures) {
-    const marketPrice = quotes.get(exposure.symbol)?.son;
+    const marketPrice = prices.get(exposure.symbol.toUpperCase())?.price;
     if (marketPrice === null || marketPrice === undefined) hasEveryPrice = false;
     else unrealized += unrealizedPnl(exposure, marketPrice);
   }

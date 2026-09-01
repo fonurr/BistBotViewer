@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ActiveOrder, Bot, ClosedTrade, Position } from '../../bistApi/types';
-import type { Quote } from '../../priceApi/types';
+import type { ResolvedPrice } from '../../priceApi/types';
 import {
   botFormFor,
   calculateUnrealized,
@@ -77,30 +77,44 @@ describe('Bots page model', () => {
 
   it('makes unrealized all-or-nothing across feed and required quotes', () => {
     const positions = [position(), position({ id: 2, symbol: 'GARAN', quantity: 5 })];
-    const quotes = new Map([
-      ['THYAO', quote({ symbol: 'THYAO', son: 120 })],
-      ['GARAN', quote({ symbol: 'GARAN', son: 110 })],
+    const prices = new Map([
+      ['THYAO', price({ symbol: 'THYAO', price: 120 })],
+      ['GARAN', price({ symbol: 'GARAN', price: 110 })],
     ]);
 
-    expect(calculateUnrealized(positions, quotes, true)).toEqual({
+    expect(calculateUnrealized(positions, prices, true)).toEqual({
       value: 250,
       reason: null,
     });
-    expect(calculateUnrealized(positions, quotes, false)).toEqual({
+    expect(calculateUnrealized(positions, prices, false)).toEqual({
       value: null,
       reason: 'feed',
     });
+    // A symbol that resolved to neither a quote nor a bar is simply absent, and one absence is
+    // enough to withhold the whole figure.
     expect(
-      calculateUnrealized(positions, new Map([['THYAO', quotes.get('THYAO')!]]), true),
+      calculateUnrealized(positions, new Map([['THYAO', prices.get('THYAO')!]]), true),
     ).toEqual({
       value: null,
       reason: 'quote',
     });
-    quotes.set('GARAN', quote({ symbol: 'GARAN', son: null }));
-    expect(calculateUnrealized(positions, quotes, true)).toEqual({
+    prices.delete('GARAN');
+    expect(calculateUnrealized(positions, prices, true)).toEqual({
       value: null,
       reason: 'quote',
     });
+
+    // A stored close prices the position exactly as a live quote does; only the header says which.
+    expect(
+      calculateUnrealized(
+        positions,
+        new Map([
+          ['THYAO', price({ symbol: 'THYAO', price: 120, source: 'bar' })],
+          ['GARAN', price({ symbol: 'GARAN', price: 110, source: 'bar' })],
+        ]),
+        true,
+      ),
+    ).toEqual({ value: 250, reason: null });
   });
 
   it('includes partial-buy exposure and removes partial-sell fills from the full Position', () => {
@@ -125,12 +139,12 @@ describe('Bots page model', () => {
       parentClientOrderId: 'client-1',
     });
     const positions = [position({ quantity: 10, averagePrice: 100 })];
-    const quotes = new Map([
-      ['THYAO', quote({ son: 120 })],
-      ['GARAN', quote({ symbol: 'GARAN', son: 100 })],
+    const prices = new Map([
+      ['THYAO', price({ price: 120 })],
+      ['GARAN', price({ symbol: 'GARAN', price: 100 })],
     ]);
 
-    expect(calculateUnrealized(positions, quotes, true, [partialBuy, partialSell])).toEqual({
+    expect(calculateUnrealized(positions, prices, true, [partialBuy, partialSell])).toEqual({
       // 6 remaining THYAO shares Ã— 20, plus 5 filled GARAN shares Ã— 10.
       value: 170,
       reason: null,
@@ -399,16 +413,12 @@ function trade(overrides: Partial<ClosedTrade> = {}): ClosedTrade {
   };
 }
 
-function quote(overrides: Partial<Quote> = {}): Quote {
+function price(overrides: Partial<ResolvedPrice> = {}): ResolvedPrice {
   return {
     symbol: 'THYAO',
-    son: 100,
-    ghacim_try: null,
-    quote_age_ms: 1,
-    price_change_age_ms: 1,
-    trade_age_ms: 1,
-    feed: 'live',
-    server_ts: 1,
+    price: 100,
+    source: 'live',
+    asOf: 1,
     ...overrides,
   };
 }

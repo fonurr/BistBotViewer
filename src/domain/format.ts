@@ -139,6 +139,22 @@ export function formatRelativeAge(timestamp: number | null, now = Date.now()): s
   return `${days} day${days === 1 ? '' : 's'} ago`;
 }
 
+/**
+ * How old something is, counted from seconds. `formatRelativeAge` starts at a minute because an
+ * order snapshot a few seconds old is simply current; a price feed that stopped ten seconds ago is
+ * already worth saying out loud.
+ */
+export function formatShortAge(milliseconds: number): string {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1_000));
+  if (seconds < 60) return `${seconds} second${seconds === 1 ? '' : 's'}`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'}`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'}`;
+}
+
 export function formatCompactDuration(milliseconds: number): string {
   const totalMinutes = Math.max(0, Math.floor(milliseconds / 60_000));
   const days = Math.floor(totalMinutes / (24 * 60));

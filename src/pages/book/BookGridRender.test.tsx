@@ -10,7 +10,7 @@ import {
   makeCanceledOrder,
   makeClosedTrade,
   makePosition,
-  makeQuote,
+  makeResolvedPrice,
 } from '../../test/fixtures';
 import { BookGrid } from './BookGrid';
 
@@ -28,7 +28,7 @@ function renderGrid(
     chains,
     bots: [makeBot()],
     accounts: [makeAccount()],
-    quotes: new Map([['THYAO', makeQuote()]]),
+    prices: new Map([['THYAO', makeResolvedPrice()]]),
     pricesTrustworthy: true,
     writesHeldReason: null,
     showCanceled: false,
@@ -263,7 +263,7 @@ describe('BookGrid batches', () => {
 
   function renderBatches() {
     return renderGrid(
-      { quotes: new Map() },
+      { prices: new Map() },
       { activeOrders: [], canceledOrders: [], positions: [], closedTrades: twoBatches() },
     );
   }

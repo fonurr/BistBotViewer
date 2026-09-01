@@ -58,7 +58,7 @@ so `npm run check` fails if coverage drops below them.
 ```text
 browser pages
   |- src/bistApi/client.ts   -> /bridge/bist/*  -> MatriksOrder HTTP/SSE + read-only log DBs
-  |- src/priceApi/client.ts  -> /bridge/price/* -> DailyDataAggregator + read-only bars.db worker
+  |- src/priceApi/client.ts  -> /bridge/price/* -> DailyDataAggregator HTTP/SSE + read-only bars.db worker
 ```
 
 The bridges are **Vite plugins** ([src/bistApi/server/bridge.ts](src/bistApi/server/bridge.ts),
@@ -84,8 +84,14 @@ separate backend process. Consequences:
 - `queryClient` is the single, **memory-only** TanStack Query cache. Nothing is persisted; the
   architecture guard rejects `localStorage`/`sessionStorage`/`indexedDB` anywhere in `src/`.
 - `ViewerRuntime` owns stream condition, generation-scoped refresh reconciliation, write-event
-  buffering, the write hold (`installBistWriteGuard`), scroll restoration, logs visibility, and
-  toasts. Pages read it through `useViewerRuntime()`.
+  buffering, the write hold (`installBistWriteGuard`), scroll restoration, logs visibility, toasts,
+  and the one price feed (`usePriceFeed`). Pages read it through `useViewerRuntime()`; a page names
+  the symbols it draws through `useFleetPrices` and reads the resolved prices back.
+- The price feed only runs inside the session. `src/domain/calendar.ts` derives both windows from
+  the same close a batch is filed by, so a half day needs no branch: the producer is expected up
+  09:35–close+15 (18:15, or 12:45 on a half day) and a live price is owed only from 10:00. Outside
+  that the stream is not opened and nothing is polled — upstream refuses everything — and prices come
+  from `bars.db`.
 - `dataHooks` define the lazy per-page reads and price polling; `liveUpdates` applies validated
   SSE write events to every matching cached selector.
 - `queryKeys` encodes the bot selector (`'*'` / one id / a sorted id list) into the key, and
@@ -139,8 +145,13 @@ Chains are built strictly from `chainId`; null links stay independent.
   `Partly filled`, not `PartiallyFilled`). There is no `Active`.
 - Empty table values stay empty. Never substitute zero or a decorative dash for a missing value;
   `src/domain/` preserves unknowns as `null`.
-- Prices are trusted only while DailyDataAggregator reports `feed === "live"`; `trade_age_ms` is a
-  liquidity signal, not a freshness verdict. Unrealized P&L is all-or-nothing.
+- A price is either a live streamed quote (`feed === "live"`) or the newest stored bar for that
+  symbol, and a row draws both the same way. The **header** carries the disclosure: inside the
+  session a feed that is not live shows `prices X old` in amber, or red when the stream itself is
+  gone; after the close nothing is said while the stored bars reach that session's closing auction,
+  and `prices dd.MM.yy` names the date they do reach when they fall short. `trade_age_ms` is a
+  liquidity signal, not a freshness verdict. Unrealized P&L is all-or-nothing: one symbol that
+  resolves to no price at all withholds the whole figure.
 - Row actions are ghost buttons; at most one accent-outlined committing action per dialog bar.
 - Preserve focus, trap it inside dialogs, return it to the trigger, and let Esc close only the
   topmost layer. A sending dialog cannot close.

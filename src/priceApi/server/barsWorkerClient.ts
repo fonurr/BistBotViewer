@@ -1,19 +1,23 @@
 import path from 'node:path';
 import { Worker } from 'node:worker_threads';
 
-import type { AuctionBar, AuctionBarKey } from '../types.ts';
+import type { AuctionBar, AuctionBarKey, LatestBar } from '../types.ts';
+
+type BarsRow = AuctionBar | LatestBar;
 
 interface WorkerReply {
   id: number;
-  result?: AuctionBar[];
+  result?: BarsRow[];
   error?: string;
 }
 
 interface PendingBarsRequest {
-  resolve: (rows: AuctionBar[]) => void;
+  resolve: (rows: BarsRow[]) => void;
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
 }
+
+type BarsQuery = { kind: 'closing'; keys: AuctionBarKey[] } | { kind: 'latest'; symbols: string[] };
 
 const REQUEST_TIMEOUT_MS = 12_000;
 const MAX_PENDING_REQUESTS = 16;
@@ -55,6 +59,14 @@ export class BarsWorkerClient {
   }
 
   query(keys: AuctionBarKey[]): Promise<AuctionBar[]> {
+    return this.run({ kind: 'closing', keys }) as Promise<AuctionBar[]>;
+  }
+
+  queryLatest(symbols: string[]): Promise<LatestBar[]> {
+    return this.run({ kind: 'latest', symbols }) as Promise<LatestBar[]>;
+  }
+
+  private run(request: BarsQuery): Promise<BarsRow[]> {
     if (this.closing) return Promise.reject(new Error('The bars worker is not running.'));
     if (this.pending.size >= MAX_PENDING_REQUESTS) {
       return Promise.reject(new Error('The bars worker has too many pending reads.'));
@@ -71,7 +83,7 @@ export class BarsWorkerClient {
       }, REQUEST_TIMEOUT_MS);
       this.pending.set(id, { resolve, reject, timer });
       try {
-        worker.postMessage({ id, databasePath: this.databasePath, keys });
+        worker.postMessage({ id, databasePath: this.databasePath, ...request });
       } catch (error) {
         clearTimeout(timer);
         this.pending.delete(id);

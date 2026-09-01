@@ -250,6 +250,18 @@ a:hover {
   box-shadow: 0 0 6px var(--st-live);
 }
 
+/*
+ * A dot that reports a fault is lit the same way the healthy one is, so the header reads as one
+ * row of lights rather than one light beside a printed dot.
+ */
+.freshness.status-warn .freshness-dot {
+  box-shadow: 0 0 6px var(--st-warn);
+}
+
+.freshness.status-dead .freshness-dot {
+  box-shadow: 0 0 6px var(--st-dead);
+}
+
 .header-icon {
   padding: 5px;
 }

@@ -1,4 +1,4 @@
-import http, { type ServerResponse } from 'node:http';
+import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import path from 'node:path';
 
 import type { Plugin, PreviewServer, ViteDevServer } from 'vite';
@@ -25,6 +25,29 @@ const barKeysSchema = z.object({
     )
     .max(1_000),
 });
+
+const SYMBOL_PATTERN = /^[A-Z0-9]{1,16}$/;
+/** Upstream refuses a stream over this many symbols and applies no part of the change. */
+const MAX_STREAM_SYMBOLS = 200;
+/** `/quotes` takes a far larger list than one stream may carry. */
+const MAX_QUOTE_SYMBOLS = 700;
+
+const latestBarsSchema = z.object({
+  symbols: z.array(z.string().regex(SYMBOL_PATTERN)).min(1).max(MAX_STREAM_SYMBOLS),
+});
+
+/**
+ * The symbols of a bounded request, or null when the list is unusable. An empty list is always
+ * unusable here: upstream reads a missing `symbols` as every symbol on `/quotes` and as none on
+ * `/stream`, and neither is what an empty request meant.
+ */
+function boundedSymbols(raw: string | null, limit: number): string[] | null {
+  if (!raw) return null;
+  const symbols = [...new Set(raw.split(',').map((value) => value.trim().toUpperCase()))];
+  if (symbols.length === 0 || symbols.length > limit) return null;
+  if (symbols.some((symbol) => !SYMBOL_PATTERN.test(symbol))) return null;
+  return symbols;
+}
 
 export interface PriceBridgeOptions {
   upstreamUrl: string;
@@ -68,22 +91,45 @@ export function createPriceBridgePlugin(options: PriceBridgeOptions): Plugin {
     if (requestUrl.pathname === '/bridge/price/quotes') {
       if (request.method !== 'GET')
         return sendJson(response, 405, { error: 'Method not allowed.' });
-      const rawSymbols = requestUrl.searchParams.get('symbols');
-      if (!rawSymbols)
-        return sendJson(response, 400, { error: 'A non-empty symbols list is required.' });
-      const symbols = [
-        ...new Set(rawSymbols.split(',').map((value) => value.trim().toUpperCase())),
-      ];
-      if (
-        symbols.length === 0 ||
-        symbols.length > 700 ||
-        symbols.some((symbol) => !/^[A-Z0-9]{1,16}$/.test(symbol))
-      ) {
+      const symbols = boundedSymbols(requestUrl.searchParams.get('symbols'), MAX_QUOTE_SYMBOLS);
+      if (!symbols) {
         return sendJson(response, 400, { error: 'The symbols list is invalid or too large.' });
       }
       const target = new URL('quotes', upstreamBase);
       target.searchParams.set('symbols', symbols.join(','));
       return proxyGet(target, response);
+    }
+
+    if (requestUrl.pathname === '/bridge/price/stream') {
+      if (request.method !== 'GET')
+        return sendJson(response, 405, { error: 'Method not allowed.' });
+      const symbols = boundedSymbols(requestUrl.searchParams.get('symbols'), MAX_STREAM_SYMBOLS);
+      if (!symbols) {
+        return sendJson(response, 400, { error: 'The symbols list is invalid or too large.' });
+      }
+      const target = new URL('stream', upstreamBase);
+      target.searchParams.set('symbols', symbols.join(','));
+      return proxyEvents(target, request, response);
+    }
+
+    if (requestUrl.pathname === '/bridge/price/bars/latest') {
+      if (request.method !== 'POST')
+        return sendJson(response, 405, { error: 'Method not allowed.' });
+      try {
+        const { value } = await readJsonBody(request, 32_000);
+        const parsed = latestBarsSchema.safeParse(value);
+        if (!parsed.success) throw new HttpInputError(400, 'The latest-bar query is invalid.');
+        if (!barsWorker) throw new Error('The bars worker is not running.');
+        const rows = await barsWorker.queryLatest([...new Set(parsed.data.symbols)]);
+        return sendJson(response, 200, rows);
+      } catch (error) {
+        if (error instanceof HttpInputError)
+          return sendJson(response, error.status, { error: error.message });
+        return sendJson(response, 503, {
+          error: 'bars.db could not answer this bounded read.',
+          detail: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     if (requestUrl.pathname === '/bridge/price/bars/closing') {
@@ -131,6 +177,51 @@ export function createPriceBridgePlugin(options: PriceBridgeOptions): Plugin {
       attachClose(server);
     },
   };
+}
+
+/**
+ * `proxyGet` cannot carry a stream: its 2.5 s timeout would cut the connection and it buffers until
+ * `end`. This is the order bridge's own event proxy — headers flushed at once, no upstream timeout,
+ * and the upstream socket destroyed the moment the browser goes away so no subscription leaks.
+ */
+async function proxyEvents(
+  target: URL,
+  browserRequest: IncomingMessage,
+  response: ServerResponse,
+): Promise<void> {
+  await new Promise<void>((resolve) => {
+    const upstream = http.get(
+      target,
+      { headers: { Accept: 'text/event-stream' } },
+      (upstreamResponse) => {
+        applySecurityHeaders(response);
+        response.statusCode = upstreamResponse.statusCode ?? 502;
+        response.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+        response.setHeader('Cache-Control', 'no-cache, no-transform');
+        response.setHeader('Connection', 'keep-alive');
+        response.setHeader('X-Accel-Buffering', 'no');
+        response.flushHeaders();
+        upstreamResponse.pipe(response);
+        upstreamResponse.on('end', resolve);
+      },
+    );
+    upstream.setTimeout(0);
+    upstream.on('error', (error) => {
+      if (!response.headersSent) {
+        sendJson(response, 502, {
+          error: 'The DailyDataAggregator price stream is unavailable.',
+          detail: error.message,
+        });
+      } else {
+        response.end();
+      }
+      resolve();
+    });
+    browserRequest.on('close', () => {
+      upstream.destroy();
+      resolve();
+    });
+  });
 }
 
 async function proxyGet(target: URL, response: ServerResponse): Promise<void> {

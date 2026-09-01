@@ -16,7 +16,7 @@ import {
   realizedPnl,
   unrealizedPnl,
 } from '../../domain/orders';
-import type { Quote } from '../../priceApi/types';
+import type { ResolvedPrice } from '../../priceApi/types';
 
 export type BotCardState = 'healthy' | 'incomplete' | 'deactivated';
 export type BotStatusAction = 'delete' | 'deactivate' | 'reactivate' | 'blocked';
@@ -164,7 +164,7 @@ export function hasPersistentRows(counts: BotRowCounts): boolean {
 
 export function calculateUnrealized(
   positions: readonly Position[],
-  quotes: ReadonlyMap<string, Quote>,
+  prices: ReadonlyMap<string, ResolvedPrice>,
   feedTrustworthy: boolean,
   activeOrders: readonly ActiveOrder[] = [],
   closedTrades: readonly ClosedTrade[] = [],
@@ -175,11 +175,11 @@ export function calculateUnrealized(
 
   let total = 0;
   for (const exposure of exposures) {
-    const quote = quotes.get(exposure.symbol.toUpperCase());
-    if (!quote || quote.feed !== 'live' || quote.son === null) {
+    const price = prices.get(exposure.symbol.toUpperCase());
+    if (!price) {
       return { value: null, reason: 'quote' };
     }
-    total += unrealizedPnl(exposure, quote.son);
+    total += unrealizedPnl(exposure, price.price);
   }
   return { value: total, reason: null };
 }

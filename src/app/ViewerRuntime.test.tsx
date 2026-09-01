@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
+import { bistApi } from '../bistApi/client';
 import type { BistLiveHandlers } from '../bistApi/live';
 import type { ActiveOrder } from '../bistApi/types';
 import { makeActiveOrder } from '../test/fixtures/bist';
@@ -74,6 +75,9 @@ let handlers: BistLiveHandlers;
 let unsubscribe: ReturnType<typeof vi.fn<() => void>>;
 
 beforeEach(() => {
+  // The runtime owns the price feed, which reads the trading calendar to know whether the
+  // producer should be up. Nothing here is about prices, so the calendar answers empty.
+  vi.spyOn(bistApi, 'getHolidays').mockResolvedValue([]);
   unsubscribe = vi.fn<() => void>();
   subscription.mockImplementation((_url, nextHandlers) => {
     handlers = nextHandlers;

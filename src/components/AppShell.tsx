@@ -1,19 +1,50 @@
 import { ArrowClockwise, TerminalWindow } from '@phosphor-icons/react';
+import { useQuery } from '@tanstack/react-query';
 import { NavLink } from 'react-router-dom';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 
+import { bistApi } from '../bistApi/client';
+import { holidayCalendar } from '../domain/calendar';
 import { formatRelativeAge, formatTime } from '../domain/format';
 import { useInterruptingErrors } from '../app/dataHooks';
+import { pricesFreshness } from '../app/priceFeed';
+import { bistKeys } from '../app/queryKeys';
 import { useViewerRuntime } from '../app/ViewerRuntime';
+
+/** The price age is counted in seconds, so the header cannot read it off a minute clock. */
+const CLOCK_MS = 5_000;
 
 export function AppShell({ children }: { children: ReactNode }) {
   const runtime = useViewerRuntime();
   const [now, setNow] = useState(Date.now());
+  const holidays = useQuery({ queryKey: bistKeys.holidays, queryFn: bistApi.getHolidays });
 
   useEffect(() => {
-    const interval = window.setInterval(() => setNow(Date.now()), 30_000);
+    const interval = window.setInterval(() => setNow(Date.now()), CLOCK_MS);
     return () => window.clearInterval(interval);
   }, []);
+
+  const priceFreshness = useMemo(
+    () =>
+      pricesFreshness({
+        now,
+        holidays: holidayCalendar(holidays.data ?? []),
+        required: runtime.requiredSymbols,
+        prices: runtime.prices,
+        streamState: runtime.priceStreamState,
+        status: runtime.priceStatus,
+        connectedSince: runtime.priceConnectedSince,
+      }),
+    [
+      holidays.data,
+      now,
+      runtime.priceConnectedSince,
+      runtime.priceStatus,
+      runtime.priceStreamState,
+      runtime.prices,
+      runtime.requiredSymbols,
+    ],
+  );
 
   const freshness = useMemo(() => {
     if (runtime.streamState === 'down') {
@@ -23,15 +54,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (runtime.refreshFailed) {
       return { className: 'status-warn', copy: 'refresh failed · snapshot unchanged' };
     }
-    // SPEC 5: one freshness line, never two. When the prices are the thing we
-    // cannot stand behind, the line says so instead of the age; otherwise it
-    // is the age alone, in the reference's own words.
-    if (runtime.priceHealth === 'unavailable') {
-      return { className: 'status-warn', copy: 'prices unavailable' };
-    }
-    if (runtime.priceHealth === 'loading') {
-      return { className: 'status-wait', copy: 'prices connecting' };
-    }
+    // This line is the order snapshot's age and nothing else. The prices carry their own line
+    // beside it, because a stale price and a stale snapshot are different failures and the reader
+    // has to be able to tell which one they are looking at.
     return {
       className: runtime.streamState === 'live' ? 'muted' : 'status-wait',
       copy:
@@ -41,14 +66,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             ? 'waiting for first snapshot'
             : `updated ${formatRelativeAge(runtime.lastUpdateTime, now).toLowerCase()}`,
     };
-  }, [
-    now,
-    runtime.lastUpdateTime,
-    runtime.priceHealth,
-    runtime.refreshFailed,
-    runtime.refreshing,
-    runtime.streamState,
-  ]);
+  }, [now, runtime.lastUpdateTime, runtime.refreshFailed, runtime.refreshing, runtime.streamState]);
 
   return (
     <div className="viewer-app">
@@ -62,6 +80,12 @@ export function AppShell({ children }: { children: ReactNode }) {
           <NavLink to="/performance">Performance</NavLink>
         </nav>
         <div className="viewer-nav-status">
+          {priceFreshness.copy === null ? null : (
+            <div className={`freshness ${priceFreshness.className}`} aria-live="polite">
+              <span className="freshness-dot" aria-hidden="true" />
+              {priceFreshness.copy}
+            </div>
+          )}
           <div
             className={`freshness ${freshness.className}${runtime.refreshing ? ' is-refreshing' : ''}`}
             aria-live="polite"

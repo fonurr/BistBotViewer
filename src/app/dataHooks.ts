@@ -3,10 +3,9 @@ import { useEffect, useId, useMemo } from 'react';
 
 import { bistApi } from '../bistApi/client';
 import type { Bot, BotBudget, ErrorRow } from '../bistApi/types';
-import { priceApi } from '../priceApi/client';
-import type { PriceFeedState, Quote } from '../priceApi/types';
-import { bistKeys, priceKeys } from './queryKeys';
-import { useViewerRuntime, type PriceHealth } from './ViewerRuntime';
+import type { ResolvedPrice } from '../priceApi/types';
+import { bistKeys } from './queryKeys';
+import { useViewerRuntime } from './ViewerRuntime';
 
 const allBots = '*' as const;
 
@@ -209,85 +208,44 @@ export function useBotBudgets(bots: readonly Bot[], enabled = true): BotBudgetsS
   };
 }
 
+/**
+ * The prices a page needs. The runtime owns the one stream and the one stored-bar read for the
+ * whole app; a page only says which symbols it is drawing and reads the resolved map back.
+ */
 export function useFleetPrices(symbols: readonly string[], enabled: boolean) {
   const runtime = useViewerRuntime();
-  const reportId = useId();
-  const normalized = [...new Set(symbols.map((symbol) => symbol.toUpperCase()))].sort();
-  const status = useQuery({
-    queryKey: priceKeys.status,
-    queryFn: priceApi.getStatus,
-    enabled: enabled && normalized.length > 0,
-    staleTime: 59_000,
-    refetchInterval: 60_000,
-    retry: false,
-  });
-  const quotes = useQuery({
-    queryKey: priceKeys.quotes(normalized),
-    queryFn: () => priceApi.getQuotes(normalized),
-    enabled: enabled && normalized.length > 0,
-    staleTime: 59_000,
-    refetchInterval: 60_000,
-    retry: false,
-  });
-
-  const quoteMap = useMemo(
-    () => new Map((quotes.data ?? []).map((quote) => [quote.symbol, quote])),
-    [quotes.data],
+  const sourceId = useId();
+  const register = runtime.registerPriceSymbols;
+  const requested = useMemo(
+    () => (enabled ? [...new Set(symbols.map((symbol) => symbol.toUpperCase()))].sort() : []),
+    [enabled, symbols],
   );
+  const requestedKey = requested.join(',');
 
-  const trustworthy =
-    !status.isError &&
-    !quotes.isError &&
-    requiredQuotesAreTrustworthy(normalized, status.data?.feed, quotes.data ?? []);
-  const health: PriceHealth =
-    !enabled || normalized.length === 0
-      ? 'unused'
-      : status.isPending || quotes.isPending
-        ? 'loading'
-        : trustworthy
-          ? 'live'
-          : 'unavailable';
-
-  useEffect(
-    () => () => runtime.reportPriceHealth(reportId, null),
-    [reportId, runtime.reportPriceHealth],
-  );
   useEffect(() => {
-    runtime.reportPriceHealth(reportId, health === 'unused' ? null : health);
-  }, [health, reportId, runtime.reportPriceHealth]);
+    register(sourceId, requestedKey === '' ? null : requestedKey.split(','));
+    return () => register(sourceId, null);
+  }, [register, requestedKey, sourceId]);
+
+  const prices = useMemo(() => {
+    // Kept by identity where nothing changed: the Book hands this map to every row it draws, and a
+    // fresh map on every render would redraw all of them.
+    if (requested.length === 0) return emptyPrices;
+    if (requested.every((symbol) => runtime.prices.has(symbol))) return runtime.prices;
+    return new Map(
+      requested.flatMap((symbol) => {
+        const price = runtime.prices.get(symbol);
+        return price ? ([[symbol, price]] as const) : [];
+      }),
+    );
+  }, [requested, runtime.prices]);
 
   return {
-    status: status.data ?? null,
-    // Kept by identity: the Book hands this map to every row it draws, and a
-    // fresh map on every render would redraw all of them.
-    quotes: quoteMap,
-    trustworthy,
-    error: status.error ?? quotes.error ?? null,
-    isPending: status.isPending || quotes.isPending,
+    prices,
+    trustworthy: requested.length > 0 && requested.every((symbol) => prices.has(symbol)),
+    error: runtime.priceError,
+    isPending: requested.length > 0 && prices.size === 0 && runtime.pricesPending,
   };
 }
 
-export function requiredQuotesAreTrustworthy(
-  requiredSymbols: readonly string[],
-  feed: PriceFeedState | undefined,
-  quotes: readonly Quote[],
-): boolean {
-  if (feed !== 'live') return false;
-  const required = [...new Set(requiredSymbols.map((symbol) => symbol.toUpperCase()))].sort();
-  if (required.length === 0 || quotes.length !== required.length) return false;
-  const received = new Set<string>();
-  for (const quote of quotes) {
-    const symbol = quote.symbol.toUpperCase();
-    if (
-      received.has(symbol) ||
-      !required.includes(symbol) ||
-      quote.feed !== 'live' ||
-      quote.son === null ||
-      !Number.isFinite(quote.son)
-    ) {
-      return false;
-    }
-    received.add(symbol);
-  }
-  return required.every((symbol) => received.has(symbol));
-}
+const emptyPrices: ReadonlyMap<string, ResolvedPrice> = new Map();

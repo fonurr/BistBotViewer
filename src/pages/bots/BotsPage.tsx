@@ -113,7 +113,7 @@ export function BotsPage() {
     ],
     [visibleOrders, visiblePositions],
   );
-  const prices = useFleetPrices(symbols, snapshotAvailable && symbols.length > 0);
+  const priceFeed = useFleetPrices(symbols, snapshotAvailable && symbols.length > 0);
   const fleet = useMemo(() => {
     const chains = buildBookChains({
       activeOrders: visibleOrders,
@@ -147,8 +147,8 @@ export function BotsPage() {
       );
     const unrealized = calculateUnrealized(
       visiblePositions,
-      prices.quotes,
-      prices.trustworthy,
+      priceFeed.prices,
+      priceFeed.trustworthy,
       visibleOrders,
       visibleTrades,
     );
@@ -171,19 +171,19 @@ export function BotsPage() {
   }, [
     budgets,
     data.holidays,
-    prices.quotes,
-    prices.trustworthy,
+    priceFeed.prices,
+    priceFeed.trustworthy,
     visibleBots,
     visibleOrders,
     visiblePositions,
     visibleTrades,
   ]);
   const priceReason = describePriceIssue(
-    prices.status?.feed,
-    prices.error,
+    runtime.priceStatus?.value.feed,
+    priceFeed.error,
     fleet.unrealized.reason,
   );
-  const pricesLoading = symbols.length > 0 && prices.isPending;
+  const pricesLoading = symbols.length > 0 && priceFeed.isPending;
 
   const clearFilters = () => {
     setShowActive(true);
@@ -387,9 +387,9 @@ export function BotsPage() {
               closedTrades={closedTrades}
               snapshotAvailable={snapshotAvailable}
               snapshotPending={data.isPending}
-              pricePending={prices.isPending}
-              quotes={prices.quotes}
-              pricesTrustworthy={prices.trustworthy}
+              pricePending={priceFeed.isPending}
+              prices={priceFeed.prices}
+              pricesTrustworthy={priceFeed.trustworthy}
               priceReason={priceReason}
               onConfigure={(mode) => setDialog({ kind: 'config', mode, bot })}
               onStatus={() => setDialog({ kind: 'status', bot })}
@@ -441,7 +441,7 @@ function BotCard({
   snapshotAvailable,
   snapshotPending,
   pricePending,
-  quotes,
+  prices,
   pricesTrustworthy,
   priceReason,
   onConfigure,
@@ -456,7 +456,7 @@ function BotCard({
   snapshotAvailable: boolean;
   snapshotPending: boolean;
   pricePending: boolean;
-  quotes: ReturnType<typeof useFleetPrices>['quotes'];
+  prices: ReturnType<typeof useFleetPrices>['prices'];
   pricesTrustworthy: boolean;
   priceReason: string;
   onConfigure: (mode: BotConfigMode) => void;
@@ -466,7 +466,7 @@ function BotCard({
   const filledState = deriveFilledPnlState(positions, activeOrders, closedTrades);
   const unrealized = calculateUnrealized(
     positions,
-    quotes,
+    prices,
     pricesTrustworthy,
     activeOrders,
     closedTrades,
