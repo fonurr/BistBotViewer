@@ -214,8 +214,20 @@
 .logs-content {
   min-height: 0;
   flex: 1;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 0 var(--space-8) var(--space-6);
+}
+
+/*
+ * Everything above and below the grid keeps its natural height and stays put;
+ * only .logs-table-scroll takes the leftover space and scrolls. That makes it
+ * the grid's real scroll container, so a mouse wheel over the rows scrolls
+ * them and the sticky header actually sticks.
+ */
+.logs-content > * {
+  flex: none;
 }
 
 .logs-boundary-note,
@@ -287,6 +299,8 @@
 
 .logs-table-scroll {
   width: 100%;
+  min-height: 0;
+  flex: 1;
   overflow: auto;
   overscroll-behavior: contain;
 }

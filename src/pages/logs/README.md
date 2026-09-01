@@ -30,7 +30,9 @@ session. Nothing is persisted.
 
 ## Tables
 
-The three source tabs expose every contracted database field. Wide tables scroll horizontally.
+The three source tabs expose every contracted database field. The grid is the only thing that
+scrolls inside the drawer body — it scrolls both ways, its header row stays pinned, and the
+toolbar above it and the footer below it stay put. Wide tables scroll horizontally.
 Error columns read time → type → account → information, the order the reference puts them in;
 every remaining stored field still has a column of its own after those. No table shows the row id.
 The wire and API tables also drop the redundant Istanbul-time string, and lead with the payload
