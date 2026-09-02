@@ -240,6 +240,7 @@ export const canceledOrderSchema = z
     timeInForce: z.string(),
     status: orderStatusSchema,
     explanation: z.string().nullable(),
+    reason: z.string().nullable(),
     retryCount: z.number().int(),
     intentType: orderTypeSchema,
     cancelAtFloor: z.boolean(),

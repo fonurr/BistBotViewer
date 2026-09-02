@@ -51,9 +51,11 @@ export function bookRowPresentation(
       : { label: 'Closed', detail: closedTradeHold(row, chain), role: 'done' };
   }
   if (row.source === 'canceled') {
-    // The stored explanation is the only thing that says why a leg died, and
-    // the retry count is what says whether anything will try again (SPEC 2).
+    // What says why a leg died: the server's own `reason` first, then the
+    // verbatim wire `explanation` — both when both are stored. The retry count
+    // is what says whether anything will try again (SPEC 2).
     const parts = [
+      row.raw.reason?.trim() || null,
       row.raw.explanation?.trim() || null,
       row.raw.retryCount > 0 ? `attempt ${row.raw.retryCount} of 3` : null,
     ].filter((part): part is string => part !== null);

@@ -843,6 +843,7 @@ function canceledOrder(overrides: Partial<CanceledOrder> = {}): CanceledOrder {
     timeInForce: '0',
     status: 'Canceled',
     explanation: null,
+    reason: null,
     retryCount: 0,
     intentType: 'limit',
     cancelAtFloor: false,

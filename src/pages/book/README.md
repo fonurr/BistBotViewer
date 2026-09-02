@@ -50,7 +50,9 @@ with, while `fill` is the figure the `slip` and `p&l` beside it are both read of
 column keeps the row's ink and weight and the order column steps back into muted (a market
 order's captured price keeps its italic over that). The
 status cell states its qualifier **inline** in muted ink after a middle dot — `New · resting 22m
-· 40 of 150 filled`, `Position · held 3d 2h`, `By user · canceled in the MatriksIQ terminal`. The
+· 40 of 150 filled`, `Position · held 3d 2h`, `By user · canceled in the MatriksIQ terminal`. On a
+canceled row that qualifier is the server's own `reason` first, then the verbatim wire
+`explanation`, then the retry count — every part that is stored, joined by middle dots. The
 `x of y filled` clause is drawn **only for a genuine partial fill** (some filled, not all): a
 resting order with nothing filled says as much by resting, and a filled one is not waiting. A
 resting time is read off `orderTime`, the exchange's own registration stamp, never off the ack

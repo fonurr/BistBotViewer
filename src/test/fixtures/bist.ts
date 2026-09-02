@@ -122,6 +122,7 @@ export function makeCanceledOrder(overrides: Partial<CanceledOrder> = {}): Cance
     timeInForce: '0',
     status: 'CanceledByUser',
     explanation: 'canceled in the MatriksIQ terminal',
+    reason: null,
     retryCount: 0,
     intentType: 'limit',
     cancelAtFloor: false,

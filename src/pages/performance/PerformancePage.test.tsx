@@ -399,6 +399,7 @@ function canceled(overrides: Partial<CanceledOrder> = {}): CanceledOrder {
     timeInForce: '0',
     status: 'Rejected',
     explanation: null,
+    reason: null,
     retryCount: 1,
     intentType: 'limit',
     cancelAtFloor: false,
