@@ -20,7 +20,12 @@ components; shared components never import a page.
   row of whole-set shortcuts; `botPicks` builds the bot row the Book and Performance share
   (`all`, `none`, `active`, `inactive`). A pick states the set it selects at the moment it is
   taken, so a bot switched on afterwards does not join a selection made as `active` — only `all`
-  keeps meaning every bot. `SymbolFilter` never accepts free text: a symbol the loaded rows
+  keeps meaning every bot. Given `active` and `onActiveChange` it also grows an off switch leading
+  that row, for a filter that narrows the page even with every option ticked — the Book's canceled
+  statuses. Off is not a selection but the filter not applying, so every box goes ticked and
+  disabled behind it and the trigger falls back to `inactiveLabel` in placeholder ink; the bot,
+  account and symbol controls omit the pair and are always on. `SymbolFilter` never accepts free
+  text: a symbol the loaded rows
   do not name cannot be filtered to, and a typed one would silently return nothing.
 - `useMinuteClock` ticks relative copy — a scheduled countdown, how early a `fire now` goes —
   on the minute boundary, because a quiet snapshot does not re-render on its own.

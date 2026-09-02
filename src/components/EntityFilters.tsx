@@ -47,6 +47,18 @@ interface MultiSelectFilterProps {
   picks?: readonly FilterPick[];
   selected: FilterSelection;
   onChange: (selection: FilterSelection) => void;
+  /**
+   * An off switch over the whole control, for a filter that narrows the page
+   * even with every option ticked. Off is not a selection, so every box goes
+   * ticked and disabled behind it: nothing is being excluded because nothing
+   * is being asked. Omit the pair and the control is always on, as the bot,
+   * account and symbol filters are.
+   */
+  active?: boolean;
+  onActiveChange?: (active: boolean) => void;
+  /** What the switch is called, and what the trigger reads while it is off. */
+  activeLabel?: string;
+  inactiveLabel?: string;
   one: string;
   many: string;
   align?: 'left' | 'right';
@@ -69,11 +81,17 @@ export function MultiSelectFilter({
   picks,
   selected,
   onChange,
+  active,
+  onActiveChange,
+  activeLabel,
+  inactiveLabel,
   one,
   many,
   align,
 }: MultiSelectFilterProps) {
   const counted = options.some((option) => option.count !== undefined);
+  const off = active === false;
+  const shortcuts = picks !== undefined || onActiveChange !== undefined;
   const toggle = (key: string) => {
     const current =
       selected === null ? new Set(options.map((option) => option.key)) : new Set(selected);
@@ -84,26 +102,47 @@ export function MultiSelectFilter({
   return (
     <FilterPopover
       name={name}
-      label={selectionLabel(selected, options.length, one, many)}
+      label={
+        off ? (inactiveLabel ?? `any ${one}`) : selectionLabel(selected, options.length, one, many)
+      }
       open={open}
       setOpen={setOpen}
       align={align}
+      className={off ? 'filter-unset' : ''}
     >
       <PopoverHeading
         label={heading}
-        action={picks ? undefined : 'all'}
-        onAction={picks ? undefined : () => onChange(null)}
+        action={shortcuts ? undefined : 'all'}
+        onAction={shortcuts ? undefined : () => onChange(null)}
       />
-      {picks ? (
+      {shortcuts ? (
         <div className="filter-picks">
-          <button type="button" className="btn btn-ghost" onClick={() => onChange(null)}>
+          {onActiveChange ? (
+            /* The switch leads the row because it is not one more whole-set
+               shortcut: it decides whether any of them applies. */
+            <label className="filter-switch">
+              <input
+                type="checkbox"
+                checked={active === true}
+                onChange={() => onActiveChange(!active)}
+              />
+              <span>{activeLabel ?? 'on'}</span>
+            </label>
+          ) : null}
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={off}
+            onClick={() => onChange(null)}
+          >
             all
           </button>
-          {picks.map((pick) => (
+          {picks?.map((pick) => (
             <button
               type="button"
               className="btn btn-ghost"
               key={pick.label}
+              disabled={off}
               onClick={() => onChange(pick.select)}
             >
               {pick.label}
@@ -114,12 +153,15 @@ export function MultiSelectFilter({
       {help ? <p className="filter-help">{help}</p> : null}
       {options.map((option) => (
         <label
-          className={`filter-option${counted ? ' filter-option-counted' : ''}`}
+          className={`filter-option${counted ? ' filter-option-counted' : ''}${
+            off ? ' filter-option-off' : ''
+          }`}
           key={option.key}
         >
           <input
             type="checkbox"
-            checked={selected === null || selected.has(option.key)}
+            disabled={off}
+            checked={off || selected === null || selected.has(option.key)}
             onChange={() => toggle(option.key)}
           />
           <span>{option.label}</span>

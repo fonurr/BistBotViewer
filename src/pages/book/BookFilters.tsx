@@ -7,11 +7,13 @@ import {
   botPicks,
   MultiSelectFilter,
   SymbolFilter,
+  type FilterOption,
 } from '../../components/EntityFilters';
 import { FilterPopover, PopoverHeading, PopoverScrim } from '../../components/FilterPopover';
 import { accountIdentityKey } from '../../domain/accounts';
 import type { BookChain, BookScope } from '../../domain/chains';
 import { formatDateKey, plural } from '../../domain/format';
+import { displayStatus } from '../../domain/status';
 import type { BookFilterState } from './types';
 
 interface BookFiltersProps {
@@ -65,6 +67,7 @@ export function BookFilters(props: BookFiltersProps) {
       ].sort(),
     [props.chains],
   );
+  const canceledStatuses = useMemo(() => canceledStatusOptions(props.chains), [props.chains]);
 
   const toggleScope = (scope: BookScope) => {
     const next = new Set(filters.scopes);
@@ -84,6 +87,8 @@ export function BookFilters(props: BookFiltersProps) {
       botIds: null,
       accountIds: null,
       symbols: new Set<string>(),
+      canceledStatusFilter: false,
+      canceledStatuses: null,
       batchFrom: null,
       batchTo: null,
       noClosingOrder: true,
@@ -178,6 +183,38 @@ export function BookFilters(props: BookFiltersProps) {
           )}
           emptyNote="The list only holds symbols the loaded batches traded."
         />
+        {canceledStatuses.length > 0 ? (
+          <MultiSelectFilter
+            name="canceled-statuses"
+            open={open === 'canceled-statuses'}
+            setOpen={setOpen}
+            heading="statuses on canceled orders"
+            help="Every status the loaded canceled orders carry, whichever bots the rest of the toolbar keeps — this list never follows the other filters."
+            options={canceledStatuses}
+            picks={[{ label: 'none', select: new Set<string>() }]}
+            active={props.filters.canceledStatusFilter}
+            onActiveChange={(active) =>
+              /* Off pins the selection back to every status, so the ticked,
+                 disabled boxes are telling the truth rather than hiding a
+                 narrowing that would spring back on. */
+              onChange({
+                ...filters,
+                canceledStatusFilter: active,
+                canceledStatuses: null,
+                noClosingOrder: false,
+              })
+            }
+            activeLabel="filter"
+            inactiveLabel="any status"
+            selected={filters.canceledStatuses}
+            onChange={(canceledStatuses) =>
+              onChange({ ...filters, canceledStatuses, noClosingOrder: false })
+            }
+            one="status"
+            many="statuses"
+            note="On, the Book keeps a chain only where one of its own canceled orders carries a ticked status — and then draws the whole chain, canceled legs and all. A chain that never lost a leg has nothing to match, so it drops out even with every status ticked."
+          />
+        ) : null}
         <FilterPopover
           name="dates"
           label={dateLabel}
@@ -310,6 +347,25 @@ export function BookFilters(props: BookFiltersProps) {
       {open ? <PopoverScrim onClose={() => setOpen(null)} /> : null}
     </>
   );
+}
+
+/**
+ * The statuses the loaded canceled orders actually carry, in the display form
+ * the status cells print, each counting the chains it would keep. Raw wire
+ * values that share a display form share one option: a reader ticks what they
+ * can see in the column, and `Canceled` and `CanceledByUser` are two different
+ * words there, while every unrecognized value is the one `Unconfirmed`.
+ */
+export function canceledStatusOptions(chains: readonly BookChain[]): FilterOption[] {
+  const chainsByStatus = new Map<string, number>();
+  for (const chain of chains) {
+    const statuses = new Set(chain.canceledRows.map((row) => displayStatus(row.status)));
+    for (const status of statuses)
+      chainsByStatus.set(status, (chainsByStatus.get(status) ?? 0) + 1);
+  }
+  return [...chainsByStatus.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([status, count]) => ({ key: status, label: status, count }));
 }
 
 function countBy<T>(values: readonly T[], key: (value: T) => string): Map<string, number> {

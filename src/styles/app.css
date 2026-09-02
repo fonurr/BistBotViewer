@@ -380,6 +380,48 @@ a:hover {
   font-size: var(--font-meta);
 }
 
+/* The off switch over a whole filter. It leads the shortcut row and is ruled
+   off from it, because it is not one more whole-set selection — it decides
+   whether any of them applies at all. */
+.filter-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 1px var(--space-2) 1px 0;
+  border-right: 1px solid var(--color-divider);
+  color: var(--mut);
+  font-size: var(--font-meta);
+  cursor: pointer;
+}
+
+.filter-switch input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--color-accent);
+}
+
+.filter-switch:has(input:checked) {
+  color: var(--color-text);
+}
+
+.filter-picks .btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Ticked and disabled: with the filter off nothing is excluded, so the boxes
+   show every option kept rather than a selection nobody made. */
+.filter-option-off {
+  color: var(--mut);
+  cursor: default;
+}
+
+.filter-option input:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
 .filter-option {
   display: grid;
   grid-template-columns: 16px 1fr;

@@ -63,7 +63,8 @@ A canceled tail collapses to `+N canceled` in dead ink, the breakdown of who end
 and `show` on the right; opened, the rows sit inside the tint with the note and `hide` beneath
 them.
 
-`BookFilters` owns additive scopes and the bot, account, symbol, and batch-range controls. The
+`BookFilters` owns additive scopes and the bot, account, symbol, canceled-status, and
+batch-range controls. The
 bot, account and symbol controls are `components/EntityFilters`, which the Bots and Performance
 pages import unchanged — the Book defines the shape, and no page reimplements it. A trigger states
 the current selection as a count (`4 bots`, `2 accounts`), and an unset symbol filter reads
@@ -74,6 +75,22 @@ that same toolbar row — a dead-tinted pill with its warning glyph, its clickab
 word `unfiltered`, said once. Its counts never follow the filters.
 Account selection uses the stored account and brokerage together; matching account numbers at
 different brokerages remain separate filters.
+
+The **canceled-status filter** lists every status the loaded canceled orders carry, in the display
+form the status cells print (`By user`, not `CanceledByUser`), so raw wire values that share a
+display form share one option. The list is built from the whole loaded book and never follows the
+other filters, and each option counts the chains it would keep rather than the legs. It selects
+chains, not rows: a chain qualifies by owning a canceled order whose status is ticked, and it is
+then drawn whole, exactly as a symbol match draws a whole chain. **Switching it on is itself a
+narrowing** — a chain that never lost a leg has nothing that can match, so it drops out even with
+every status ticked, and a queued basket, which owns no order yet, drops with it. That is what the
+off switch leading the `all` / `none` row is for: off is not "all of them", it is the filter not
+being asked, so the boxes behind it are ticked and disabled and the trigger reads `any status` in
+placeholder ink. Off also pins the selection back to every status, so those ticked boxes are
+telling the truth rather than hiding a narrowing that would spring back on. The switch is the
+`active` / `onActiveChange` pair on `components/EntityFilters`; the bot, account and symbol
+controls omit it and are always on. Where a book holds no canceled order at all the control is not
+drawn — a filter over an empty universe is not a control.
 Queued baskets draw as the reference does: a tinted header line naming the request, its next
 attempt and its budget, with `call off…` on the right, and the basket's stocks beneath it as
 rows in the Book's own column grid so their prices stay in the price column. They sit above the

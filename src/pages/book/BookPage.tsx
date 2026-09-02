@@ -30,6 +30,7 @@ import {
   slippagePercentage,
   unrealizedPnl,
 } from '../../domain/orders';
+import { displayStatus } from '../../domain/status';
 import { BookFilters } from './BookFilters';
 import { BookGrid } from './BookGrid';
 import { OrderDialog, type OrderDialogAction } from './OrderDialog';
@@ -102,7 +103,10 @@ export function BookPage() {
   );
   const visiblePending = useMemo(
     () =>
-      filters.noClosingOrder || !filters.scopes.has('waiting')
+      /* A queued basket has no order yet, so it owns no canceled leg either:
+         nothing in it can match a canceled status, and it drops with the
+         chains that cannot match. */
+      filters.noClosingOrder || filters.canceledStatusFilter || !filters.scopes.has('waiting')
         ? []
         : data.pendingRequests.filter((request) => {
             if (filters.botIds !== null && !filters.botIds.has(request.botId)) return false;
@@ -481,6 +485,23 @@ export function narrowingsThatEmptiedTheBook(
       clear: (current) => ({ ...current, symbols: new Set<string>() }),
     });
   }
+  if (filters.canceledStatusFilter) {
+    candidates.push({
+      key: 'canceled-statuses',
+      phrase: 'the canceled status filter',
+      /* Switching it on is a narrowing in its own right, so the sentence says
+         what it excludes rather than blaming the ticks when they are all on. */
+      sentence:
+        filters.canceledStatuses !== null && filters.canceledStatuses.size === 0
+          ? 'No canceled status is selected.'
+          : 'No chain owns a canceled order with one of the selected statuses.',
+      clear: (current) => ({
+        ...current,
+        canceledStatusFilter: false,
+        canceledStatuses: null,
+      }),
+    });
+  }
   if (filters.batchFrom !== null || filters.batchTo !== null) {
     candidates.push({
       key: 'dates',
@@ -510,12 +531,27 @@ function chainMatches(
   if (filters.accountIds !== null && (accountKey === null || !filters.accountIds.has(accountKey)))
     return false;
   if (filters.symbols.size > 0 && !filters.symbols.has(chain.symbol)) return false;
+  if (filters.canceledStatusFilter && !matchesCanceledStatus(chain, filters.canceledStatuses))
+    return false;
   if (chain.batchDate !== null && filters.batchFrom && chain.batchDate < filters.batchFrom)
     return false;
   if (chain.batchDate !== null && filters.batchTo && chain.batchDate > filters.batchTo)
     return false;
   if (chain.batchDate === null && (filters.batchFrom || filters.batchTo)) return false;
   return true;
+}
+
+/**
+ * A chain qualifies by owning a canceled order whose status is ticked, and it
+ * then draws in full — the filter selects chains, never rows, exactly as the
+ * symbol filter does. A chain with no canceled leg has nothing that can match,
+ * so switching the filter on narrows the Book even with every status ticked;
+ * that is what the off switch beside them is for.
+ */
+function matchesCanceledStatus(chain: BookChain, statuses: ReadonlySet<string> | null): boolean {
+  return chain.canceledRows.some(
+    (row) => statuses === null || statuses.has(displayStatus(row.status)),
+  );
 }
 
 function accountKeyForBot(bot: Bot | undefined): string | null {
@@ -1162,6 +1198,21 @@ function filterChips(filters: BookFilterState, botCount: number, accountCount: n
         symbols.delete(symbol);
         return { ...current, symbols };
       },
+    });
+  // One chip for the whole status filter, not one per status: what the chip
+  // removes is the filter applying at all, and every tick returns with it.
+  if (filters.canceledStatusFilter)
+    chips.push({
+      key: 'canceled-statuses',
+      label:
+        filters.canceledStatuses === null
+          ? 'with a canceled leg'
+          : plural(filters.canceledStatuses.size, 'canceled status', 'canceled statuses'),
+      clear: (current) => ({
+        ...current,
+        canceledStatusFilter: false,
+        canceledStatuses: null,
+      }),
     });
   if (filters.batchFrom || filters.batchTo)
     chips.push({

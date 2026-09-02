@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildBookChains } from '../../domain/chains';
-import { makeActiveOrder } from '../../test/fixtures';
+import { buildBookChains, type BookScope } from '../../domain/chains';
+import { makeActiveOrder, makeCanceledOrder } from '../../test/fixtures';
 import { narrowingsThatEmptiedTheBook } from './BookPage';
 import { defaultBookFilters } from './types';
 
@@ -63,6 +63,37 @@ describe('the reason a filter emptied the Book', () => {
     );
 
     expect(reasons).toEqual([]);
+  });
+
+  it('names the canceled status filter, which narrows even with every status ticked', () => {
+    const withCanceled = buildBookChains({
+      activeOrders: [makeActiveOrder({ id: 1, clientOrderId: 'a', chainId: 'a' })],
+      canceledOrders: [
+        makeCanceledOrder({ id: 401, clientOrderId: 'dead', chainId: 'b', status: 'Rejected' }),
+      ],
+      positions: [],
+      closedTrades: [],
+    });
+
+    const [reason] = narrowingsThatEmptiedTheBook(
+      withCanceled,
+      {
+        ...defaultBookFilters,
+        scopes: new Set<BookScope>(['waiting', 'positions', 'trades', 'canceled']),
+        canceledStatusFilter: true,
+        canceledStatuses: new Set(['By user']),
+      },
+      noAccount,
+    );
+
+    expect(reason!.key).toBe('canceled-statuses');
+    expect(reason!.sentence).toBe(
+      'No chain owns a canceled order with one of the selected statuses.',
+    );
+    // Switching it off is what restores the chains, ticks and all.
+    const cleared = reason!.clear(defaultBookFilters);
+    expect(cleared.canceledStatusFilter).toBe(false);
+    expect(cleared.canceledStatuses).toBeNull();
   });
 
   it('clears exactly the narrowing it names', () => {

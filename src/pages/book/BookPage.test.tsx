@@ -10,6 +10,7 @@ import {
   makeActiveOrder,
   makeBot,
   makeBotBudget,
+  makeCanceledOrder,
   makeErrorRow,
   makePendingOrderRequest,
   makePosition,
@@ -243,5 +244,87 @@ describe('queued baskets', () => {
     await user.click(screen.getByLabelText('Select queued request 7'));
     expect(screen.getByRole('button', { name: 'call off selected' })).toBeDisabled();
     expect(api.cancelPendingOrderRequests).not.toHaveBeenCalled();
+  });
+});
+
+describe('the canceled status filter', () => {
+  // Three waiting chains: one that lost a leg to the exchange, one a person
+  // ended in the terminal, and one that has lost nothing at all.
+  const threeChains = () => ({
+    ...emptyRead(),
+    activeOrders: [
+      makeActiveOrder({ id: 1, clientOrderId: 'a', chainId: 'chain-a', symbol: 'AKBNK' }),
+      makeActiveOrder({ id: 2, clientOrderId: 'b', chainId: 'chain-b', symbol: 'GARAN' }),
+      makeActiveOrder({ id: 3, clientOrderId: 'c', chainId: 'chain-c', symbol: 'SISE' }),
+    ],
+    canceledOrders: [
+      makeCanceledOrder({
+        id: 401,
+        clientOrderId: 'a-dead',
+        chainId: 'chain-a',
+        symbol: 'AKBNK',
+        parentClientOrderId: 'a',
+        status: 'Rejected',
+      }),
+      makeCanceledOrder({
+        id: 402,
+        clientOrderId: 'b-dead',
+        chainId: 'chain-b',
+        symbol: 'GARAN',
+        parentClientOrderId: 'b',
+        status: 'CanceledByUser',
+      }),
+    ],
+  });
+
+  const chainsInGrid = () =>
+    [...document.querySelectorAll('.book-chain')]
+      .map((chain) => chain.getAttribute('aria-label')?.replace(' chain', '') ?? '')
+      .sort();
+
+  it('narrows to chains that own a canceled leg, and draws each of them whole', async () => {
+    const user = userEvent.setup();
+    book.data = threeChains();
+    renderBook();
+
+    expect(chainsInGrid()).toEqual(['AKBNK', 'GARAN', 'SISE']);
+
+    await user.click(screen.getByRole('button', { name: 'any status' }));
+    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+
+    // Every status is still ticked, and the chain that lost nothing still goes:
+    // it owns no canceled order, so nothing in it can match.
+    expect(screen.getByRole('button', { name: '2 statuses' })).toBeVisible();
+    expect(chainsInGrid()).toEqual(['AKBNK', 'GARAN']);
+    expect(screen.getByRole('button', { name: 'with a canceled leg ×' })).toBeVisible();
+  });
+
+  it('keeps a chain by the status of its canceled leg, not of its live orders', async () => {
+    const user = userEvent.setup();
+    book.data = threeChains();
+    renderBook();
+
+    await user.click(screen.getByRole('button', { name: 'any status' }));
+    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    await user.click(screen.getByRole('checkbox', { name: /Rejected/ }));
+
+    expect(chainsInGrid()).toEqual(['GARAN']);
+    expect(screen.getByRole('button', { name: '1 canceled status ×' })).toBeVisible();
+  });
+
+  it('names itself as the narrowing that emptied the Book, and switches back off', async () => {
+    const user = userEvent.setup();
+    book.data = threeChains();
+    renderBook();
+
+    await user.click(screen.getByRole('button', { name: 'any status' }));
+    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    await user.click(screen.getByRole('button', { name: 'none' }));
+
+    expect(screen.getByText('No canceled status is selected.', { exact: false })).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'clear the canceled status filter' }));
+    expect(chainsInGrid()).toEqual(['AKBNK', 'GARAN', 'SISE']);
+    expect(screen.getByRole('button', { name: 'any status' })).toBeVisible();
   });
 });
