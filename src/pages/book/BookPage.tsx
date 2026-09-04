@@ -105,12 +105,14 @@ export function BookPage() {
   );
   const visiblePending = useMemo(
     () =>
-      /* A queued basket has no order yet, so it owns no canceled leg and no
-         recorded reason either: nothing in it can match a canceled status or a
-         reason, and it drops with the chains that cannot match. */
+      /* A queued basket has no order yet, so it owns no canceled leg, no
+         recorded reason and nobody who ended it: nothing in it can match a
+         canceled status, a reason or a source, and it drops with the chains
+         that cannot match. */
       filters.noClosingOrder ||
       filters.canceledStatusFilter ||
       filters.reasonFilter ||
+      filters.sourceFilter ||
       !filters.scopes.has('waiting')
         ? []
         : data.pendingRequests.filter((request) => {
@@ -614,6 +616,17 @@ export function narrowingsThatEmptiedTheBook(
       clear: (current) => ({ ...current, reasonFilter: false, reasons: null }),
     });
   }
+  if (filters.sourceFilter) {
+    candidates.push({
+      key: 'sources',
+      phrase: 'the source filter',
+      sentence:
+        filters.sources !== null && filters.sources.size === 0
+          ? 'No source is selected.'
+          : 'No chain owns an order ended by one of the selected sources.',
+      clear: (current) => ({ ...current, sourceFilter: false, sources: null }),
+    });
+  }
   if (filters.batchFrom !== null || filters.batchTo !== null) {
     candidates.push({
       key: 'dates',
@@ -646,6 +659,7 @@ function chainMatches(
   if (filters.canceledStatusFilter && !matchesCanceledStatus(chain, filters.canceledStatuses))
     return false;
   if (filters.reasonFilter && !matchesReason(chain, filters.reasons)) return false;
+  if (filters.sourceFilter && !matchesSource(chain, filters.sources)) return false;
   if (chain.batchDate !== null && filters.batchFrom && chain.batchDate < filters.batchFrom)
     return false;
   if (chain.batchDate !== null && filters.batchTo && chain.batchDate > filters.batchTo)
@@ -677,6 +691,17 @@ function matchesCanceledStatus(chain: BookChain, statuses: ReadonlySet<string> |
 function matchesReason(chain: BookChain, reasons: ReadonlySet<string> | null): boolean {
   return chain.rows.some((row) =>
     rowReasons(row).some((reason) => reasons === null || reasons.has(reason)),
+  );
+}
+
+/**
+ * The same chain-not-row selection again, over who ended a leg. Only a stored
+ * death names one, which is why switching the filter on narrows the Book even
+ * with every source ticked.
+ */
+function matchesSource(chain: BookChain, sources: ReadonlySet<string> | null): boolean {
+  return chain.rows.some(
+    (row) => row.statusSource !== null && (sources === null || sources.has(row.statusSource)),
   );
 }
 
@@ -1367,6 +1392,13 @@ function filterChips(filters: BookFilterState, botCount: number, accountCount: n
           ? 'with a recorded reason'
           : plural(filters.reasons.size, 'reason'),
       clear: (current) => ({ ...current, reasonFilter: false, reasons: null }),
+    });
+  if (filters.sourceFilter)
+    chips.push({
+      key: 'sources',
+      label:
+        filters.sources === null ? 'with a named source' : plural(filters.sources.size, 'source'),
+      clear: (current) => ({ ...current, sourceFilter: false, sources: null }),
     });
   if (filters.batchFrom || filters.batchTo)
     chips.push({

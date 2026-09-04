@@ -122,6 +122,34 @@ describe('the reason a filter emptied the Book', () => {
     expect(cleared.reasons).toBeNull();
   });
 
+  it('names the source filter, which narrows even with every source ticked', () => {
+    const withSources = buildBookChains({
+      activeOrders: [makeActiveOrder({ id: 1, clientOrderId: 'a', chainId: 'a' })],
+      canceledOrders: [
+        makeCanceledOrder({ id: 401, clientOrderId: 'dead', chainId: 'b', source: 'User' }),
+      ],
+      positions: [],
+      closedTrades: [],
+    });
+
+    const [reason] = narrowingsThatEmptiedTheBook(
+      withSources,
+      {
+        ...defaultBookFilters,
+        scopes: new Set<BookScope>(['waiting', 'positions', 'trades', 'canceled']),
+        sourceFilter: true,
+        sources: new Set(['Broker']),
+      },
+      noAccount,
+    );
+
+    expect(reason!.key).toBe('sources');
+    expect(reason!.sentence).toBe('No chain owns an order ended by one of the selected sources.');
+    const cleared = reason!.clear(defaultBookFilters);
+    expect(cleared.sourceFilter).toBe(false);
+    expect(cleared.sources).toBeNull();
+  });
+
   it('clears exactly the narrowing it names', () => {
     const [reason] = narrowingsThatEmptiedTheBook(
       chains,

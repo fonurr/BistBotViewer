@@ -26,6 +26,14 @@ export interface BookFilterState {
   reasonFilter: boolean;
   /** `null` is every reason, in the server's own key form. */
   reasons: ReadonlySet<string> | null;
+  /**
+   * Whether the source filter applies at all. Off by default for the same cause
+   * as the two above: only a stored death names who ended it, so a chain whose
+   * legs all still live drops out even with every source ticked.
+   */
+  sourceFilter: boolean;
+  /** `null` is every source, in the server's own key form. */
+  sources: ReadonlySet<string> | null;
   batchFrom: string | null;
   batchTo: string | null;
   noClosingOrder: boolean;
@@ -40,6 +48,8 @@ export const defaultBookFilters: BookFilterState = {
   canceledStatuses: null,
   reasonFilter: false,
   reasons: null,
+  sourceFilter: false,
+  sources: null,
   batchFrom: null,
   batchTo: null,
   noClosingOrder: false,

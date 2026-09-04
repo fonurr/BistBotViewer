@@ -392,3 +392,103 @@ describe('BookFilters reason filter', () => {
     expect(screen.queryByRole('button', { name: 'any reason' })).toBeNull();
   });
 });
+
+describe('BookFilters source filter', () => {
+  const chains = buildBookChains({
+    activeOrders: [makeActiveOrder({ id: 1, clientOrderId: 'live', chainId: 'chain-live' })],
+    canceledOrders: [
+      makeCanceledOrder({ id: 401, clientOrderId: 'c1', chainId: 'chain-a', source: 'Server' }),
+      // Two legs of the same hand in one chain still count one chain.
+      makeCanceledOrder({ id: 402, clientOrderId: 'c2', chainId: 'chain-a', source: 'Server' }),
+      makeCanceledOrder({ id: 403, clientOrderId: 'c3', chainId: 'chain-b', source: 'Broker' }),
+    ],
+    positions: [],
+    closedTrades: [],
+  });
+
+  const renderFilters = (onChange: () => void, filters = defaultBookFilters) =>
+    render(
+      <BookFilters
+        filters={filters}
+        onChange={onChange}
+        bots={[makeBot({ id: 'bot-alpha' })]}
+        accounts={[makeAccount()]}
+        chains={chains}
+        noClosingOrderCount={0}
+        mismatchCount={0}
+        canceledCount={3}
+        canceledVisible={false}
+        manualOpenLegs={0}
+        manualClosedChains={0}
+        onToggleCanceled={vi.fn()}
+        onOpenMismatch={vi.fn()}
+      />,
+    );
+
+  it('lists the hands that ended the loaded orders, counting chains', async () => {
+    const user = userEvent.setup();
+    renderFilters(vi.fn());
+
+    await user.click(screen.getByRole('button', { name: 'any source' }));
+
+    expect(screen.getByRole('checkbox', { name: /Broker/ })).toBeVisible();
+    expect(screen.getByRole('checkbox', { name: /Server/ }).closest('label')).toHaveTextContent(
+      /Server1$/,
+    );
+  });
+
+  it('starts off, with every box ticked and disabled', async () => {
+    const user = userEvent.setup();
+    renderFilters(vi.fn());
+
+    await user.click(screen.getByRole('button', { name: 'any source' }));
+    for (const box of screen.getAllByRole('checkbox', { name: /Broker|Server/ })) {
+      expect(box).toBeChecked();
+      expect(box).toBeDisabled();
+    }
+  });
+
+  it('drops a source once it is on, and pins every source back when switched off', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    renderFilters(onChange, { ...defaultBookFilters, sourceFilter: true });
+
+    await user.click(screen.getByRole('button', { name: '2 sources' }));
+    await user.click(screen.getByRole('checkbox', { name: /Broker/ }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sources: new Set(['Server']) }),
+    );
+
+    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sourceFilter: false, sources: null }),
+    );
+  });
+
+  it('offers no control at all where nothing names who ended it', () => {
+    render(
+      <BookFilters
+        filters={defaultBookFilters}
+        onChange={vi.fn()}
+        bots={[makeBot()]}
+        accounts={[makeAccount()]}
+        chains={buildBookChains({
+          activeOrders: [makeActiveOrder({ id: 1, clientOrderId: 'live', chainId: 'live' })],
+          canceledOrders: [],
+          positions: [],
+          closedTrades: [],
+        })}
+        noClosingOrderCount={0}
+        mismatchCount={0}
+        canceledCount={0}
+        canceledVisible={false}
+        manualOpenLegs={0}
+        manualClosedChains={0}
+        onToggleCanceled={vi.fn()}
+        onOpenMismatch={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'any source' })).toBeNull();
+  });
+});

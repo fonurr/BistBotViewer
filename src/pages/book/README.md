@@ -74,8 +74,8 @@ nothing but canceled legs, so asking for it while they are hidden would draw col
 runs one way only: switching the scope back off leaves the toggle where the reader left it, since
 by then they may be reading canceled legs on chains that traded.
 
-`BookFilters` owns additive scopes and the bot, account, symbol, canceled-status, reason, and
-batch-range controls. The
+`BookFilters` owns additive scopes and the bot, account, symbol, canceled-status, reason, source,
+and batch-range controls. The
 bot, account and symbol controls are `components/EntityFilters`, which the Bots and Performance
 pages import unchanged — the Book defines the shape, and no page reimplements it. A trigger states
 the current selection as a count (`4 bots`, `2 accounts`), and an unset symbol filter reads
@@ -125,11 +125,24 @@ canceled leg, before the verbatim wire `explanation`, and leading likewise on a 
 order, before whatever that row says about itself. A cancel in flight names who asked and then why,
 and the sell that closed a round trip carries why on the `Filled` leg — never on the `Closed` one,
 which carries the hold instead. The filter ticks the words the rows print. `reasonData` — the
-numbers behind the three reasons that have any — is written into the same phrase, `BuyGuard
-upperLimit 119,34`, with the server's key unchanged and the figure in the page's own Turkish form; a
-value that names the default it came from (`lowerLimit floor`) prints verbatim, because a default's
-number says nothing without its name, and a value of a shape the contract does not describe is left
-out rather than guessed at.
+numbers behind the three reasons that have any — hangs off the reason on the same middle dot,
+`BuyGuard · upperLimit: 119,34`, with the server's key unchanged, a colon joining a key to its value
+and a comma between pairs, since the dots are already spent. The figure takes the page's own Turkish
+form; a value that names the default it came from (`lowerLimit: floor`) prints verbatim, because a
+default's number says nothing without its name, and a value of a shape the contract does not
+describe is left out rather than guessed at.
+
+**`source` sits beside the status, not in that line at all** — `By user · User`, joined on the same
+middle dot and drawn in the status's own hue by `RowVerdict`, because who ended an order is the
+other half of the verdict rather than a qualifier of it. Only a stored death names one: nothing says
+who is behind a live order, and a row without one simply shows its status. The contract calls the
+field `source`; on a Book row that name is already the row's origin table, so the row carries it as
+`statusSource`. A cancel still in flight is a separate question — the order has not ended — so it
+keeps its own muted `asked by the server` clause and is not folded in here.
+
+The **source filter** is the reason filter's twin over that field: `Broker`, `Bot`, `Server`,
+`User`, ticked in the server's own key form, counting the chains each would keep, off by default
+behind the same switch, and not drawn at all where no loaded row names a hand.
 
 That line carries **three inks, loudest first** (`BookRowDetailTone`, drawn by `RowDetail` for both
 the grid and the chain dialog). What the server decided — the reason and its numbers — is a fact of

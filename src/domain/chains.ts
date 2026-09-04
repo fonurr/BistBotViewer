@@ -48,6 +48,13 @@ interface BookChainRowBase {
   readonly reason: string | null;
   /** The numbers behind that reason, for the few reasons that carry any. */
   readonly reasonData: ReasonData | null;
+  /**
+   * Who put the row in the status it is in — `Broker`, `Bot`, `Server` or
+   * `User`. The contract calls this field `source`; here that name is already
+   * the row's own origin table, so the two are kept apart by name. Only a
+   * stored death carries one: nothing says who is behind a live order.
+   */
+  readonly statusSource: string | null;
 }
 
 export interface BookActiveOrderRow extends BookChainRowBase {
@@ -445,6 +452,7 @@ function normalizeActiveOrder(order: ActiveOrder): BookActiveOrderRow {
     cancelInFlight: order.cancelSource !== null,
     reason: reasonKey(order.reason),
     reasonData: order.reasonData ?? null,
+    statusSource: null,
     cancelReason: reasonKey(order.cancelReason),
     cancelReasonData: order.cancelReasonData ?? null,
   };
@@ -478,6 +486,7 @@ function normalizeCanceledOrder(order: CanceledOrder): BookCanceledOrderRow {
     cancelInFlight: false,
     reason: reasonKey(order.reason),
     reasonData: order.reasonData ?? null,
+    statusSource: reasonKey(order.source),
   };
 }
 
@@ -512,6 +521,7 @@ function normalizePosition(position: Position): BookPositionRow {
     cancelInFlight: false,
     reason: null,
     reasonData: null,
+    statusSource: null,
   };
 }
 
@@ -551,6 +561,7 @@ function normalizeClosedTrade(trade: ClosedTrade): [BookClosedTradeRow, BookClos
       // sell's is. An invented one would be worse than the blank.
       reason: null,
       reasonData: null,
+      statusSource: null,
     },
     {
       ...shared,
@@ -566,6 +577,7 @@ function normalizeClosedTrade(trade: ClosedTrade): [BookClosedTradeRow, BookClos
       status: 'Closed',
       reason: reasonKey(trade.closeReason),
       reasonData: trade.closeReasonData ?? null,
+      statusSource: null,
     },
   ];
 }

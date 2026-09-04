@@ -72,7 +72,7 @@ import {
 import { resolveSchedule } from '../../domain/schedule';
 import { statusClass } from '../../domain/status';
 import { orderActionsForRow, type OrderDialogAction } from './orderActions';
-import { RowDetail } from './RowDetail';
+import { RowDetail, RowVerdict } from './RowDetail';
 import { bookRowPresentation } from './rowPresentation';
 
 export type { OrderDialogAction } from './orderActions';
@@ -605,7 +605,9 @@ function ChainView({
           const presentation = bookRowPresentation(row, chain);
           return (
             <div className={`chain-dialog-row ${statusClass(presentation.role)}`} key={row.key}>
-              <span className="chain-dialog-status">{presentation.label}</span>
+              <span className="chain-dialog-status">
+                <RowVerdict presentation={presentation} />
+              </span>
               <span className="chain-dialog-terms">{legTerms(row)}</span>
               <span className="chain-dialog-id">{row.clientOrderId ?? 'no client id'}</span>
               {presentation.detail ? (
@@ -765,7 +767,7 @@ function ChainOpener({
           opener is often the only leg a chain has. */}
       <div className="chain-dialog-opener-note">
         <span>
-          {presentation.label}
+          <RowVerdict presentation={presentation} />
           <RowDetail detail={presentation.detail} />
         </span>
         <span className="chain-dialog-actions">

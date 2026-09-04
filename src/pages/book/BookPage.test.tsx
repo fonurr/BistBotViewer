@@ -518,3 +518,90 @@ describe('the reason filter', () => {
     expect(screen.getByRole('button', { name: 'any reason' })).toBeVisible();
   });
 });
+
+describe('the source filter', () => {
+  // Three chains that each lost a leg to a different hand, and one that has
+  // lost nothing — so the filter can be shown to read the stored deaths alone.
+  const fourChains = () => ({
+    ...emptyRead(),
+    activeOrders: [
+      makeActiveOrder({ id: 1, clientOrderId: 'a', chainId: 'chain-a', symbol: 'AKBNK' }),
+      makeActiveOrder({ id: 2, clientOrderId: 'b', chainId: 'chain-b', symbol: 'GARAN' }),
+      makeActiveOrder({ id: 3, clientOrderId: 'c', chainId: 'chain-c', symbol: 'SISE' }),
+      makeActiveOrder({ id: 4, clientOrderId: 'd', chainId: 'chain-d', symbol: 'THYAO' }),
+    ],
+    canceledOrders: [
+      makeCanceledOrder({
+        id: 401,
+        clientOrderId: 'a-dead',
+        chainId: 'chain-a',
+        symbol: 'AKBNK',
+        source: 'Server',
+      }),
+      makeCanceledOrder({
+        id: 402,
+        clientOrderId: 'b-dead',
+        chainId: 'chain-b',
+        symbol: 'GARAN',
+        source: 'User',
+      }),
+      makeCanceledOrder({
+        id: 403,
+        clientOrderId: 'c-dead',
+        chainId: 'chain-c',
+        symbol: 'SISE',
+        source: 'Broker',
+      }),
+    ],
+  });
+
+  const chainsInGrid = () =>
+    [...document.querySelectorAll('.book-chain')]
+      .map((chain) => chain.getAttribute('aria-label')?.replace(' chain', '') ?? '')
+      .sort();
+
+  it('prints who ended a leg beside its status', async () => {
+    const user = userEvent.setup();
+    book.data = fourChains();
+    renderBook();
+
+    await user.click(screen.getByRole('button', { name: /canceled orders? hidden/ }));
+
+    expect(screen.getByText(/By user · User/)).toBeVisible();
+  });
+
+  it('narrows to chains that lost a leg to a ticked hand', async () => {
+    const user = userEvent.setup();
+    book.data = fourChains();
+    renderBook();
+
+    expect(chainsInGrid()).toEqual(['AKBNK', 'GARAN', 'SISE', 'THYAO']);
+
+    await user.click(screen.getByRole('button', { name: 'any source' }));
+    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+
+    // THYAO goes: every source is still ticked, but it has lost nothing.
+    expect(chainsInGrid()).toEqual(['AKBNK', 'GARAN', 'SISE']);
+    expect(screen.getByRole('button', { name: 'with a named source ×' })).toBeVisible();
+
+    await user.click(screen.getByRole('checkbox', { name: /Broker/ }));
+    expect(chainsInGrid()).toEqual(['AKBNK', 'GARAN']);
+    expect(screen.getByRole('button', { name: '2 sources ×' })).toBeVisible();
+  });
+
+  it('names itself as the narrowing that emptied the Book, and switches back off', async () => {
+    const user = userEvent.setup();
+    book.data = fourChains();
+    renderBook();
+
+    await user.click(screen.getByRole('button', { name: 'any source' }));
+    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    await user.click(screen.getByRole('button', { name: 'none' }));
+
+    expect(screen.getByText('No source is selected.', { exact: false })).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'clear the source filter' }));
+    expect(chainsInGrid()).toEqual(['AKBNK', 'GARAN', 'SISE', 'THYAO']);
+    expect(screen.getByRole('button', { name: 'any source' })).toBeVisible();
+  });
+});

@@ -261,6 +261,12 @@ export const canceledOrderSchema = z
     timeInForce: z.string(),
     status: orderStatusSchema,
     explanation: z.string().nullable(),
+    /**
+     * Who ended the order — `Broker`, `Bot`, `Server` or `User`. Read as a free
+     * string for the reason `orderStatusSchema` is one: a value this file does
+     * not recognize must cost the word on one row, never the whole table read.
+     */
+    source: z.string().nullable().optional(),
     reason: z.string().nullable(),
     reasonData: reasonDataSchema,
     retryCount: z.number().int(),

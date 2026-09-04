@@ -64,6 +64,7 @@ export function BookFilters(props: BookFiltersProps) {
   );
   const canceledStatuses = useMemo(() => canceledStatusOptions(props.chains), [props.chains]);
   const reasons = useMemo(() => reasonOptions(props.chains), [props.chains]);
+  const sources = useMemo(() => sourceOptions(props.chains), [props.chains]);
 
   const toggleScope = (scope: BookScope) => {
     const next = new Set(filters.scopes);
@@ -87,6 +88,8 @@ export function BookFilters(props: BookFiltersProps) {
       canceledStatuses: null,
       reasonFilter: false,
       reasons: null,
+      sourceFilter: false,
+      sources: null,
       batchFrom: null,
       batchTo: null,
       noClosingOrder: true,
@@ -241,6 +244,33 @@ export function BookFilters(props: BookFiltersProps) {
             one="reason"
             many="reasons"
             note="On, the Book keeps a chain where any one of its rows — live, scheduled, canceled or the sell that closed a trade — carries a ticked reason, and then draws the whole chain. A chain the server recorded no reason for has nothing to match, so it drops out even with every reason ticked."
+          />
+        ) : null}
+        {sources.length > 0 ? (
+          <MultiSelectFilter
+            name="sources"
+            open={open === 'sources'}
+            setOpen={setOpen}
+            heading="who ended the loaded orders"
+            help="The server's own keys for who: `Broker` is Matriks or the exchange, `Bot` the calling bot, `Server` a guard or an exit this server decided, `User` a person in the MatriksIQ terminal. Every key the loaded book carries, whichever bots the rest of the toolbar keeps."
+            options={sources}
+            picks={[{ label: 'none', select: new Set<string>() }]}
+            active={props.filters.sourceFilter}
+            onActiveChange={(active) =>
+              onChange({
+                ...filters,
+                sourceFilter: active,
+                sources: null,
+                noClosingOrder: false,
+              })
+            }
+            activeLabel="filter"
+            inactiveLabel="any source"
+            selected={filters.sources}
+            onChange={(sources) => onChange({ ...filters, sources, noClosingOrder: false })}
+            one="source"
+            many="sources"
+            note="On, the Book keeps a chain only where one of its own dead orders names a ticked source, and then draws the whole chain. Only a stored death names who ended it, so a chain whose legs all still live has nothing to match and drops out even with every source ticked."
           />
         ) : null}
         <FilterPopover
@@ -411,6 +441,25 @@ export function reasonOptions(chains: readonly BookChain[]): FilterOption[] {
   return [...chainsByReason.entries()]
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([reason, count]) => ({ key: reason, label: reason, count }));
+}
+
+/**
+ * Every source key the loaded rows name, in the server's own form. Only a
+ * stored death carries one — nothing says who is behind a live order — so this
+ * list is built from the canceled legs, and each option counts the chains it
+ * would keep rather than the legs.
+ */
+export function sourceOptions(chains: readonly BookChain[]): FilterOption[] {
+  const chainsBySource = new Map<string, number>();
+  for (const chain of chains) {
+    const sources = new Set(
+      chain.rows.flatMap((row) => (row.statusSource === null ? [] : [row.statusSource])),
+    );
+    for (const source of sources) chainsBySource.set(source, (chainsBySource.get(source) ?? 0) + 1);
+  }
+  return [...chainsBySource.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([source, count]) => ({ key: source, label: source, count }));
 }
 
 function countBy<T>(values: readonly T[], key: (value: T) => string): Map<string, number> {

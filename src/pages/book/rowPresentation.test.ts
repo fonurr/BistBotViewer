@@ -114,7 +114,7 @@ describe('bookRowPresentation reasonData', () => {
       text(
         canceledRow({ reason: 'BuyGuard', reasonData: { upperLimit: 119.34 }, explanation: null }),
       ),
-    ).toBe('BuyGuard upperLimit 119,34');
+    ).toBe('BuyGuard · upperLimit: 119,34');
   });
 
   it('prints the name of a default rather than a number it does not have', () => {
@@ -126,13 +126,13 @@ describe('bookRowPresentation reasonData', () => {
           explanation: null,
         }),
       ),
-    ).toBe('BuyGuard lowerLimit floor');
+    ).toBe('BuyGuard · lowerLimit: floor');
   });
 
   it('keeps the numbers in the reason’s own ink, as one phrase', () => {
     expect(
       inked(canceledRow({ reason: 'BuyGuard', reasonData: { upperLimit: 119.34 } })),
-    ).toContain('reason:BuyGuard upperLimit 119,34');
+    ).toContain('reason:BuyGuard · upperLimit: 119,34');
   });
 
   it('leaves out a value of a shape the contract does not describe', () => {
@@ -144,7 +144,19 @@ describe('bookRowPresentation reasonData', () => {
           explanation: null,
         }),
       ),
-    ).toBe('TakeProfit limit 96,04');
+    ).toBe('TakeProfit · limit: 96,04');
+  });
+
+  it('separates several pairs with a comma, since the dots are already spent', () => {
+    expect(
+      text(
+        canceledRow({
+          reason: 'BuyGuard',
+          reasonData: { upperLimit: 119.34, lowerLimit: 'floor' },
+          explanation: null,
+        }),
+      ),
+    ).toBe('BuyGuard · upperLimit: 119,34, lowerLimit: floor');
   });
 
   it('carries the numbers behind a cancel in flight too', () => {
@@ -156,6 +168,17 @@ describe('bookRowPresentation reasonData', () => {
           cancelReasonData: { limit: 96.04 },
         }),
       ),
-    ).toBe('asked by the server · StopLoss limit 96,04');
+    ).toBe('asked by the server · StopLoss · limit: 96,04');
+  });
+});
+
+describe('bookRowPresentation source', () => {
+  it('names who ended the order beside the status, and only on a stored death', () => {
+    expect(canceledRow({ source: 'Server' }).source).toBe('Server');
+    expect(activeRow({}).source).toBeUndefined();
+  });
+
+  it('says nothing where the server named nobody', () => {
+    expect(canceledRow({ source: null }).source).toBeUndefined();
   });
 });

@@ -36,6 +36,12 @@ export interface BookRowDetailPart {
 export interface BookRowPresentation {
   label: string;
   /**
+   * Who put the row in that status, said right beside the word and in its ink,
+   * because it is part of the same verdict rather than a qualifier of it. Only
+   * a stored death carries one; a live order is nobody's doing yet.
+   */
+  source?: string;
+  /**
    * The reference keeps the qualifier on the status cell's own line, muted,
    * after a middle dot — `New . resting 22m`. Only the cancel-in-flight row
    * earns lines of its own, and they sit beneath the row rather than inside
@@ -74,6 +80,7 @@ export function bookRowPresentation(
     // is what says whether anything will try again (SPEC 2).
     return {
       label: displayStatus(row.raw.status),
+      source: row.statusSource ?? undefined,
       detail: parts(
         reasonPart(row.reason, row.reasonData),
         faint(row.raw.explanation?.trim() || undefined),

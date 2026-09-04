@@ -90,18 +90,22 @@ export function statusClass(role: StatusRole): string {
 }
 
 /**
- * A reason and the numbers behind it, as one phrase — `BuyGuard upperLimit
- * 119,34`. The keys are the server's own and print unchanged; a value is either
- * a TL price, which is formatted like every other figure on the page, or the
- * name of the default that produced it, which prints verbatim because a
- * default's number says nothing without it. Anything of another shape is left
- * out rather than guessed at, and a reason with no data is just itself.
+ * A reason and the numbers behind it, as one phrase — `BuyGuard · upperLimit:
+ * 119,34`. The data hangs off the reason on the same middle dot the qualifier
+ * line uses elsewhere, and each key is joined to its value by a colon so a pair
+ * reads as a pair; several pairs are separated by commas, which is the one
+ * separator the dots are not already spending. The keys are the server's own
+ * and print unchanged; a value is either a TL price, formatted like every other
+ * figure on the page, or the name of the default that produced it, which prints
+ * verbatim because a default's number says nothing without it. Anything of
+ * another shape is left out rather than guessed at, and a reason with no data
+ * is just itself.
  */
 export function reasonPhrase(reason: string, data: ReasonData | null): string {
   const numbers = Object.entries(data ?? {}).flatMap(([key, value]) => {
     if (typeof value === 'number' && Number.isFinite(value))
-      return [`${key} ${formatNumber(value)}`];
-    return typeof value === 'string' && value.trim() !== '' ? [`${key} ${value.trim()}`] : [];
+      return [`${key}: ${formatNumber(value)}`];
+    return typeof value === 'string' && value.trim() !== '' ? [`${key}: ${value.trim()}`] : [];
   });
-  return numbers.length === 0 ? reason : `${reason} ${numbers.join(' · ')}`;
+  return numbers.length === 0 ? reason : `${reason} · ${numbers.join(', ')}`;
 }

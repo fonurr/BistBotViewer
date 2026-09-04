@@ -1,4 +1,4 @@
-import type { BookRowDetailPart } from './rowPresentation';
+import type { BookRowDetailPart, BookRowPresentation } from './rowPresentation';
 
 interface RowDetailProps {
   detail: readonly BookRowDetailPart[] | undefined;
@@ -26,6 +26,21 @@ export function RowDetail({ detail, lead = true }: RowDetailProps) {
           {part.text}
         </span>
       ))}
+    </>
+  );
+}
+
+/**
+ * The verdict itself: the status word and, joined to it on the same middle dot
+ * and in the same ink, who put the row in it. `source` is not a qualifier of
+ * the status — it is the other half of the same sentence — so it never drops
+ * to the muted ink the clauses after it use.
+ */
+export function RowVerdict({ presentation }: { presentation: BookRowPresentation }) {
+  return (
+    <>
+      {presentation.label}
+      {presentation.source === undefined ? null : ` · ${presentation.source}`}
     </>
   );
 }

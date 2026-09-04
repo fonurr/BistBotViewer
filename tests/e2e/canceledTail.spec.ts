@@ -49,9 +49,10 @@ test('hides canceled legs behind a toggle that is itself the count', async ({ pa
   await toggle.click();
   await expect(toggle).toHaveText('1 canceled order shown');
   await expect(tail.locator('.book-row')).toHaveCount(1);
-  // The stored explanation rides the status cell, muted, after the display word.
+  // Who ended it sits beside the display word in the same ink, and the stored
+  // explanation rides behind both, quoted and faint.
   await expect(tail.locator('.book-status')).toHaveText(
-    'By user · canceled in the MatriksIQ terminal',
+    'By user · User · canceled in the MatriksIQ terminal',
   );
 
   // Reconciles the per-chain override against the global toggle.
