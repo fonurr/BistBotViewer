@@ -286,16 +286,13 @@ export function BookPage() {
 
   return (
     <div className="book-page page-pad">
+      {/*
+       * The heading is the page's name and nothing else. The line under it
+       * restated what the Book obviously is and counted bots and accounts the
+       * toolbar under it already counts, in triggers that also filter by them.
+       */}
       <header className="page-heading">
         <h1>The Book</h1>
-        <span>
-          every order, position and trade —{' '}
-          {data.isPending
-            ? 'loading'
-            : data.error
-              ? 'snapshot unavailable'
-              : `${plural(data.bots.length, 'bot')}, ${plural(data.accounts.length, 'account')}`}
-        </span>
       </header>
       {data.error ? (
         <div className="read-error" role="alert">
