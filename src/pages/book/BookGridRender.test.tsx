@@ -202,9 +202,9 @@ describe('BookGrid today column', () => {
       },
     );
 
-    // Live price 305.5 against a 300 prior close, 100 shares.
+    // Live price 305.5 against a 300 prior close, 100 shares — with its percentage.
     const todayCell = document.querySelector('.book-row-opener .book-today')!;
-    expect(todayCell.textContent).toBe('+550');
+    expect(todayCell.textContent).toBe('+550 (+1,83%)');
   });
 
   it('withholds the today figure when the prior close is missing', () => {

@@ -34,7 +34,7 @@ import {
 } from '../../domain/orders';
 import { displayStatus } from '../../domain/status';
 import { BookFilters } from './BookFilters';
-import { BookGrid } from './BookGrid';
+import { BookGrid, summarizeBookToday } from './BookGrid';
 import { OrderDialog, type OrderDialogAction } from './OrderDialog';
 import { defaultBookFilters, type BookFilterState } from './types';
 import './book.css';
@@ -177,6 +177,25 @@ export function BookPage() {
       ),
     [closingBarsQuery.data],
   );
+  const todaySummary = useMemo(
+    () =>
+      summarizeBookToday(
+        visibleChains,
+        priceFeed.prices,
+        priceFeed.trustworthy,
+        closingBars,
+        todaySessionDate,
+        calendar,
+      ),
+    [
+      calendar,
+      closingBars,
+      priceFeed.prices,
+      priceFeed.trustworthy,
+      todaySessionDate,
+      visibleChains,
+    ],
+  );
   const chips = filterChips(filters, data.bots.length, data.accounts.length);
   const genuineEmpty = chains.length === 0 && data.pendingRequests.length === 0;
   const filteredEmpty = !genuineEmpty && visibleChains.length === 0 && visiblePending.length === 0;
@@ -318,7 +337,7 @@ export function BookPage() {
         </div>
       ) : null}
       {snapshotAvailable && !genuineEmpty ? (
-        <StatStrip summary={summary} pendingCount={visiblePending.length} />
+        <StatStrip summary={summary} today={todaySummary} pendingCount={visiblePending.length} />
       ) : null}
       {snapshotAvailable && filters.noClosingOrder ? (
         <div className="no-exit-heading">
@@ -708,8 +727,17 @@ function summarize(
 }
 
 type BookSummary = ReturnType<typeof summarize>;
+type BookTodaySummary = ReturnType<typeof summarizeBookToday>;
 
-function StatStrip({ summary, pendingCount }: { summary: BookSummary; pendingCount: number }) {
+function StatStrip({
+  summary,
+  today,
+  pendingCount,
+}: {
+  summary: BookSummary;
+  today: BookTodaySummary;
+  pendingCount: number;
+}) {
   const trustClass = summary.marketFiguresTrusted ? '' : ' number-untrusted';
   return (
     <div className="book-stat-strip fading-rule">
@@ -719,6 +747,16 @@ function StatStrip({ summary, pendingCount }: { summary: BookSummary; pendingCou
         value={`${plural(summary.chains, 'chain')} · ${plural(summary.orders, 'order')}${
           pendingCount ? ` · ${plural(pendingCount, 'queued basket')}` : ''
         }`}
+      />
+      {/* Session-to-date across the visible chains: mark-to-market on what is still
+          held, realized on what sold today, each from its own session-start basis.
+          All-or-nothing — one row it cannot price makes the whole figure unavailable. */}
+      <Stat
+        label="today"
+        value={today.available ? formatSignedNumber(today.value) : 'not available'}
+        inlineDetail={today.percent === null ? null : formatPercentage(today.percent)}
+        signed={today.available ? today.value : undefined}
+        unavailable={!today.available}
       />
       <Stat
         label="realized"

@@ -387,13 +387,18 @@ const BookRow = memo(function BookRow({
   const pnlFigure = bookRowPnlFigure(row, pnlState, price?.price ?? null);
   const pnl = pnlFigure?.value ?? null;
   const pnlPercent = rowPnlPercent(pnlFigure);
-  const today = bookRowTodayFigure(row, chain, pnlState, {
+  const todayFigure = bookRowTodayFigure(row, chain, pnlState, {
     marketPrice: price?.price ?? null,
     pricesTrustworthy,
     todaySessionDate,
     calendar,
     prevClose: closingBars.get(row.symbol.toUpperCase()) ?? null,
   });
+  const today = todayFigure?.value ?? null;
+  const todayPercent =
+    todayFigure && todayFigure.value !== null
+      ? pnlPercentage(todayFigure.value, todayFigure.basis)
+      : null;
   const slip =
     row.averagePrice === null
       ? null
@@ -497,7 +502,14 @@ const BookRow = memo(function BookRow({
        * apply: p&l already carries the row's figure, this is a second view of it).
        */}
       <div role="cell" className={`align-right book-today ${pnlClass(today, true)}`}>
-        {today === null ? '' : formatSignedNumber(today, 0)}
+        {today === null ? (
+          ''
+        ) : (
+          <>
+            {formatSignedNumber(today, 0)}
+            {todayPercent === null ? null : <small> ({formatPercentage(todayPercent)})</small>}
+          </>
+        )}
       </div>
       <div
         role="cell"
@@ -681,42 +693,57 @@ export interface RowTodayContext {
   readonly prevClose: number | null;
 }
 
+export interface RowTodayFigure {
+  /** The move since the session started, or `null` when its basis is unavailable (withheld). */
+  readonly value: number | null;
+  /** What the move is measured against — cost basis for a same-day chain, prior close × qty for a
+   * carried-over one. Zero when the figure is withheld. */
+  readonly basis: number;
+}
+
 /**
  * The `today` column: the same P&L the p&l column carries, read from the start of the
  * current session. A chain opened in `todaySessionDate` is measured from its own average
  * entry, so the two columns agree; one carried over from an earlier session is measured
  * from `prevClose`, that session's closing-auction price.
  *
- * The figure is withheld — never qualified — when its basis is missing: a Position with
- * no trusted live price or no prior close, a filled sell with no prior close. Only a sell
- * that executed in the current session counts; a round trip closed on an earlier day has
- * nothing to say about today.
+ * `null` means the row carries no today figure at all (a buy, a canceled leg, a round trip
+ * closed on an earlier day). A returned figure whose `value` is `null` is withheld — its
+ * basis is missing (a Position with no trusted live price or no prior close, a filled sell
+ * with no prior close) — and any aggregate that covers it is not available.
  */
 export function bookRowTodayFigure(
   row: BookChainRow,
   chain: BookChain,
   pnlState: FilledPnlState,
   context: RowTodayContext,
-): number | null {
+): RowTodayFigure | null {
   const openedToday =
     context.todaySessionDate !== null && chain.batchDate === context.todaySessionDate;
   const index = indexPnlState(pnlState);
+  const withheld: RowTodayFigure = { value: null, basis: 0 };
 
   if (row.source === 'position') {
-    if (!context.pricesTrustworthy || context.marketPrice === null) return null;
     const exposure = index.exposures.get(`position:${row.raw.id}`);
     if (!exposure) return null;
-    const basis = openedToday ? exposure.averagePrice : context.prevClose;
-    if (basis === null) return null;
-    return exposure.quantity * (context.marketPrice - basis);
+    if (!context.pricesTrustworthy || context.marketPrice === null) return withheld;
+    const basisPrice = openedToday ? exposure.averagePrice : context.prevClose;
+    if (basisPrice === null) return withheld;
+    return {
+      value: exposure.quantity * (context.marketPrice - basisPrice),
+      basis: exposure.quantity * basisPrice,
+    };
   }
 
   if (row.source === 'active' && row.direction === 'sell') {
     const fill = index.partialSells.get(row.raw.id);
     if (!fill) return null;
-    const basis = openedToday ? fill.averageOpenPrice : context.prevClose;
-    if (basis === null) return null;
-    return fill.quantity * (fill.averageClosePrice - basis);
+    const basisPrice = openedToday ? fill.averageOpenPrice : context.prevClose;
+    if (basisPrice === null) return withheld;
+    return {
+      value: fill.quantity * (fill.averageClosePrice - basisPrice),
+      basis: fill.quantity * basisPrice,
+    };
   }
 
   if (row.source === 'closed-trade' && row.leg === 'close') {
@@ -725,12 +752,68 @@ export function bookRowTodayFigure(
       context.calendar,
     );
     if (closeSession === null || closeSession !== context.todaySessionDate) return null;
-    const basis = openedToday ? row.raw.averageOpenPrice : context.prevClose;
-    if (basis === null) return null;
-    return row.raw.quantity * (row.raw.averageClosePrice - basis);
+    const basisPrice = openedToday ? row.raw.averageOpenPrice : context.prevClose;
+    if (basisPrice === null) return withheld;
+    return {
+      value: row.raw.quantity * (row.raw.averageClosePrice - basisPrice),
+      basis: row.raw.quantity * basisPrice,
+    };
   }
 
   return null;
+}
+
+/**
+ * The strip's `today` figure: every visible chain's session-to-date move, summed, against what
+ * those positions and closed-today sells are measured from. All-or-nothing like `unrealized` — one
+ * withheld row (no trusted price, no prior close) makes the whole figure unavailable.
+ */
+export function summarizeBookToday(
+  chains: readonly BookChain[],
+  prices: ReadonlyMap<string, ResolvedPrice>,
+  pricesTrustworthy: boolean,
+  closingBars: ReadonlyMap<string, number>,
+  todaySessionDate: string | null,
+  calendar: HolidayCalendar,
+): { available: boolean; value: number; percent: number | null } {
+  const positions = new Map(
+    chains.flatMap((chain) => chain.sources.positions).map((position) => [position.id, position]),
+  );
+  const activeOrders = new Map(
+    chains.flatMap((chain) => chain.sources.activeOrders).map((order) => [order.id, order]),
+  );
+  const closedTrades = new Map(
+    chains.flatMap((chain) => chain.sources.closedTrades).map((trade) => [trade.id, trade]),
+  );
+  const pnlState = deriveFilledPnlState(
+    [...positions.values()],
+    [...activeOrders.values()],
+    [...closedTrades.values()],
+  );
+
+  let value = 0;
+  let basis = 0;
+  let available = true;
+  for (const chain of chains) {
+    for (const row of chain.rows) {
+      const figure = bookRowTodayFigure(row, chain, pnlState, {
+        marketPrice: prices.get(row.symbol.toUpperCase())?.price ?? null,
+        pricesTrustworthy,
+        todaySessionDate,
+        calendar,
+        prevClose: closingBars.get(row.symbol.toUpperCase()) ?? null,
+      });
+      if (figure === null) continue;
+      if (figure.value === null) {
+        available = false;
+        continue;
+      }
+      value += figure.value;
+      basis += figure.basis;
+    }
+  }
+
+  return { available, value, percent: basis === 0 ? null : pnlPercentage(value, basis) };
 }
 
 function rowPnlPercent(figure: RowPnlFigure | null): number | null {

@@ -202,10 +202,17 @@ describe('The Book page states', () => {
         expect.objectContaining({ symbol: 'THYAO' }),
       ]),
     );
-    // Live price 305.5 against a 300 prior close, 100 shares.
+    // Live price 305.5 against a 300 prior close, 100 shares — figure and percentage.
     await waitFor(() =>
-      expect(document.querySelector('.book-row-opener .book-today')?.textContent).toBe('+550'),
+      expect(document.querySelector('.book-row-opener .book-today')?.textContent).toBe(
+        '+550 (+1,83%)',
+      ),
     );
+    const todayStat = [...document.querySelectorAll('.book-stat')].find(
+      (stat) => stat.querySelector('.kicker')?.textContent === 'today',
+    )!;
+    expect(todayStat.textContent).toContain('+550');
+    expect(todayStat.textContent).toContain('1,83%');
   });
 
   it('does not read closing bars when nothing is carried over', () => {

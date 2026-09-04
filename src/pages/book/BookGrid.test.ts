@@ -8,8 +8,14 @@ import {
   makeCanceledOrder,
   makeClosedTrade,
   makePosition,
+  makeResolvedPrice,
 } from '../../test/fixtures/bist';
-import { bookRowPnlFigure, bookRowTodayFigure, type RowTodayContext } from './BookGrid';
+import {
+  bookRowPnlFigure,
+  bookRowTodayFigure,
+  summarizeBookToday,
+  type RowTodayContext,
+} from './BookGrid';
 import { bookRowPresentation } from './rowPresentation';
 
 const calendar = holidayCalendar([]);
@@ -97,8 +103,8 @@ describe('Book row today figure', () => {
       todayContext({ marketPrice: 320, todaySessionDate: chain.batchDate }),
     );
 
-    expect(today).toBe(100 * (320 - 301.5));
-    expect(today).toBe(bookRowPnlFigure(row, state, 320)!.value);
+    expect(today).toEqual({ value: 100 * (320 - 301.5), basis: 100 * 301.5 });
+    expect(today!.value).toBe(bookRowPnlFigure(row, state, 320)!.value);
   });
 
   it('measures a carried-over position from the previous close', () => {
@@ -110,7 +116,7 @@ describe('Book row today figure', () => {
       todayContext({ marketPrice: 320, todaySessionDate: '2026-08-26', prevClose: 310 }),
     );
 
-    expect(today).toBe(100 * (320 - 310));
+    expect(today).toEqual({ value: 100 * (320 - 310), basis: 100 * 310 });
   });
 
   it('withholds a carried-over position with no prior close or no trusted price', () => {
@@ -124,7 +130,7 @@ describe('Book row today figure', () => {
         state,
         todayContext({ marketPrice: 320, todaySessionDate: '2026-08-26', prevClose: null }),
       ),
-    ).toBeNull();
+    ).toEqual({ value: null, basis: 0 });
     expect(
       bookRowTodayFigure(
         row,
@@ -137,7 +143,7 @@ describe('Book row today figure', () => {
           pricesTrustworthy: false,
         }),
       ),
-    ).toBeNull();
+    ).toEqual({ value: null, basis: 0 });
   });
 
   it('measures a round trip closed today, from entry when it also opened today', () => {
@@ -160,7 +166,7 @@ describe('Book row today figure', () => {
         deriveFilledPnlState([], []),
         todayContext({ todaySessionDate: chain!.batchDate }),
       ),
-    ).toBe(600);
+    ).toEqual({ value: 600, basis: 100 * 300 });
   });
 
   it('measures a round trip that opened earlier and closed today from the previous close', () => {
@@ -190,7 +196,7 @@ describe('Book row today figure', () => {
         deriveFilledPnlState([], []),
         todayContext({ todaySessionDate: '2026-08-25', prevClose: 304 }),
       ),
-    ).toBe(100 * (306 - 304));
+    ).toEqual({ value: 100 * (306 - 304), basis: 100 * 304 });
   });
 
   it('says nothing on a round trip closed on an earlier session, or on a buy or canceled row', () => {
@@ -241,6 +247,71 @@ describe('Book row today figure', () => {
         todayContext(),
       ),
     ).toBeNull();
+  });
+});
+
+describe('summarizeBookToday', () => {
+  it('sums every visible chain move against its session-start basis', () => {
+    const carried = makePosition({
+      id: 210,
+      symbol: 'AAA',
+      chainId: 'chain-aaa',
+      clientOrderId: 'aaa-open',
+      quantity: 100,
+      averagePrice: 280,
+      orderTime: Date.parse('2026-08-18T07:00:00.000Z'),
+      executeTime: Date.parse('2026-08-18T07:00:02.000Z'),
+    });
+    const chains = buildBookChains({
+      activeOrders: [],
+      canceledOrders: [],
+      positions: [carried],
+      closedTrades: [
+        makeClosedTrade({
+          id: 320,
+          symbol: 'BBB',
+          chainId: 'chain-bbb',
+          clientOpenOrderId: 'bbb-open',
+          clientCloseOrderId: 'bbb-close',
+          quantity: 50,
+          averageOpenPrice: 100,
+          averageClosePrice: 104,
+        }),
+      ],
+    });
+    const summary = summarizeBookToday(
+      chains,
+      new Map([['AAA', makeResolvedPrice({ symbol: 'AAA', price: 300 })]]),
+      true,
+      new Map([['AAA', 290]]),
+      '2026-08-25',
+      calendar,
+    );
+
+    // carried position: 100 * (300 - 290) = 1000 against 29 000;
+    // round trip opened and closed today: 50 * (104 - 100) = 200 against 5 000.
+    expect(summary.available).toBe(true);
+    expect(summary.value).toBe(1200);
+    expect(summary.percent).toBeCloseTo((1200 / 34_000) * 100);
+  });
+
+  it('is not available when a visible position cannot be priced', () => {
+    const carried = makePosition({
+      quantity: 100,
+      averagePrice: 280,
+      orderTime: Date.parse('2026-08-18T07:00:00.000Z'),
+      executeTime: Date.parse('2026-08-18T07:00:02.000Z'),
+    });
+    const chains = buildBookChains({
+      activeOrders: [],
+      canceledOrders: [],
+      positions: [carried],
+      closedTrades: [],
+    });
+
+    expect(
+      summarizeBookToday(chains, new Map(), false, new Map(), '2026-08-25', calendar).available,
+    ).toBe(false);
   });
 });
 

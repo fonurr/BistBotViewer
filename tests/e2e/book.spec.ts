@@ -178,9 +178,18 @@ test.describe('The Book safety smoke', () => {
     await safeBridge.stream.open();
 
     const opener = page.locator('article[aria-label="THYAO chain"] .book-row-opener');
-    // Live 305,50 against a 300 prior close, 100 shares — and p&l still reads from the entry.
-    await expect(opener.locator('.book-today')).toHaveText('+550');
+    // Live 305,50 against a 300 prior close, 100 shares — figure and percentage,
+    // and p&l still reads from the entry.
+    await expect(opener.locator('.book-today')).toContainText('+550');
+    await expect(opener.locator('.book-today')).toContainText('1,83%');
     await expect(opener.locator('.book-pnl')).toContainText('+400');
+
+    // The strip leads with today, left of realized, and carries its own percentage.
+    const todayStat = page
+      .locator('.book-stat')
+      .filter({ has: page.locator('.kicker', { hasText: /^today$/ }) });
+    await expect(todayStat).toContainText('+550');
+    await expect(todayStat).toContainText('1,83%');
   });
 
   test('traps modal focus, closes the top layer with Escape, and returns focus', async ({
