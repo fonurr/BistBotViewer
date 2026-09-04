@@ -45,9 +45,11 @@ export function bookRowPresentation(
   }
   if (row.source === 'closed-trade') {
     // SPEC 2: `Filled` is a leg word; the chain's own row carries the round
-    // trip, so only the opening leg reads `Closed`.
+    // trip, so only the opening leg reads `Closed`. Why the position was closed
+    // is stored on the sell, and how long it was held on the buy — neither leg
+    // invents the other's fact.
     return row.leg === 'close'
-      ? { label: 'Filled', role: 'done' }
+      ? { label: 'Filled', detail: row.reason ?? undefined, role: 'done' }
       : { label: 'Closed', detail: closedTradeHold(row, chain), role: 'done' };
   }
   if (row.source === 'canceled') {
@@ -55,7 +57,7 @@ export function bookRowPresentation(
     // verbatim wire `explanation` — both when both are stored. The retry count
     // is what says whether anything will try again (SPEC 2).
     const parts = [
-      row.raw.reason?.trim() || null,
+      row.reason,
       row.raw.explanation?.trim() || null,
       row.raw.retryCount > 0 ? `attempt ${row.raw.retryCount} of 3` : null,
     ].filter((part): part is string => part !== null);
@@ -75,7 +77,10 @@ export function bookRowPresentation(
   }
   if (row.cancelInFlight && row.raw.cancelSource) {
     label = `${displayActiveOrderStatus(row.raw)} · cancel in flight`;
-    detail = cancelSourceCopy(row.raw.cancelSource);
+    // Who asked, and — where the server recorded one — why.
+    detail = [cancelSourceCopy(row.raw.cancelSource), row.cancelReason]
+      .filter((part): part is string => part !== null)
+      .join(' · ');
     const filled = Math.max(0, row.filledQuantity ?? 0);
     const restingQuantity = row.quantity === null ? null : Math.max(0, row.quantity - filled);
     notes = [
@@ -121,6 +126,10 @@ export function bookRowPresentation(
         : undefined;
     detail = [resting, progress].filter((part) => part !== undefined).join(' · ') || undefined;
   }
+  // Why the order exists leads its qualifier line, as why a leg died leads a
+  // canceled one — the reason filter ticks these keys, so the row prints them.
+  detail =
+    [row.reason, detail].filter((part): part is string => Boolean(part)).join(' · ') || undefined;
   return { label, detail, notes, role };
 }
 

@@ -96,6 +96,32 @@ describe('the reason a filter emptied the Book', () => {
     expect(cleared.canceledStatuses).toBeNull();
   });
 
+  it('names the reason filter, which narrows even with every reason ticked', () => {
+    const withReasons = buildBookChains({
+      activeOrders: [
+        makeActiveOrder({ id: 1, clientOrderId: 'a', chainId: 'a', reason: 'ScheduledExit' }),
+        // A chain the server said nothing about cannot match at all.
+        makeActiveOrder({ id: 2, clientOrderId: 'b', chainId: 'b', reason: null }),
+      ],
+      canceledOrders: [],
+      positions: [],
+      closedTrades: [],
+    });
+
+    const [reason] = narrowingsThatEmptiedTheBook(
+      withReasons,
+      { ...defaultBookFilters, reasonFilter: true, reasons: new Set(['BuyGuard']) },
+      noAccount,
+    );
+
+    expect(reason!.key).toBe('reasons');
+    expect(reason!.sentence).toBe('No chain owns a row with one of the selected reasons.');
+    expect(reason!.restored).toBe(2);
+    const cleared = reason!.clear(defaultBookFilters);
+    expect(cleared.reasonFilter).toBe(false);
+    expect(cleared.reasons).toBeNull();
+  });
+
   it('clears exactly the narrowing it names', () => {
     const [reason] = narrowingsThatEmptiedTheBook(
       chains,

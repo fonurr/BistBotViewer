@@ -89,6 +89,8 @@ export function makeActiveOrder(overrides: Partial<ActiveOrder> = {}): ActiveOrd
     timeInForce: '0',
     status: 'New',
     cancelSource: null,
+    reason: null,
+    cancelReason: null,
     retryCount: 0,
     intentType: 'limit',
     cancelAtFloor: false,
@@ -183,6 +185,7 @@ export function makeClosedTrade(overrides: Partial<ClosedTrade> = {}): ClosedTra
     chainId: 'chain-thyao-roundtrip',
     openRetryOfClientOrderId: null,
     closeRetryOfClientOrderId: null,
+    closeReason: null,
     ...overrides,
   };
 }

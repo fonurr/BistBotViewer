@@ -13,7 +13,7 @@ import { Modal } from '../../components/Modal';
 import { ResultList, type ActionResult } from '../../components/ResultList';
 import { accountIdentityKey } from '../../domain/accounts';
 import { holidayCalendar, previousTradingDate, sessionBatchDate } from '../../domain/calendar';
-import { buildBookChains, type BookChain, type BookScope } from '../../domain/chains';
+import { buildBookChains, rowReasons, type BookChain, type BookScope } from '../../domain/chains';
 import {
   formatDate,
   formatNumber,
@@ -105,10 +105,13 @@ export function BookPage() {
   );
   const visiblePending = useMemo(
     () =>
-      /* A queued basket has no order yet, so it owns no canceled leg either:
-         nothing in it can match a canceled status, and it drops with the
-         chains that cannot match. */
-      filters.noClosingOrder || filters.canceledStatusFilter || !filters.scopes.has('waiting')
+      /* A queued basket has no order yet, so it owns no canceled leg and no
+         recorded reason either: nothing in it can match a canceled status or a
+         reason, and it drops with the chains that cannot match. */
+      filters.noClosingOrder ||
+      filters.canceledStatusFilter ||
+      filters.reasonFilter ||
+      !filters.scopes.has('waiting')
         ? []
         : data.pendingRequests.filter((request) => {
             if (filters.botIds !== null && !filters.botIds.has(request.botId)) return false;
@@ -600,6 +603,17 @@ export function narrowingsThatEmptiedTheBook(
       }),
     });
   }
+  if (filters.reasonFilter) {
+    candidates.push({
+      key: 'reasons',
+      phrase: 'the reason filter',
+      sentence:
+        filters.reasons !== null && filters.reasons.size === 0
+          ? 'No reason is selected.'
+          : 'No chain owns a row with one of the selected reasons.',
+      clear: (current) => ({ ...current, reasonFilter: false, reasons: null }),
+    });
+  }
   if (filters.batchFrom !== null || filters.batchTo !== null) {
     candidates.push({
       key: 'dates',
@@ -631,6 +645,7 @@ function chainMatches(
   if (filters.symbols.size > 0 && !filters.symbols.has(chain.symbol)) return false;
   if (filters.canceledStatusFilter && !matchesCanceledStatus(chain, filters.canceledStatuses))
     return false;
+  if (filters.reasonFilter && !matchesReason(chain, filters.reasons)) return false;
   if (chain.batchDate !== null && filters.batchFrom && chain.batchDate < filters.batchFrom)
     return false;
   if (chain.batchDate !== null && filters.batchTo && chain.batchDate > filters.batchTo)
@@ -649,6 +664,19 @@ function chainMatches(
 function matchesCanceledStatus(chain: BookChain, statuses: ReadonlySet<string> | null): boolean {
   return chain.canceledRows.some(
     (row) => statuses === null || statuses.has(displayStatus(row.status)),
+  );
+}
+
+/**
+ * The same chain-not-row selection the canceled-status filter makes, over every
+ * row rather than the canceled ones: a chain qualifies by owning any row whose
+ * reason is ticked, and is then drawn whole. A chain whose rows carry no reason
+ * at all cannot match, which is why switching the filter on narrows the Book
+ * even with every reason ticked.
+ */
+function matchesReason(chain: BookChain, reasons: ReadonlySet<string> | null): boolean {
+  return chain.rows.some((row) =>
+    rowReasons(row).some((reason) => reasons === null || reasons.has(reason)),
   );
 }
 
@@ -1330,6 +1358,15 @@ function filterChips(filters: BookFilterState, botCount: number, accountCount: n
         canceledStatusFilter: false,
         canceledStatuses: null,
       }),
+    });
+  if (filters.reasonFilter)
+    chips.push({
+      key: 'reasons',
+      label:
+        filters.reasons === null
+          ? 'with a recorded reason'
+          : plural(filters.reasons.size, 'reason'),
+      clear: (current) => ({ ...current, reasonFilter: false, reasons: null }),
     });
   if (filters.batchFrom || filters.batchTo)
     chips.push({

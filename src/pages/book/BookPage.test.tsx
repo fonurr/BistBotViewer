@@ -11,6 +11,7 @@ import {
   makeBot,
   makeBotBudget,
   makeCanceledOrder,
+  makeClosedTrade,
   makeErrorRow,
   makePendingOrderRequest,
   makePosition,
@@ -424,5 +425,96 @@ describe('the canceled status filter', () => {
     await user.click(screen.getByRole('button', { name: 'clear the canceled status filter' }));
     expect(chainsInGrid()).toEqual(['AKBNK', 'GARAN', 'SISE']);
     expect(screen.getByRole('button', { name: 'any status' })).toBeVisible();
+  });
+});
+
+describe('the reason filter', () => {
+  // One reason on a live order, one on a canceled leg, one on the sell that
+  // closed a round trip, and one chain the server said nothing about — so the
+  // filter can be shown to read every row and not only the canceled ones.
+  const fourChains = () => ({
+    ...emptyRead(),
+    activeOrders: [
+      makeActiveOrder({
+        id: 1,
+        clientOrderId: 'a',
+        chainId: 'chain-a',
+        symbol: 'AKBNK',
+        direction: 'sell',
+        reason: 'ScheduledExit',
+      }),
+      makeActiveOrder({ id: 2, clientOrderId: 'b', chainId: 'chain-b', symbol: 'GARAN' }),
+      makeActiveOrder({ id: 3, clientOrderId: 'c', chainId: 'chain-c', symbol: 'SISE' }),
+    ],
+    canceledOrders: [
+      makeCanceledOrder({
+        id: 401,
+        clientOrderId: 'c-dead',
+        chainId: 'chain-c',
+        symbol: 'SISE',
+        parentClientOrderId: 'c',
+        reason: 'BuyGuard',
+      }),
+    ],
+    closedTrades: [
+      makeClosedTrade({ id: 301, chainId: 'chain-d', symbol: 'THYAO', closeReason: 'StopLoss' }),
+    ],
+  });
+
+  const chainsInGrid = () =>
+    [...document.querySelectorAll('.book-chain')]
+      .map((chain) => chain.getAttribute('aria-label')?.replace(' chain', '') ?? '')
+      .sort();
+
+  const showEveryScope = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(screen.getByRole('checkbox', { name: 'Trades' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Never Opened' }));
+  };
+
+  it('narrows to chains with a recorded reason, whichever row carries it', async () => {
+    const user = userEvent.setup();
+    book.data = fourChains();
+    renderBook();
+    await showEveryScope(user);
+
+    expect(chainsInGrid()).toEqual(['AKBNK', 'GARAN', 'SISE', 'THYAO']);
+
+    await user.click(screen.getByRole('button', { name: 'any reason' }));
+    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+
+    // GARAN goes: every reason is still ticked, but nothing on it carries one.
+    expect(chainsInGrid()).toEqual(['AKBNK', 'SISE', 'THYAO']);
+    expect(screen.getByRole('button', { name: 'with a recorded reason ×' })).toBeVisible();
+  });
+
+  it('keeps a chain by a reason on a live order and by one on a closed trade alike', async () => {
+    const user = userEvent.setup();
+    book.data = fourChains();
+    renderBook();
+    await showEveryScope(user);
+
+    await user.click(screen.getByRole('button', { name: 'any reason' }));
+    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    await user.click(screen.getByRole('checkbox', { name: /BuyGuard/ }));
+
+    expect(chainsInGrid()).toEqual(['AKBNK', 'THYAO']);
+    expect(screen.getByRole('button', { name: '2 reasons ×' })).toBeVisible();
+  });
+
+  it('names itself as the narrowing that emptied the Book, and switches back off', async () => {
+    const user = userEvent.setup();
+    book.data = fourChains();
+    renderBook();
+    await showEveryScope(user);
+
+    await user.click(screen.getByRole('button', { name: 'any reason' }));
+    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    await user.click(screen.getByRole('button', { name: 'none' }));
+
+    expect(screen.getByText('No reason is selected.', { exact: false })).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'clear the reason filter' }));
+    expect(chainsInGrid()).toEqual(['AKBNK', 'GARAN', 'SISE', 'THYAO']);
+    expect(screen.getByRole('button', { name: 'any reason' })).toBeVisible();
   });
 });

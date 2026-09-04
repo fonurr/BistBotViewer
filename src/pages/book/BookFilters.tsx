@@ -11,7 +11,7 @@ import {
 } from '../../components/EntityFilters';
 import { FilterPopover, PopoverHeading, PopoverScrim } from '../../components/FilterPopover';
 import { accountIdentityKey } from '../../domain/accounts';
-import type { BookChain, BookScope } from '../../domain/chains';
+import { rowReasons, type BookChain, type BookScope } from '../../domain/chains';
 import { formatDateKey, plural } from '../../domain/format';
 import { displayStatus } from '../../domain/status';
 import { scopeLabels, type BookFilterState } from './types';
@@ -63,6 +63,7 @@ export function BookFilters(props: BookFiltersProps) {
     [props.chains],
   );
   const canceledStatuses = useMemo(() => canceledStatusOptions(props.chains), [props.chains]);
+  const reasons = useMemo(() => reasonOptions(props.chains), [props.chains]);
 
   const toggleScope = (scope: BookScope) => {
     const next = new Set(filters.scopes);
@@ -84,6 +85,8 @@ export function BookFilters(props: BookFiltersProps) {
       symbols: new Set<string>(),
       canceledStatusFilter: false,
       canceledStatuses: null,
+      reasonFilter: false,
+      reasons: null,
       batchFrom: null,
       batchTo: null,
       noClosingOrder: true,
@@ -208,6 +211,36 @@ export function BookFilters(props: BookFiltersProps) {
             one="status"
             many="statuses"
             note="On, the Book keeps a chain only where one of its own canceled orders carries a ticked status — and then draws the whole chain, canceled legs and all. A chain that never lost a leg has nothing to match, so it drops out even with every status ticked."
+          />
+        ) : null}
+        {reasons.length > 0 ? (
+          <MultiSelectFilter
+            name="reasons"
+            open={open === 'reasons'}
+            setOpen={setOpen}
+            heading="reasons on the loaded rows"
+            help="The server's own keys for why — why an order exists, why one ended, why a cancel is in flight, and why a position was closed. Every key the loaded book carries, whichever bots the rest of the toolbar keeps."
+            options={reasons}
+            picks={[{ label: 'none', select: new Set<string>() }]}
+            active={props.filters.reasonFilter}
+            onActiveChange={(active) =>
+              /* Off pins the selection back to every reason, for the same cause
+                 as the status filter above: the ticked, disabled boxes have to
+                 be telling the truth. */
+              onChange({
+                ...filters,
+                reasonFilter: active,
+                reasons: null,
+                noClosingOrder: false,
+              })
+            }
+            activeLabel="filter"
+            inactiveLabel="any reason"
+            selected={filters.reasons}
+            onChange={(reasons) => onChange({ ...filters, reasons, noClosingOrder: false })}
+            one="reason"
+            many="reasons"
+            note="On, the Book keeps a chain where any one of its rows — live, scheduled, canceled or the sell that closed a trade — carries a ticked reason, and then draws the whole chain. A chain the server recorded no reason for has nothing to match, so it drops out even with every reason ticked."
           />
         ) : null}
         <FilterPopover
@@ -361,6 +394,23 @@ export function canceledStatusOptions(chains: readonly BookChain[]): FilterOptio
   return [...chainsByStatus.entries()]
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([status, count]) => ({ key: status, label: status, count }));
+}
+
+/**
+ * Every reason key the loaded rows actually carry, in the server's own form —
+ * these are keys, not prose, so they are ticked exactly as the status cell
+ * prints them. Each option counts the chains it would keep, never the rows: one
+ * chain whose buy and reversing sell both died of `BuyGuard` is one chain.
+ */
+export function reasonOptions(chains: readonly BookChain[]): FilterOption[] {
+  const chainsByReason = new Map<string, number>();
+  for (const chain of chains) {
+    const reasons = new Set(chain.rows.flatMap(rowReasons));
+    for (const reason of reasons) chainsByReason.set(reason, (chainsByReason.get(reason) ?? 0) + 1);
+  }
+  return [...chainsByReason.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([reason, count]) => ({ key: reason, label: reason, count }));
 }
 
 function countBy<T>(values: readonly T[], key: (value: T) => string): Map<string, number> {

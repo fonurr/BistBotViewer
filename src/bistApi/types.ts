@@ -208,6 +208,14 @@ export const activeOrderSchema = z
     timeInForce: z.string(),
     status: orderStatusSchema,
     cancelSource: z.enum(['bot', 'server', 'user']).nullable(),
+    /**
+     * The server's own keys for why: why the order exists at all, and why a
+     * cancel is in flight for it. Never prose, never a number in a string.
+     * Optional because a server that predates the columns omits them, and a
+     * missing `why` must not fail the whole Book read.
+     */
+    reason: z.string().nullable().optional(),
+    cancelReason: z.string().nullable().optional(),
     retryCount: z.number().int(),
     intentType: orderTypeSchema,
     cancelAtFloor: z.boolean(),
@@ -301,6 +309,8 @@ export const closedTradeSchema = z
     chainId: z.string().nullable(),
     openRetryOfClientOrderId: z.string().nullable(),
     closeRetryOfClientOrderId: z.string().nullable(),
+    /** Why the position was closed, carried from the sell that closed it. */
+    closeReason: z.string().nullable().optional(),
   })
   .passthrough();
 

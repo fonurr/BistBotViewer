@@ -16,6 +16,16 @@ export interface BookFilterState {
   canceledStatusFilter: boolean;
   /** `null` is every status, in the display form the status cells carry. */
   canceledStatuses: ReadonlySet<string> | null;
+  /**
+   * Whether the reason filter applies at all — off by default for the same
+   * cause as the status one above, and only that cause: a row matches by
+   * carrying a reason key, so a chain the server said nothing about drops out
+   * even with every reason ticked. Unlike the status filter it reads every
+   * row, not only the canceled ones.
+   */
+  reasonFilter: boolean;
+  /** `null` is every reason, in the server's own key form. */
+  reasons: ReadonlySet<string> | null;
   batchFrom: string | null;
   batchTo: string | null;
   noClosingOrder: boolean;
@@ -28,6 +38,8 @@ export const defaultBookFilters: BookFilterState = {
   symbols: new Set<string>(),
   canceledStatusFilter: false,
   canceledStatuses: null,
+  reasonFilter: false,
+  reasons: null,
   batchFrom: null,
   batchTo: null,
   noClosingOrder: false,

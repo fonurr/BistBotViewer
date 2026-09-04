@@ -4,7 +4,13 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { accountIdentityKey } from '../../domain/accounts';
 import { buildBookChains } from '../../domain/chains';
-import { makeAccount, makeActiveOrder, makeBot, makeCanceledOrder } from '../../test/fixtures';
+import {
+  makeAccount,
+  makeActiveOrder,
+  makeBot,
+  makeCanceledOrder,
+  makeClosedTrade,
+} from '../../test/fixtures';
 import { BookFilters } from './BookFilters';
 import { defaultBookFilters } from './types';
 
@@ -248,5 +254,141 @@ describe('BookFilters canceled status filter', () => {
     );
 
     expect(screen.queryByRole('button', { name: 'any status' })).toBeNull();
+  });
+});
+
+describe('BookFilters reason filter', () => {
+  // Every kind of row that carries a reason, so the list can be shown to read
+  // past the canceled ones: a live order, a canceled leg, and the sell that
+  // closed a round trip. One chain carries none at all.
+  const chains = buildBookChains({
+    activeOrders: [
+      makeActiveOrder({
+        id: 1,
+        clientOrderId: 'live',
+        chainId: 'chain-live',
+        reason: 'ScheduledExit',
+      }),
+      makeActiveOrder({ id: 2, clientOrderId: 'quiet', chainId: 'chain-quiet', reason: null }),
+    ],
+    canceledOrders: [
+      makeCanceledOrder({ id: 401, clientOrderId: 'c1', chainId: 'chain-a', reason: 'BuyGuard' }),
+      // A second leg of the same reason in one chain still counts one chain.
+      makeCanceledOrder({ id: 402, clientOrderId: 'c2', chainId: 'chain-a', reason: 'BuyGuard' }),
+    ],
+    positions: [],
+    closedTrades: [makeClosedTrade({ id: 301, chainId: 'chain-t', closeReason: 'TakeProfit' })],
+  });
+
+  const renderFilters = (onChange: () => void, filters = defaultBookFilters) =>
+    render(
+      <BookFilters
+        filters={filters}
+        onChange={onChange}
+        bots={[makeBot({ id: 'bot-alpha' })]}
+        accounts={[makeAccount()]}
+        chains={chains}
+        noClosingOrderCount={0}
+        mismatchCount={0}
+        canceledCount={2}
+        canceledVisible={false}
+        manualOpenLegs={0}
+        manualClosedChains={0}
+        onToggleCanceled={vi.fn()}
+        onOpenMismatch={vi.fn()}
+      />,
+    );
+
+  it('lists the reasons on every kind of row, not only the canceled ones', async () => {
+    const user = userEvent.setup();
+    renderFilters(vi.fn());
+
+    await user.click(screen.getByRole('button', { name: 'any reason' }));
+
+    expect(screen.getByRole('checkbox', { name: /BuyGuard/ })).toBeVisible();
+    expect(screen.getByRole('checkbox', { name: /ScheduledExit/ })).toBeVisible();
+    expect(screen.getByRole('checkbox', { name: /TakeProfit/ })).toBeVisible();
+  });
+
+  it('starts off, with every box ticked and disabled', async () => {
+    const user = userEvent.setup();
+    renderFilters(vi.fn());
+
+    await user.click(screen.getByRole('button', { name: 'any reason' }));
+    for (const box of screen.getAllByRole('checkbox', {
+      name: /BuyGuard|ScheduledExit|TakeProfit/,
+    })) {
+      expect(box).toBeChecked();
+      expect(box).toBeDisabled();
+    }
+  });
+
+  it('switches on with every reason still selected', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    renderFilters(onChange);
+
+    await user.click(screen.getByRole('button', { name: 'any reason' }));
+    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ reasonFilter: true, reasons: null }),
+    );
+  });
+
+  it('drops a reason once it is on, and pins every reason back when switched off', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    renderFilters(onChange, { ...defaultBookFilters, reasonFilter: true });
+
+    await user.click(screen.getByRole('button', { name: '3 reasons' }));
+    await user.click(screen.getByRole('checkbox', { name: /ScheduledExit/ }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ reasons: new Set(['BuyGuard', 'TakeProfit']) }),
+    );
+
+    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ reasonFilter: false, reasons: null }),
+    );
+  });
+
+  it('counts the chains a reason would keep, never the rows', async () => {
+    const user = userEvent.setup();
+    renderFilters(vi.fn(), { ...defaultBookFilters, reasonFilter: true });
+
+    await user.click(screen.getByRole('button', { name: '3 reasons' }));
+
+    // chain-a lost two legs to BuyGuard and is still one chain.
+    expect(screen.getByRole('checkbox', { name: /BuyGuard/ }).closest('label')).toHaveTextContent(
+      /BuyGuard1$/,
+    );
+  });
+
+  it('offers no control at all where the server recorded no reason anywhere', () => {
+    render(
+      <BookFilters
+        filters={defaultBookFilters}
+        onChange={vi.fn()}
+        bots={[makeBot()]}
+        accounts={[makeAccount()]}
+        chains={buildBookChains({
+          activeOrders: [makeActiveOrder({ id: 1, clientOrderId: 'live', chainId: 'live' })],
+          canceledOrders: [],
+          positions: [],
+          closedTrades: [],
+        })}
+        noClosingOrderCount={0}
+        mismatchCount={0}
+        canceledCount={0}
+        canceledVisible={false}
+        manualOpenLegs={0}
+        manualClosedChains={0}
+        onToggleCanceled={vi.fn()}
+        onOpenMismatch={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'any reason' })).toBeNull();
   });
 });

@@ -74,7 +74,7 @@ nothing but canceled legs, so asking for it while they are hidden would draw col
 runs one way only: switching the scope back off leaves the toggle where the reader left it, since
 by then they may be reading canceled legs on chains that traded.
 
-`BookFilters` owns additive scopes and the bot, account, symbol, canceled-status, and
+`BookFilters` owns additive scopes and the bot, account, symbol, canceled-status, reason, and
 batch-range controls. The
 bot, account and symbol controls are `components/EntityFilters`, which the Bots and Performance
 pages import unchanged — the Book defines the shape, and no page reimplements it. A trigger states
@@ -105,6 +105,26 @@ telling the truth rather than hiding a narrowing that would spring back on. The 
 `active` / `onActiveChange` pair on `components/EntityFilters`; the bot, account and symbol
 controls omit it and are always on. Where a book holds no canceled order at all the control is not
 drawn — a filter over an empty universe is not a control.
+
+The **reason filter** is the same control over a wider field. `reason` is the server's own key for
+why — why an order exists (`ScheduledExit`, `Retry`), why one ended (`BuyGuard`, `Expired`), why a
+cancel is in flight for a live order, and why a position was closed (`TakeProfit`). It is never
+prose, so it is ticked and printed verbatim, exactly as it arrives; a position row is given none,
+because nothing states why a holding exists beyond the buy that opened it. Unlike the status filter
+above it reads **every** row, not only the canceled ones: a chain qualifies where any of its rows —
+live, scheduled, canceled, or the sell that closed a trade — carries a ticked reason, and is then
+drawn whole. Its list is built from the whole loaded book, never follows the other filters, and each
+option counts the chains it would keep rather than the rows. It carries the same off switch and for
+the same reason: a chain the server recorded nothing about cannot match, so switching it on narrows
+the Book even with every reason ticked, and a queued basket — which owns no order yet — drops with
+it. Off pins the selection back to every reason. Where no loaded row carries one, the control is not
+drawn.
+
+Every row that carries a reason **prints it**, in the status cell's own qualifier line: leading on a
+canceled leg, before the verbatim wire `explanation`, and leading likewise on a live or scheduled
+order, before whatever that row says about itself. A cancel in flight names who asked and then why,
+and the sell that closed a round trip carries why on the `Filled` leg — never on the `Closed` one,
+which carries the hold instead. The filter ticks the words the rows print.
 Queued baskets draw as the reference does: a tinted header line naming the request, its next
 attempt and its budget, with `call off…` on the right, and the basket's stocks beneath it as
 rows in the Book's own column grid so their prices stay in the price column. They sit above the

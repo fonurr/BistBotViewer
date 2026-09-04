@@ -37,10 +37,20 @@ interface BookChainRowBase {
   readonly status: BookRowStatus;
   readonly isWaiting: boolean;
   readonly cancelInFlight: boolean;
+  /**
+   * The server's own key for why this row is what it is — why an order exists
+   * (`ScheduledExit`, `Retry`), why one ended (`BuyGuard`, `Expired`), or why a
+   * position was closed (`TakeProfit`). Never prose, and `null` wherever the
+   * server said nothing: a position row is never given one, because nothing
+   * states why a holding exists beyond the buy that opened it.
+   */
+  readonly reason: string | null;
 }
 
 export interface BookActiveOrderRow extends BookChainRowBase {
   readonly source: 'active' | 'scheduled';
+  /** Why a cancel is in flight for it, when one is; `null` otherwise. */
+  readonly cancelReason: string | null;
   readonly raw: ActiveOrder;
 }
 
@@ -429,6 +439,8 @@ function normalizeActiveOrder(order: ActiveOrder): BookActiveOrderRow {
     status: order.status,
     isWaiting: isWaitingOrderStatus(order.status),
     cancelInFlight: order.cancelSource !== null,
+    reason: reasonKey(order.reason),
+    cancelReason: reasonKey(order.cancelReason),
   };
 }
 
@@ -458,6 +470,7 @@ function normalizeCanceledOrder(order: CanceledOrder): BookCanceledOrderRow {
     status: order.status,
     isWaiting: false,
     cancelInFlight: false,
+    reason: reasonKey(order.reason),
   };
 }
 
@@ -490,6 +503,7 @@ function normalizePosition(position: Position): BookPositionRow {
     status: 'Position',
     isWaiting: false,
     cancelInFlight: false,
+    reason: null,
   };
 }
 
@@ -525,6 +539,9 @@ function normalizeClosedTrade(trade: ClosedTrade): [BookClosedTradeRow, BookClos
       orderTime: trade.openOrderTime,
       acknowledgementTime: trade.openExecuteTime,
       status: 'Closed',
+      // The opening buy's own reason is not carried on a round trip; only the
+      // sell's is. An invented one would be worse than the blank.
+      reason: null,
     },
     {
       ...shared,
@@ -538,6 +555,7 @@ function normalizeClosedTrade(trade: ClosedTrade): [BookClosedTradeRow, BookClos
       orderTime: trade.closeOrderTime,
       acknowledgementTime: trade.closeExecuteTime,
       status: 'Closed',
+      reason: reasonKey(trade.closeReason),
     },
   ];
 }
@@ -731,6 +749,25 @@ function earliest(timestamps: readonly (number | null)[]): number | null {
 
 function nonNegative(value: number | null): number {
   return value === null ? 0 : Math.max(0, value);
+}
+
+/**
+ * Every reason key one row carries, deduplicated: why it exists or ended, and
+ * — on a live order — why a cancel is in flight for it. Both are the server's
+ * keys from the same namespace, so a reader asking for `TakeProfit` means the
+ * same thing whether the exit already landed or its cancel is still on the wire.
+ */
+export function rowReasons(row: BookChainRow): string[] {
+  const reasons =
+    row.source === 'active' || row.source === 'scheduled'
+      ? [row.reason, row.cancelReason]
+      : [row.reason];
+  return [...new Set(reasons.filter((reason): reason is string => reason !== null))];
+}
+
+/** A stored key, or `null` for one the server left blank. Never prose. */
+function reasonKey(reason: string | null | undefined): string | null {
+  return reason?.trim() || null;
 }
 
 function compareText(left: string, right: string): number {
