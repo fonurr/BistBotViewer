@@ -257,7 +257,10 @@ export function BookPage() {
       setSearchParams(params, { replace: true });
     }
   };
-  const clearFilters = () => applyFilters(defaultBookFilters);
+  // `clear all` drops the chip filters only. The scope segmented control is
+  // not a chip and never shows in the `filtered` row, so leave its selection
+  // exactly as the reader set it.
+  const clearFilters = () => applyFilters({ ...defaultBookFilters, scopes: filters.scopes });
 
   return (
     <div className="book-page page-pad">
