@@ -336,7 +336,7 @@ describe('Performance bot picks', () => {
     await user.click(screen.getByRole('button', { name: '2 bots' }));
     await user.click(screen.getByRole('button', { name: 'inactive' }));
     // One bot left is the deep-link scope, so the cross-comparison tables leave.
-    expect(document.querySelector('.filter-trigger')!.textContent).toContain('1 bot');
+    expect(screen.getByRole('button', { name: '1 bot' })).toBeVisible();
     expect(
       screen.getByText('No closed round trip in this scope.', { selector: 'strong' }),
     ).toBeInTheDocument();

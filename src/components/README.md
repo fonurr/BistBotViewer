@@ -28,6 +28,15 @@ components; shared components never import a page.
   text: a symbol the loaded rows
   do not name cannot be filtered to, and a typed one would silently return nothing. Toggling a
   symbol (by click or Enter) clears the search box so the next one starts fresh.
+- `DateRangeFilter` is the one batch-range control, built on `FilterPopover` and shared by the
+  Book and Performance so a range means the same thing on both. `null` at either end is open —
+  the earliest batch loaded, or the latest — and the trigger reads `Every batch` while both are.
+  Its whole-set shortcuts sit on the same row `MultiSelectFilter` gives `all` and `none`:
+  `latest`, `last 5`, `all`. A stepper sits either side of the trigger and walks the window **one
+  calendar day**, not one batch, so a day no bot ran is a day the window can land on. An end
+  already against the loaded bounds stays put while the other end moves, which shortens the window
+  against the edge rather than refusing the step; only when neither end can move does `shiftRange`
+  return `null` and the stepper go disabled.
 - `useMinuteClock` ticks relative copy — a scheduled countdown, how early a `fire now` goes —
   on the minute boundary, because a quiet snapshot does not re-render on its own.
 

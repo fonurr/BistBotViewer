@@ -9,10 +9,11 @@ import {
   SymbolFilter,
   type FilterOption,
 } from '../../components/EntityFilters';
-import { FilterPopover, PopoverHeading, PopoverScrim } from '../../components/FilterPopover';
+import { DateRangeFilter } from '../../components/DateRangeFilter';
+import { PopoverScrim } from '../../components/FilterPopover';
 import { accountIdentityKey } from '../../domain/accounts';
 import { rowReasons, type BookChain, type BookScope } from '../../domain/chains';
-import { formatDateKey, plural } from '../../domain/format';
+import { plural } from '../../domain/format';
 import { displayStatus } from '../../domain/status';
 import { scopeLabels, type BookFilterState } from './types';
 
@@ -95,13 +96,6 @@ export function BookFilters(props: BookFiltersProps) {
       noClosingOrder: true,
     });
   };
-
-  const dateLabel =
-    filters.batchFrom === null && filters.batchTo === null
-      ? 'Every batch'
-      : `${filters.batchFrom ? formatDateKey(filters.batchFrom) : 'first'} → ${
-          filters.batchTo ? formatDateKey(filters.batchTo) : 'latest'
-        }`;
 
   return (
     <>
@@ -273,93 +267,22 @@ export function BookFilters(props: BookFiltersProps) {
             note="On, the Book keeps a chain only where one of its own dead orders names a ticked source, and then draws the whole chain. Only a stored death names who ended it, so a chain whose legs all still live has nothing to match and drops out even with every source ticked."
           />
         ) : null}
-        <FilterPopover
-          name="dates"
-          label={dateLabel}
+        <DateRangeFilter
           open={open === 'dates'}
           setOpen={setOpen}
           align="right"
-        >
-          <PopoverHeading label="batch range" />
-          <button
-            type="button"
-            className="filter-preset"
-            onClick={() => {
-              const today = batchDates.at(-1) ?? null;
-              onChange({ ...filters, batchFrom: today, batchTo: today, noClosingOrder: false });
-            }}
-          >
-            <span>Latest batch</span>
-            <span className="filter-count">{batchDates.at(-1) ? '1 batch' : 'none'}</span>
-          </button>
-          <button
-            type="button"
-            className="filter-preset"
-            onClick={() =>
-              onChange({
-                ...filters,
-                batchFrom: batchDates.at(-5) ?? batchDates[0] ?? null,
-                batchTo: batchDates.at(-1) ?? null,
-                noClosingOrder: false,
-              })
-            }
-          >
-            <span>Last 5 sessions</span>
-            <span className="filter-count">
-              {plural(Math.min(5, batchDates.length), 'batch', 'batches')}
-            </span>
-          </button>
-          <button
-            type="button"
-            className="filter-preset"
-            onClick={() =>
-              onChange({ ...filters, batchFrom: null, batchTo: null, noClosingOrder: false })
-            }
-          >
-            <span>Everything</span>
-            <span className="filter-count">{plural(batchDates.length, 'batch', 'batches')}</span>
-          </button>
-          <div className="date-fields">
-            <label className="field">
-              <span>From</span>
-              <input
-                className="input"
-                type="date"
-                value={filters.batchFrom ?? ''}
-                min={batchDates[0]}
-                max={filters.batchTo ?? batchDates.at(-1)}
-                onChange={(event) =>
-                  onChange({
-                    ...filters,
-                    batchFrom: event.target.value || null,
-                    noClosingOrder: false,
-                  })
-                }
-              />
-            </label>
-            <label className="field">
-              <span>To</span>
-              <input
-                className="input"
-                type="date"
-                value={filters.batchTo ?? ''}
-                min={filters.batchFrom ?? batchDates[0]}
-                max={batchDates.at(-1)}
-                onChange={(event) =>
-                  onChange({
-                    ...filters,
-                    batchTo: event.target.value || null,
-                    noClosingOrder: false,
-                  })
-                }
-              />
-            </label>
-          </div>
-          <p className="filter-help">
-            These are batch dates, not calendar days — a session where no bot ran has no batch and
-            simply is not in the list.
-          </p>
-        </FilterPopover>
+          dates={batchDates}
+          range={{ from: filters.batchFrom, to: filters.batchTo }}
+          onChange={(range) =>
+            onChange({
+              ...filters,
+              batchFrom: range.from,
+              batchTo: range.to,
+              noClosingOrder: false,
+            })
+          }
+          note="These are batch dates, not calendar days — a session where no bot ran has no batch and simply is not in the list."
+        />
         <span className="book-toolbar-spacer" />
         {props.noClosingOrderCount > 0 || props.mismatchCount > 0 ? (
           <div className="human-banner" role="status">

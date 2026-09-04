@@ -502,6 +502,21 @@ a:hover {
   color: var(--color-accent-300);
 }
 
+/* The batch range and its two steppers are one control, so the arrows sit
+   tight against the trigger rather than taking the toolbar's own gap. */
+.date-range {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.date-step {
+  width: 24px;
+  min-height: 32px;
+  height: 32px;
+  padding: 0;
+}
+
 .date-fields,
 .form-fields,
 .guard-fields,

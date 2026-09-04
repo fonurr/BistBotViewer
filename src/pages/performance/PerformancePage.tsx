@@ -19,6 +19,7 @@ import {
   SymbolFilter,
   type FilterSelection,
 } from '../../components/EntityFilters';
+import { DateRangeFilter, type DateRange } from '../../components/DateRangeFilter';
 import { PopoverScrim } from '../../components/FilterPopover';
 import { accountIdentityKey } from '../../domain/accounts';
 import { holidayCalendar, sessionBatchDate, type HolidayCalendar } from '../../domain/calendar';
@@ -37,7 +38,6 @@ import { priceApi } from '../../priceApi/client';
 import type { AuctionBar, AuctionBarKey } from '../../priceApi/types';
 import './performance.css';
 
-type WindowMode = 'today' | 'week' | 'range' | 'all';
 type BarReadState = 'not-required' | 'pending' | 'error' | 'ready';
 type BudgetCommittedState = 'loading' | 'unavailable' | 'ready';
 
@@ -68,9 +68,7 @@ export function PerformancePage() {
   const data = usePerformanceData();
   const [searchParams, setSearchParams] = useSearchParams();
   const today = toIstanbulDateKey(Date.now());
-  const [windowMode, setWindowMode] = useState<WindowMode>('all');
-  const [rangeFrom, setRangeFrom] = useState(shiftDate(today, -14));
-  const [rangeTo, setRangeTo] = useState(today);
+  const [dateRange, setDateRange] = useState<DateRange>({ from: null, to: null });
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   const sourceReady = !data.isPending && data.error === null;
 
@@ -156,9 +154,24 @@ export function PerformancePage() {
   );
   const budgets = useBotBudgets(selectedBots, sourceReady);
   const calendar = useMemo(() => holidayCalendar(data.holidays), [data.holidays]);
+  // The batch a round trip was opened in is the unit this page reports by, so
+  // the range control offers exactly those days rather than a calendar — the
+  // Book's own list, built from the trips the other filters left in scope.
+  const batchDates = useMemo(
+    () =>
+      [
+        ...new Set(
+          scopedTrades.flatMap((trade) => {
+            const batch = sessionBatchDate(trade.openOrderTime ?? trade.openExecuteTime, calendar);
+            return batch === null ? [] : [batch];
+          }),
+        ),
+      ].sort(),
+    [calendar, scopedTrades],
+  );
   const bounds = useMemo(
-    () => windowBounds(windowMode, scopedTrades, today, rangeFrom, rangeTo, calendar),
-    [calendar, rangeFrom, rangeTo, scopedTrades, today, windowMode],
+    () => windowBounds(dateRange, batchDates, today),
+    [batchDates, dateRange, today],
   );
   const baseReport = useMemo(
     () =>
@@ -287,45 +300,14 @@ export function PerformancePage() {
       </header>
       {sourceReady ? (
         <div className="performance-toolbar">
-          <div className="seg" aria-label="Performance window">
-            {(['today', 'week', 'range', 'all'] as const).map((mode) => (
-              <label className="seg-opt" key={mode}>
-                <input
-                  type="radio"
-                  name="performance-window"
-                  checked={windowMode === mode}
-                  onChange={() => setWindowMode(mode)}
-                />
-                <span>{mode === 'range' ? 'Window' : capitalize(mode)}</span>
-              </label>
-            ))}
-          </div>
-          {windowMode === 'range' ? (
-            <div className="performance-date-range">
-              <input
-                className="input"
-                type="date"
-                value={rangeFrom}
-                max={rangeTo}
-                onChange={(event) => setRangeFrom(event.target.value)}
-                aria-label="Performance from date"
-              />
-              <span>→</span>
-              <input
-                className="input"
-                type="date"
-                value={rangeTo}
-                min={rangeFrom}
-                max={today}
-                onChange={(event) => setRangeTo(event.target.value)}
-                aria-label="Performance to date"
-              />
-            </div>
-          ) : (
-            <span className="input performance-window-label">
-              {formatDateKey(bounds.from)} → {formatDateKey(bounds.to)}
-            </span>
-          )}
+          <DateRangeFilter
+            open={openFilter === 'dates'}
+            setOpen={setOpenFilter}
+            dates={batchDates}
+            range={dateRange}
+            onChange={setDateRange}
+            note="These are batch dates, not calendar days — the session a round trip was opened in, which is the day every figure below is filed under."
+          />
           <MultiSelectFilter
             name="bots"
             open={openFilter === 'bots'}
@@ -1353,34 +1335,18 @@ function signedTone(value: number): string | undefined {
 function unavailableReason(metric: PerformanceMetric): string {
   return metric.available ? '' : metric.reason.replaceAll('-', ' ');
 }
-function capitalize(value: string): string {
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function windowBounds(
-  mode: WindowMode,
-  trades: readonly ClosedTrade[],
-  today: string,
-  rangeFrom: string,
-  rangeTo: string,
-  calendar: HolidayCalendar,
-) {
-  if (mode === 'today') return { from: today, to: today };
-  if (mode === 'week') return { from: shiftDate(today, -6), to: today };
-  if (mode === 'range') return { from: rangeFrom, to: rangeTo };
-  // `all` reaches back to the oldest batch in scope, which is the report's own unit: an
-  // earliest close would leave out the batch of a trade that opened before it.
-  const dates = trades
-    .flatMap((trade) => {
-      const batch = sessionBatchDate(trade.openOrderTime ?? trade.openExecuteTime, calendar);
-      return batch === null ? [] : [batch];
-    })
-    .sort();
-  return { from: dates[0] ?? today, to: today };
-}
-
-function shiftDate(date: string, days: number): string {
-  return new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+/**
+ * The window the report is computed over. An open end stands for the widest the
+ * loaded batches reach: the earliest one below, and today above — or the latest
+ * batch where an evening order has already been filed under tomorrow's session.
+ * The lower end can never pass the upper, so a range left behind by a narrowing
+ * filter degrades to a single day rather than an impossible window.
+ */
+function windowBounds(range: DateRange, batchDates: readonly string[], today: string) {
+  const latestBatch = batchDates.at(-1) ?? today;
+  const to = range.to ?? (latestBatch > today ? latestBatch : today);
+  const from = range.from ?? batchDates[0] ?? to;
+  return { from: from > to ? to : from, to };
 }
 function endOfIstanbulDay(date: string): number {
   return Date.parse(`${date}T23:59:59.999+03:00`);

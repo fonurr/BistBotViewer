@@ -22,32 +22,6 @@
   margin-bottom: var(--space-4);
 }
 
-.performance-toolbar .seg-opt {
-  font-size: var(--font-leg);
-}
-
-.performance-date-range {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--mut);
-}
-
-.performance-date-range .input {
-  width: 136px;
-  min-height: 32px;
-  height: 32px;
-  font-size: var(--font-small);
-}
-
-.performance-toolbar .performance-window-label {
-  width: auto;
-  min-height: 32px;
-  height: 32px;
-  padding: 0 10px;
-  font-size: var(--font-leg);
-}
-
 .scoped-chip {
   display: inline-flex;
   align-items: center;

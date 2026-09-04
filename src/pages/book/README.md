@@ -76,7 +76,8 @@ by then they may be reading canceled legs on chains that traded.
 
 `BookFilters` owns additive scopes and the bot, account, symbol, canceled-status, reason, source,
 and batch-range controls. The
-bot, account and symbol controls are `components/EntityFilters`, which the Bots and Performance
+bot, account and symbol controls are `components/EntityFilters` and the batch range is
+`components/DateRangeFilter`, which the Bots and Performance
 pages import unchanged — the Book defines the shape, and no page reimplements it. A trigger states
 the current selection as a count (`4 bots`, `2 accounts`), and an unset symbol filter reads
 `any symbol` in placeholder ink. The bot popover carries `all`, `none`, `active` and `inactive`
@@ -89,6 +90,14 @@ count, so it counts what it would uncover: the canceled legs on the chains the f
 it is not drawn at all where they kept none.
 Account selection uses the stored account and brokerage together; matching account numbers at
 different brokerages remain separate filters.
+
+The **batch range** is `components/DateRangeFilter`, and Performance draws the same control over
+the same list, so a range set on one page means the same set of sessions on the other. Its list
+holds only the dates the loaded chains were filed under — a session where no bot ran has no batch
+and is simply not in it — but its two steppers walk **calendar days**, so a window can be nudged
+onto a day that holds nothing. Both ends move together until one reaches the first or last loaded
+batch; that end then holds while the other keeps moving, and the stepper only goes disabled once
+neither can move.
 
 The **canceled-status filter** lists every status the loaded canceled orders carry, in the display
 form the status cells print (`By user`, not `CanceledByUser`), so raw wire values that share a

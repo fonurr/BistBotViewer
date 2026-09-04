@@ -43,8 +43,15 @@ never observed is excluded, because nothing then places it in time; so is one ca
 stamp, because nothing names its batch. Missing current-session closing bars are polled so a bar
 written later can replace an earlier unavailable metric.
 
-Bot, account and symbol filters are the Book's own controls from `components/EntityFilters`, so
-all three pages carry one shape. The page is read-only. A bot-card deep link uses `?bot=<id>`,
+Bot, account and symbol filters are the Book's own controls from `components/EntityFilters`, and
+the date window is the Book's own `components/DateRangeFilter`, so all three pages carry one
+shape. There are no window presets of this page's own: the range is a set of batch dates like the
+Book's, offering `latest`, `last 5` and `all` with a stepper either side that walks it a calendar
+day at a time. The list holds the batches the trips **left in scope by the other filters** were
+opened in, so narrowing to one bot narrows the days on offer with it. An open end stands for the
+widest the loaded batches reach — the earliest below, and today above, or the latest batch where
+an evening order has already been filed under tomorrow's session — which is why `all` reports
+every trip rather than stopping at the last one that closed. The page is read-only. A bot-card deep link uses `?bot=<id>`,
 which is the same state as selecting exactly one bot in the filter; it recomputes the whole report
 and the fleet comparison tables disappear for that scope. The bot popover offers `all`, `none`,
 `active` and `inactive`; picking a split that lands on exactly one bot is the same state as that
