@@ -177,6 +177,33 @@ describe('The Book page states', () => {
     expect(toggle).toHaveTextContent(/shown/);
   });
 
+  it('counts the canceled legs the filters kept, not the whole loaded book', async () => {
+    const user = userEvent.setup();
+    book.data = {
+      ...emptyRead(),
+      positions: [makePosition()],
+      canceledOrders: [
+        makeCanceledOrder(),
+        makeCanceledOrder({
+          id: 402,
+          clientOrderId: 'client-dead-only',
+          matriksOrderId: 'mx-dead-only',
+          chainId: 'chain-dead',
+          parentClientOrderId: null,
+        }),
+      ],
+    };
+    renderBook();
+
+    // The never-opened chain is out of scope, so its dead leg is not one of
+    // the rows this toggle would uncover and it is not in the count.
+    const toggle = document.querySelector('.canceled-global')!;
+    expect(toggle).toHaveTextContent('1 canceled order hidden');
+
+    await user.click(screen.getByRole('checkbox', { name: 'Never Opened' }));
+    expect(toggle).toHaveTextContent('2 canceled orders shown');
+  });
+
   it('opens the stored mismatch row verbatim, and says the viewer cannot resolve it', async () => {
     const user = userEvent.setup();
     book.data = {

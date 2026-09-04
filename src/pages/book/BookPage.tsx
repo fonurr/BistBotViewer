@@ -128,6 +128,16 @@ export function BookPage() {
           }),
     [botById, data.pendingRequests, filters],
   );
+  /*
+   * The toggle is its own count, so it counts what it would uncover: the
+   * canceled legs on the chains the filters kept, never the whole loaded book.
+   * The needs-a-human pill is the one count on this toolbar that stays
+   * unfiltered, and it says so in its own words.
+   */
+  const visibleCanceledCount = useMemo(
+    () => visibleChains.reduce((count, chain) => count + chain.canceledRows.length, 0),
+    [visibleChains],
+  );
   const summary = useMemo(
     () => summarize(visibleChains, priceFeed.prices, priceFeed.trustworthy, budgets.data, botById),
     [botById, budgets.data, priceFeed.prices, priceFeed.trustworthy, visibleChains],
@@ -312,18 +322,25 @@ export function BookPage() {
         chains={chains}
         noClosingOrderCount={noClosingOrderCount}
         mismatchCount={mismatchRows.length}
-        canceledCount={data.canceledOrders.length}
+        canceledCount={visibleCanceledCount}
         canceledVisible={showCanceled}
         manualOpenLegs={
           showCanceled
             ? 0
             : [...canceledOverrides].reduce(
                 (count, key) =>
-                  count + (chains.find((chain) => chain.key === key)?.canceledRows.length ?? 0),
+                  count +
+                  (visibleChains.find((chain) => chain.key === key)?.canceledRows.length ?? 0),
                 0,
               )
         }
-        manualClosedChains={showCanceled ? canceledOverrides.size : 0}
+        manualClosedChains={
+          showCanceled
+            ? [...canceledOverrides].filter((key) =>
+                visibleChains.some((chain) => chain.key === key),
+              ).length
+            : 0
+        }
         onToggleCanceled={() => {
           setShowCanceled((current) => !current);
           setCanceledOverrides(new Set());

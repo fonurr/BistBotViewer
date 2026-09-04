@@ -77,7 +77,10 @@ the current selection as a count (`4 bots`, `2 accounts`), and an unset symbol f
 over its heading; `none` empties the book and the reason panel names the bot narrowing that did
 it, while `all` returns to meaning every bot rather than ticking today's. The **needs-a-human** pill lives at the right of
 that same toolbar row — a dead-tinted pill with its warning glyph, its clickable counts, and the
-word `unfiltered`, said once. Its counts never follow the filters.
+word `unfiltered`, said once. Its counts never follow the filters — it is the one count on this
+toolbar that does not, which is why it says so. The canceled toggle beside it **is** its own
+count, so it counts what it would uncover: the canceled legs on the chains the filters kept, and
+it is not drawn at all where they kept none.
 Account selection uses the stored account and brokerage together; matching account numbers at
 different brokerages remain separate filters.
 
