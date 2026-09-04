@@ -14,7 +14,7 @@ import { accountIdentityKey } from '../../domain/accounts';
 import type { BookChain, BookScope } from '../../domain/chains';
 import { formatDateKey, plural } from '../../domain/format';
 import { displayStatus } from '../../domain/status';
-import type { BookFilterState } from './types';
+import { scopeLabels, type BookFilterState } from './types';
 
 interface BookFiltersProps {
   filters: BookFilterState;
@@ -32,12 +32,7 @@ interface BookFiltersProps {
   onOpenMismatch: () => void;
 }
 
-const scopes: Array<{ key: BookScope; label: string }> = [
-  { key: 'waiting', label: 'Waiting' },
-  { key: 'positions', label: 'Positions' },
-  { key: 'trades', label: 'Trades' },
-  { key: 'canceled', label: 'Canceled' },
-];
+const scopes: readonly BookScope[] = ['waiting', 'positions', 'trades', 'canceled'];
 
 export function BookFilters(props: BookFiltersProps) {
   const { filters, onChange } = props;
@@ -107,13 +102,13 @@ export function BookFilters(props: BookFiltersProps) {
       <div className="book-toolbar">
         <div className="seg" aria-label="Book scopes">
           {scopes.map((scope) => (
-            <label className="seg-opt" key={scope.key}>
+            <label className="seg-opt" key={scope}>
               <input
                 type="checkbox"
-                checked={filters.scopes.has(scope.key)}
-                onChange={() => toggleScope(scope.key)}
+                checked={filters.scopes.has(scope)}
+                onChange={() => toggleScope(scope)}
               />
-              <span>{scope.label}</span>
+              <span>{scopeLabels[scope]}</span>
             </label>
           ))}
         </div>

@@ -10,7 +10,8 @@ is dropped as soon as the toolbar is used, so the URL never fights the state it 
 The four scopes are a **partition of chains, not a row filter**. Every chain is classified once,
 by the furthest stage its own life reached — it holds shares (`positions`), it bought and sold
 (`trades`), it can still execute and has bought nothing (`waiting`), or only dead legs are left
-(`canceled`). A scope toggle therefore adds or removes whole chains, and a chain in view draws
+(`canceled`, drawn as **Never Opened** — the scope key is not its word, and what the reader is
+picking is the chains that never opened a position, not the chains that own a canceled leg). A scope toggle therefore adds or removes whole chains, and a chain in view draws
 **every leg it owns** whatever kind that leg is; the only rows a toggle may withhold are the
 canceled ones, and that is the canceled toggle's job alone.
 

@@ -28,6 +28,7 @@ import { statusClass } from '../../domain/status';
 import { useMinuteClock } from '../../components/useMinuteClock';
 import { bookRowPresentation } from './rowPresentation';
 import { orderActionsForRow, type OrderDialogAction } from './orderActions';
+import { scopeLabels } from './types';
 
 interface BookGridProps {
   chains: readonly BookChain[];
@@ -917,7 +918,7 @@ function ScopeHeading({
   const summary = scopeGroupSummary(scope, chains, pnlState, prices, pricesTrustworthy);
   return (
     <header className="book-scope-heading">
-      <span className="kicker">{scope}</span>
+      <span className="kicker">{scopeLabels[scope]}</span>
       <span className="muted">
         {plural(chains.length, 'chain')} · {summary.detail}
       </span>

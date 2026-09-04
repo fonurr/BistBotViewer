@@ -237,8 +237,8 @@ describe('BookGrid scope groups', () => {
 
     const headings = [...document.querySelectorAll('.book-scope-heading')];
     expect(headings.map((heading) => heading.querySelector('.kicker')?.textContent)).toEqual([
-      'waiting',
-      'trades',
+      'Waiting',
+      'Trades',
     ]);
     expect(screen.getByText('1 chain · 1 buy order, nothing bought yet')).toBeVisible();
     expect(screen.getByText('1 chain · bought and sold · realized')).toBeVisible();
@@ -274,7 +274,7 @@ describe('BookGrid scope groups', () => {
 
     // One chain, filed under positions, and its waiting sell is drawn with it.
     expect(document.querySelectorAll('.book-scope-heading')).toHaveLength(1);
-    expect(screen.getByText('positions')).toBeVisible();
+    expect(screen.getByText('Positions')).toBeVisible();
     expect(screen.getByText('Position')).toBeVisible();
     expect(screen.getByText(/^Scheduled · in/)).toBeVisible();
   });

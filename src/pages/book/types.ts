@@ -32,3 +32,17 @@ export const defaultBookFilters: BookFilterState = {
   batchTo: null,
   noClosingOrder: false,
 };
+
+/**
+ * `canceled` is the scope's key, not its word. A chain only lands there when
+ * every leg it ever had died, so what the toggle and the group heading are
+ * naming is the chains that never opened a position — which is what a reader
+ * picking that scope is after, and what "canceled" on its own fails to say
+ * beside a canceled *leg* on a chain that traded perfectly well.
+ */
+export const scopeLabels: Record<BookScope, string> = {
+  waiting: 'Waiting',
+  positions: 'Positions',
+  trades: 'Trades',
+  canceled: 'Never Opened',
+};
