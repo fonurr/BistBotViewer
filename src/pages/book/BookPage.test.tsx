@@ -145,6 +145,38 @@ describe('The Book page states', () => {
     expect(screen.queryByText('No closing order')).not.toBeInTheDocument();
   });
 
+  it('shows the canceled rows when the never-opened scope is switched on, and leaves them shown', async () => {
+    const user = userEvent.setup();
+    book.data = {
+      ...emptyRead(),
+      positions: [makePosition()],
+      canceledOrders: [
+        makeCanceledOrder(),
+        makeCanceledOrder({
+          id: 402,
+          clientOrderId: 'client-dead-only',
+          matriksOrderId: 'mx-dead-only',
+          chainId: 'chain-dead',
+          parentClientOrderId: null,
+        }),
+      ],
+    };
+    renderBook();
+
+    const toggle = document.querySelector('.canceled-global')!;
+    expect(toggle).toHaveTextContent(/hidden$/);
+
+    // A never-opened chain is all canceled legs: asking for the scope while
+    // they are hidden would draw collapsed stubs, so the toggle follows it in.
+    const neverOpened = screen.getByRole('checkbox', { name: 'Never Opened' });
+    await user.click(neverOpened);
+    expect(toggle).toHaveTextContent(/shown/);
+
+    // Switching the scope back off is not a reason to hide them again.
+    await user.click(neverOpened);
+    expect(toggle).toHaveTextContent(/shown/);
+  });
+
   it('opens the stored mismatch row verbatim, and says the viewer cannot resolve it', async () => {
     const user = userEvent.setup();
     book.data = {

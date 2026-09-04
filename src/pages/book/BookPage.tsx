@@ -249,6 +249,18 @@ export function BookPage() {
   }, [scopedBot]);
 
   const applyFilters = (next: BookFilterState) => {
+    /*
+     * A never-opened chain owns nothing but canceled legs, so switching that
+     * scope on while the canceled rows are hidden asks for chains and draws
+     * collapsed stubs. The global toggle follows the scope in, and only in:
+     * switching the scope back off leaves the toggle exactly where the reader
+     * put it, because by then they may be reading canceled legs on chains that
+     * traded.
+     */
+    if (next.scopes.has('canceled') && !filters.scopes.has('canceled') && !showCanceled) {
+      setShowCanceled(true);
+      setCanceledOverrides(new Set());
+    }
     setFilters(next);
     if (searchParams.has('bot')) {
       const params = new URLSearchParams(searchParams);

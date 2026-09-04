@@ -63,7 +63,10 @@ the row beneath the cells, because it is the only row whose state changes while 
 
 A canceled tail collapses to `+N canceled` in dead ink, the breakdown of who ended the orders,
 and `show` on the right; opened, the rows sit inside the tint with the note and `hide` beneath
-them.
+them. **Switching the never-opened scope on opens the tails with it** — a chain in that scope owns
+nothing but canceled legs, so asking for it while they are hidden would draw collapsed stubs. That
+runs one way only: switching the scope back off leaves the toggle where the reader left it, since
+by then they may be reading canceled legs on chains that traded.
 
 `BookFilters` owns additive scopes and the bot, account, symbol, canceled-status, and
 batch-range controls. The
