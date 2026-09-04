@@ -474,6 +474,26 @@
 }
 
 /*
+ * The qualifier line has three inks, loudest first. What the server decided —
+ * the reason key and the numbers behind it — is a fact of the row and stays in
+ * body ink; what this page worked out about the row is muted; and Matriks' own
+ * words, quoted verbatim, ride behind at the same half strength as the seconds
+ * on a time cell, so a reason is never read past to reach an explanation.
+ */
+.book-status-reason {
+  color: var(--color-text);
+}
+
+.book-status-muted {
+  color: var(--mut);
+}
+
+.book-status-faint {
+  color: var(--mut);
+  opacity: 0.5;
+}
+
+/*
  * A cancel in flight is the one row that needs a second line, and the
  * reference gives it the row's full width beneath the cells (SPEC 5).
  */

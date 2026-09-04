@@ -1,4 +1,5 @@
-import type { ActiveOrder, OrderStatus } from '../bistApi/types';
+import type { ActiveOrder, OrderStatus, ReasonData } from '../bistApi/types';
+import { formatNumber } from './format';
 
 export type StatusRole = 'live' | 'wait' | 'dead' | 'warn' | 'fill' | 'done';
 
@@ -86,4 +87,21 @@ export function cancelSourceCopy(source: NonNullable<ActiveOrder['cancelSource']
 
 export function statusClass(role: StatusRole): string {
   return `status-${role}`;
+}
+
+/**
+ * A reason and the numbers behind it, as one phrase — `BuyGuard upperLimit
+ * 119,34`. The keys are the server's own and print unchanged; a value is either
+ * a TL price, which is formatted like every other figure on the page, or the
+ * name of the default that produced it, which prints verbatim because a
+ * default's number says nothing without it. Anything of another shape is left
+ * out rather than guessed at, and a reason with no data is just itself.
+ */
+export function reasonPhrase(reason: string, data: ReasonData | null): string {
+  const numbers = Object.entries(data ?? {}).flatMap(([key, value]) => {
+    if (typeof value === 'number' && Number.isFinite(value))
+      return [`${key} ${formatNumber(value)}`];
+    return typeof value === 'string' && value.trim() !== '' ? [`${key} ${value.trim()}`] : [];
+  });
+  return numbers.length === 0 ? reason : `${reason} ${numbers.join(' · ')}`;
 }

@@ -124,7 +124,19 @@ Every row that carries a reason **prints it**, in the status cell's own qualifie
 canceled leg, before the verbatim wire `explanation`, and leading likewise on a live or scheduled
 order, before whatever that row says about itself. A cancel in flight names who asked and then why,
 and the sell that closed a round trip carries why on the `Filled` leg — never on the `Closed` one,
-which carries the hold instead. The filter ticks the words the rows print.
+which carries the hold instead. The filter ticks the words the rows print. `reasonData` — the
+numbers behind the three reasons that have any — is written into the same phrase, `BuyGuard
+upperLimit 119,34`, with the server's key unchanged and the figure in the page's own Turkish form; a
+value that names the default it came from (`lowerLimit floor`) prints verbatim, because a default's
+number says nothing without its name, and a value of a shape the contract does not describe is left
+out rather than guessed at.
+
+That line carries **three inks, loudest first** (`BookRowDetailTone`, drawn by `RowDetail` for both
+the grid and the chain dialog). What the server decided — the reason and its numbers — is a fact of
+the row and stays in body ink. What this page worked out about the row — `resting 22m`, `no exchange
+id`, who asked for a cancel, the retry count — is muted. Matriks' own words, quoted verbatim in
+`explanation`, ride behind at the same half strength as the seconds on a time cell, so a reason is
+never read past to reach an explanation.
 Queued baskets draw as the reference does: a tinted header line naming the request, its next
 attempt and its budget, with `call off…` on the right, and the basket's stocks beneath it as
 rows in the Book's own column grid so their prices stay in the price column. They sit above the

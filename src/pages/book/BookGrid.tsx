@@ -26,6 +26,7 @@ import {
 } from '../../domain/orders';
 import { statusClass } from '../../domain/status';
 import { useMinuteClock } from '../../components/useMinuteClock';
+import { RowDetail } from './RowDetail';
 import { bookRowPresentation } from './rowPresentation';
 import { orderActionsForRow, type OrderDialogAction } from './orderActions';
 import { scopeLabels } from './types';
@@ -530,7 +531,7 @@ const BookRow = memo(function BookRow({
         {status.exposed ? <Warning size={14} weight="fill" aria-hidden="true" /> : null}
         <span>
           {status.label}
-          {status.detail ? <span className="muted"> · {status.detail}</span> : null}
+          <RowDetail detail={status.detail} />
         </span>
       </div>
       <div role="cell" className="book-actions">

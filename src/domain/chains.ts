@@ -7,6 +7,7 @@ import type {
   OrderStatus,
   OrderType,
   Position,
+  ReasonData,
 } from '../bistApi/types';
 import { holidayCalendar, istanbulDay, sessionBatchDate, type HolidayCalendar } from './calendar';
 
@@ -45,12 +46,15 @@ interface BookChainRowBase {
    * states why a holding exists beyond the buy that opened it.
    */
   readonly reason: string | null;
+  /** The numbers behind that reason, for the few reasons that carry any. */
+  readonly reasonData: ReasonData | null;
 }
 
 export interface BookActiveOrderRow extends BookChainRowBase {
   readonly source: 'active' | 'scheduled';
   /** Why a cancel is in flight for it, when one is; `null` otherwise. */
   readonly cancelReason: string | null;
+  readonly cancelReasonData: ReasonData | null;
   readonly raw: ActiveOrder;
 }
 
@@ -440,7 +444,9 @@ function normalizeActiveOrder(order: ActiveOrder): BookActiveOrderRow {
     isWaiting: isWaitingOrderStatus(order.status),
     cancelInFlight: order.cancelSource !== null,
     reason: reasonKey(order.reason),
+    reasonData: order.reasonData ?? null,
     cancelReason: reasonKey(order.cancelReason),
+    cancelReasonData: order.cancelReasonData ?? null,
   };
 }
 
@@ -471,6 +477,7 @@ function normalizeCanceledOrder(order: CanceledOrder): BookCanceledOrderRow {
     isWaiting: false,
     cancelInFlight: false,
     reason: reasonKey(order.reason),
+    reasonData: order.reasonData ?? null,
   };
 }
 
@@ -504,6 +511,7 @@ function normalizePosition(position: Position): BookPositionRow {
     isWaiting: false,
     cancelInFlight: false,
     reason: null,
+    reasonData: null,
   };
 }
 
@@ -542,6 +550,7 @@ function normalizeClosedTrade(trade: ClosedTrade): [BookClosedTradeRow, BookClos
       // The opening buy's own reason is not carried on a round trip; only the
       // sell's is. An invented one would be worse than the blank.
       reason: null,
+      reasonData: null,
     },
     {
       ...shared,
@@ -556,6 +565,7 @@ function normalizeClosedTrade(trade: ClosedTrade): [BookClosedTradeRow, BookClos
       acknowledgementTime: trade.closeExecuteTime,
       status: 'Closed',
       reason: reasonKey(trade.closeReason),
+      reasonData: trade.closeReasonData ?? null,
     },
   ];
 }

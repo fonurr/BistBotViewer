@@ -1,3 +1,4 @@
+import type { ReasonData } from '../../bistApi/types';
 import type { BookChain, BookChainRow } from '../../domain/chains';
 import {
   formatCompactDuration,
@@ -9,12 +10,27 @@ import {
   cancelSourceCopy,
   displayActiveOrderStatus,
   displayStatus,
+  reasonPhrase,
   type StatusRole,
 } from '../../domain/status';
 
 export interface BookRowNote {
   text: string;
   tone: 'wait' | 'muted';
+}
+
+/**
+ * One clause of the qualifier line, with the ink it is said in. A `reason` is
+ * what the server decided, so it carries body ink and reads as a fact of the
+ * row. `muted` is what this page worked out about the row. `faint` is Matriks'
+ * own words, quoted — true, but the least of the three, and drawn like the
+ * seconds on a time cell so it never competes with the reason beside it.
+ */
+export type BookRowDetailTone = 'reason' | 'muted' | 'faint';
+
+export interface BookRowDetailPart {
+  text: string;
+  tone: BookRowDetailTone;
 }
 
 export interface BookRowPresentation {
@@ -25,7 +41,7 @@ export interface BookRowPresentation {
    * earns lines of its own, and they sit beneath the row rather than inside
    * the cell (SPEC 5).
    */
-  detail?: string;
+  detail?: readonly BookRowDetailPart[];
   notes?: readonly BookRowNote[];
   exposed?: boolean;
   role: StatusRole;
@@ -41,7 +57,7 @@ export function bookRowPresentation(
     const held = heldFor(row.acknowledgementTime ?? row.orderTime, now);
     return chain.hasNoClosingOrder
       ? { label: 'Position — no closing order', role: 'dead', exposed: true }
-      : { label: 'Position', detail: held, role: 'fill' };
+      : { label: 'Position', detail: parts(muted(held)), role: 'fill' };
   }
   if (row.source === 'closed-trade') {
     // SPEC 2: `Filled` is a leg word; the chain's own row carries the round
@@ -49,28 +65,29 @@ export function bookRowPresentation(
     // is stored on the sell, and how long it was held on the buy — neither leg
     // invents the other's fact.
     return row.leg === 'close'
-      ? { label: 'Filled', detail: row.reason ?? undefined, role: 'done' }
-      : { label: 'Closed', detail: closedTradeHold(row, chain), role: 'done' };
+      ? { label: 'Filled', detail: parts(reasonPart(row.reason, row.reasonData)), role: 'done' }
+      : { label: 'Closed', detail: parts(muted(closedTradeHold(row, chain))), role: 'done' };
   }
   if (row.source === 'canceled') {
     // What says why a leg died: the server's own `reason` first, then the
     // verbatim wire `explanation` — both when both are stored. The retry count
     // is what says whether anything will try again (SPEC 2).
-    const parts = [
-      row.reason,
-      row.raw.explanation?.trim() || null,
-      row.raw.retryCount > 0 ? `attempt ${row.raw.retryCount} of 3` : null,
-    ].filter((part): part is string => part !== null);
     return {
       label: displayStatus(row.raw.status),
-      detail: parts.length > 0 ? parts.join(' · ') : undefined,
+      detail: parts(
+        reasonPart(row.reason, row.reasonData),
+        faint(row.raw.explanation?.trim() || undefined),
+        muted(row.raw.retryCount > 0 ? `attempt ${row.raw.retryCount} of 3` : undefined),
+      ),
       role: row.raw.status === 'Unconfirmed' ? 'warn' : 'dead',
     };
   }
 
   const role = activeOrderStatusRole(row.raw);
   let label = displayActiveOrderStatus(row.raw);
-  let detail: string | undefined;
+  // Why the order exists leads its qualifier line, as why a leg died leads a
+  // canceled one — the reason filter ticks these keys, so the row prints them.
+  const detail: Array<BookRowDetailPart | undefined> = [reasonPart(row.reason, row.reasonData)];
   let notes: readonly BookRowNote[] | undefined;
   if (row.source === 'scheduled' && row.scheduledTime !== null) {
     label = `${label} · ${formatScheduledDistance(row.scheduledTime, now)}`;
@@ -78,9 +95,10 @@ export function bookRowPresentation(
   if (row.cancelInFlight && row.raw.cancelSource) {
     label = `${displayActiveOrderStatus(row.raw)} · cancel in flight`;
     // Who asked, and — where the server recorded one — why.
-    detail = [cancelSourceCopy(row.raw.cancelSource), row.cancelReason]
-      .filter((part): part is string => part !== null)
-      .join(' · ');
+    detail.push(
+      muted(cancelSourceCopy(row.raw.cancelSource)),
+      reasonPart(row.cancelReason, row.cancelReasonData),
+    );
     const filled = Math.max(0, row.filledQuantity ?? 0);
     const restingQuantity = row.quantity === null ? null : Math.max(0, row.quantity - filled);
     notes = [
@@ -105,32 +123,48 @@ export function bookRowPresentation(
         : []),
     ];
   } else if (row.raw.clientOrderId.trim() === '') {
-    detail = 'adopted from the exchange without a server order id; manage it in MatriksIQ';
+    detail.push(
+      muted('adopted from the exchange without a server order id; manage it in MatriksIQ'),
+    );
   } else if (chain.hasNoClosingOrder && row.direction === 'buy' && row.isWaiting) {
-    detail = 'if it fills, nothing is set to close it';
+    detail.push(muted('if it fills, nothing is set to close it'));
   } else if ((row.status === 'New' || row.status === 'PendingNew') && !row.raw.matriksOrderId) {
-    detail = 'no exchange id — not editable until it confirms';
+    detail.push(muted('no exchange id — not editable until it confirms'));
   } else if (displayStatus(row.status) === 'Unconfirmed') {
-    detail = 'the exchange outcome is unknown; its quantity stays claimed';
+    detail.push(muted('the exchange outcome is unknown; its quantity stays claimed'));
   } else if (row.source === 'active' && row.isWaiting) {
     // How long it has rested is read off the exchange's own registration
     // stamp, never off the ack column (SPEC 3: ack is an upper bound).
-    const resting = heldFor(row.orderTime, now, 'resting');
+    detail.push(muted(heldFor(row.orderTime, now, 'resting')));
     // Only a genuine partial fill earns the `x of y filled` clause: a resting
     // order with nothing filled says so by resting, and a fully filled one is
     // not waiting at all.
     const filled = Math.max(0, row.filledQuantity ?? 0);
-    const progress =
-      opener && row.quantity !== null && filled > 0 && filled < row.quantity
-        ? `${formatQuantity(filled)} of ${formatQuantity(row.quantity)} filled`
-        : undefined;
-    detail = [resting, progress].filter((part) => part !== undefined).join(' · ') || undefined;
+    if (opener && row.quantity !== null && filled > 0 && filled < row.quantity) {
+      detail.push(muted(`${formatQuantity(filled)} of ${formatQuantity(row.quantity)} filled`));
+    }
   }
-  // Why the order exists leads its qualifier line, as why a leg died leads a
-  // canceled one — the reason filter ticks these keys, so the row prints them.
-  detail =
-    [row.reason, detail].filter((part): part is string => Boolean(part)).join(' · ') || undefined;
-  return { label, detail, notes, role };
+  return { label, detail: parts(...detail), notes, role };
+}
+
+/** The clauses that are actually there, or nothing at all where none is. */
+function parts(
+  ...candidates: Array<BookRowDetailPart | undefined>
+): BookRowDetailPart[] | undefined {
+  const present = candidates.filter((part): part is BookRowDetailPart => part !== undefined);
+  return present.length > 0 ? present : undefined;
+}
+
+function reasonPart(reason: string | null, data: ReasonData | null): BookRowDetailPart | undefined {
+  return reason === null ? undefined : { text: reasonPhrase(reason, data), tone: 'reason' };
+}
+
+function muted(text: string | undefined): BookRowDetailPart | undefined {
+  return text === undefined ? undefined : { text, tone: 'muted' };
+}
+
+function faint(text: string | undefined): BookRowDetailPart | undefined {
+  return text === undefined ? undefined : { text, tone: 'faint' };
 }
 
 function heldFor(from: number | null, now: number, word = 'held'): string | undefined {

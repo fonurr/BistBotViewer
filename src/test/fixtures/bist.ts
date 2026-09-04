@@ -90,7 +90,9 @@ export function makeActiveOrder(overrides: Partial<ActiveOrder> = {}): ActiveOrd
     status: 'New',
     cancelSource: null,
     reason: null,
+    reasonData: null,
     cancelReason: null,
+    cancelReasonData: null,
     retryCount: 0,
     intentType: 'limit',
     cancelAtFloor: false,
@@ -125,6 +127,7 @@ export function makeCanceledOrder(overrides: Partial<CanceledOrder> = {}): Cance
     status: 'CanceledByUser',
     explanation: 'canceled in the MatriksIQ terminal',
     reason: null,
+    reasonData: null,
     retryCount: 0,
     intentType: 'limit',
     cancelAtFloor: false,
@@ -186,6 +189,7 @@ export function makeClosedTrade(overrides: Partial<ClosedTrade> = {}): ClosedTra
     openRetryOfClientOrderId: null,
     closeRetryOfClientOrderId: null,
     closeReason: null,
+    closeReasonData: null,
     ...overrides,
   };
 }

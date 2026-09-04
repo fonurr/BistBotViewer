@@ -189,6 +189,17 @@ const chainLinksSchema = z.object({
   retryOfClientOrderId: z.string().nullable(),
 });
 
+/**
+ * The numbers behind a reason, as the server's own object — `{ upperLimit:
+ * 119.34 }`, or `{ limit: "ceilingAtClosingDay" }` where a default produced the
+ * figure and its name says more than the number would. `null` for every reason
+ * that has none. Values are read loosely on purpose: a shape this file does not
+ * describe must not fail a Book read, so the renderer skips what it cannot say.
+ */
+export const reasonDataSchema = z.record(z.string(), z.unknown()).nullable().optional();
+
+export type ReasonData = Readonly<Record<string, unknown>>;
+
 export const activeOrderSchema = z
   .object({
     id: z.number(),
@@ -215,7 +226,9 @@ export const activeOrderSchema = z
      * missing `why` must not fail the whole Book read.
      */
     reason: z.string().nullable().optional(),
+    reasonData: reasonDataSchema,
     cancelReason: z.string().nullable().optional(),
+    cancelReasonData: reasonDataSchema,
     retryCount: z.number().int(),
     intentType: orderTypeSchema,
     cancelAtFloor: z.boolean(),
@@ -249,6 +262,7 @@ export const canceledOrderSchema = z
     status: orderStatusSchema,
     explanation: z.string().nullable(),
     reason: z.string().nullable(),
+    reasonData: reasonDataSchema,
     retryCount: z.number().int(),
     intentType: orderTypeSchema,
     cancelAtFloor: z.boolean(),
@@ -311,6 +325,7 @@ export const closedTradeSchema = z
     closeRetryOfClientOrderId: z.string().nullable(),
     /** Why the position was closed, carried from the sell that closed it. */
     closeReason: z.string().nullable().optional(),
+    closeReasonData: reasonDataSchema,
   })
   .passthrough();
 
