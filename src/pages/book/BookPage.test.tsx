@@ -275,6 +275,29 @@ describe('The Book page states', () => {
     expect(todayStat.textContent).toContain('1,83%');
   });
 
+  it("keeps a same-day chain's today figure through the session close, until midnight", () => {
+    // 18:20 Istanbul on the position's own day — ten minutes past the close's grace, so
+    // the trading session has already rolled to the next day, but the calendar day has
+    // not. The today column must not flip its basis, or zero itself, at that boundary.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-25T15:20:00.000Z'));
+    try {
+      book.data = {
+        ...emptyRead(),
+        positions: [makePosition({ quantity: 100, averagePrice: 280 })],
+      };
+      renderBook();
+
+      // Same-day chain: still measured from entry, exactly like p&l, and it needs no
+      // prior-close bar at all.
+      const todayCell = document.querySelector('.book-row-opener .book-today');
+      expect(todayCell?.textContent).toBe('+2.550 (+9,11%)');
+      expect(priceApiMock.getClosingAuctionBars).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('does not read closing bars when nothing is carried over', () => {
     book.data = { ...emptyRead(), activeOrders: [makeActiveOrder()] };
     renderBook();

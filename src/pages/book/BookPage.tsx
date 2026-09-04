@@ -12,7 +12,7 @@ import { priceApi } from '../../priceApi/client';
 import { Modal } from '../../components/Modal';
 import { ResultList, type ActionResult } from '../../components/ResultList';
 import { accountIdentityKey } from '../../domain/accounts';
-import { holidayCalendar, previousTradingDate, sessionBatchDate } from '../../domain/calendar';
+import { holidayCalendar, previousTradingDate } from '../../domain/calendar';
 import { buildBookChains, rowReasons, type BookChain, type BookScope } from '../../domain/chains';
 import {
   formatDate,
@@ -148,14 +148,17 @@ export function BookPage() {
     [botById, budgets.data, priceFeed.prices, priceFeed.trustworthy, visibleChains],
   );
 
-  // The `today` column reads each chain's P&L from the start of the current session:
-  // from its own entry when it opened today, from the previous session's closing
-  // auction when it was carried over. Only the carried-over chains need a bar read.
+  // The `today` column reads each chain's P&L from the start of today's Istanbul calendar
+  // day — never the trading session, which rolls to the next day ten minutes past the
+  // close while it is still today by the clock until midnight. Reading the session date
+  // here instead zeroed the column at that boundary: a chain opened today would suddenly
+  // compare itself to today's own, now-final close. Only the chains carried over from an
+  // earlier day need a bar read.
   const calendar = useMemo(() => holidayCalendar(data.holidays), [data.holidays]);
-  const todaySessionDate = useMemo(() => sessionBatchDate(Date.now(), calendar), [calendar]);
+  const todayCalendarDate = toIstanbulDateKey(Date.now());
   const basisSessionDate = useMemo(
-    () => (todaySessionDate === null ? null : previousTradingDate(todaySessionDate, calendar)),
-    [calendar, todaySessionDate],
+    () => previousTradingDate(todayCalendarDate, calendar),
+    [calendar, todayCalendarDate],
   );
   const overnightSymbols = useMemo(
     () => [
@@ -164,12 +167,12 @@ export function BookPage() {
           .filter(
             (chain) =>
               (chain.scope === 'positions' || chain.scope === 'trades') &&
-              chain.batchDate !== todaySessionDate,
+              chain.batchDate !== todayCalendarDate,
           )
           .map((chain) => chain.symbol.toUpperCase()),
       ),
     ],
-    [todaySessionDate, visibleChains],
+    [todayCalendarDate, visibleChains],
   );
   const closingBarsQuery = useQuery({
     queryKey: priceKeys.closingBars(
@@ -199,17 +202,9 @@ export function BookPage() {
         priceFeed.prices,
         priceFeed.trustworthy,
         closingBars,
-        todaySessionDate,
-        calendar,
+        todayCalendarDate,
       ),
-    [
-      calendar,
-      closingBars,
-      priceFeed.prices,
-      priceFeed.trustworthy,
-      todaySessionDate,
-      visibleChains,
-    ],
+    [closingBars, priceFeed.prices, priceFeed.trustworthy, todayCalendarDate, visibleChains],
   );
   const chips = filterChips(filters, data.bots.length, data.accounts.length);
   const genuineEmpty = chains.length === 0 && data.pendingRequests.length === 0;
@@ -434,8 +429,7 @@ export function BookPage() {
           accounts={data.accounts}
           prices={priceFeed.prices}
           pricesTrustworthy={priceFeed.trustworthy}
-          todaySessionDate={todaySessionDate}
-          calendar={calendar}
+          todayCalendarDate={todayCalendarDate}
           closingBars={closingBars}
           writesHeldReason={writesHeldReason}
           showCanceled={showCanceled}

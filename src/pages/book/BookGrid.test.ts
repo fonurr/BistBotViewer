@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 
-import { holidayCalendar } from '../../domain/calendar';
 import { buildBookChains } from '../../domain/chains';
 import { deriveFilledPnlState } from '../../domain/orders';
 import {
@@ -18,14 +17,11 @@ import {
 } from './BookGrid';
 import { bookRowPresentation } from './rowPresentation';
 
-const calendar = holidayCalendar([]);
-
 function todayContext(overrides: Partial<RowTodayContext> = {}): RowTodayContext {
   return {
     marketPrice: null,
     pricesTrustworthy: true,
-    todaySessionDate: '2026-08-25',
-    calendar,
+    todayCalendarDate: '2026-08-25',
     prevClose: null,
     ...overrides,
   };
@@ -100,7 +96,7 @@ describe('Book row today figure', () => {
       row,
       chain,
       state,
-      todayContext({ marketPrice: 320, todaySessionDate: chain.batchDate }),
+      todayContext({ marketPrice: 320, todayCalendarDate: chain.batchDate }),
     );
 
     expect(today).toEqual({ value: 100 * (320 - 301.5), basis: 100 * 301.5 });
@@ -113,7 +109,7 @@ describe('Book row today figure', () => {
       chain.positionRows[0]!,
       chain,
       state,
-      todayContext({ marketPrice: 320, todaySessionDate: '2026-08-26', prevClose: 310 }),
+      todayContext({ marketPrice: 320, todayCalendarDate: '2026-08-26', prevClose: 310 }),
     );
 
     expect(today).toEqual({ value: 100 * (320 - 310), basis: 100 * 310 });
@@ -128,7 +124,7 @@ describe('Book row today figure', () => {
         row,
         chain,
         state,
-        todayContext({ marketPrice: 320, todaySessionDate: '2026-08-26', prevClose: null }),
+        todayContext({ marketPrice: 320, todayCalendarDate: '2026-08-26', prevClose: null }),
       ),
     ).toEqual({ value: null, basis: 0 });
     expect(
@@ -138,7 +134,7 @@ describe('Book row today figure', () => {
         state,
         todayContext({
           marketPrice: 320,
-          todaySessionDate: '2026-08-26',
+          todayCalendarDate: '2026-08-26',
           prevClose: 310,
           pricesTrustworthy: false,
         }),
@@ -164,7 +160,7 @@ describe('Book row today figure', () => {
         closeLeg,
         chain!,
         deriveFilledPnlState([], []),
-        todayContext({ todaySessionDate: chain!.batchDate }),
+        todayContext({ todayCalendarDate: chain!.batchDate }),
       ),
     ).toEqual({ value: 600, basis: 100 * 300 });
   });
@@ -194,7 +190,7 @@ describe('Book row today figure', () => {
         closeLeg,
         chain!,
         deriveFilledPnlState([], []),
-        todayContext({ todaySessionDate: '2026-08-25', prevClose: 304 }),
+        todayContext({ todayCalendarDate: '2026-08-25', prevClose: 304 }),
       ),
     ).toEqual({ value: 100 * (306 - 304), basis: 100 * 304 });
   });
@@ -214,7 +210,7 @@ describe('Book row today figure', () => {
         closeLeg,
         tradeChain!,
         deriveFilledPnlState([], []),
-        todayContext({ todaySessionDate: '2026-08-26', prevClose: 304 }),
+        todayContext({ todayCalendarDate: '2026-08-26', prevClose: 304 }),
       ),
     ).toBeNull();
 
@@ -251,7 +247,7 @@ describe('Book row today figure', () => {
 });
 
 describe('summarizeBookToday', () => {
-  it('sums every visible chain move against its session-start basis', () => {
+  it("sums every visible chain move against today's basis", () => {
     const carried = makePosition({
       id: 210,
       symbol: 'AAA',
@@ -285,7 +281,6 @@ describe('summarizeBookToday', () => {
       true,
       new Map([['AAA', 290]]),
       '2026-08-25',
-      calendar,
     );
 
     // carried position: 100 * (300 - 290) = 1000 against 29 000;
@@ -309,9 +304,9 @@ describe('summarizeBookToday', () => {
       closedTrades: [],
     });
 
-    expect(
-      summarizeBookToday(chains, new Map(), false, new Map(), '2026-08-25', calendar).available,
-    ).toBe(false);
+    expect(summarizeBookToday(chains, new Map(), false, new Map(), '2026-08-25').available).toBe(
+      false,
+    );
   });
 });
 

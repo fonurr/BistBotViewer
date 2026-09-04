@@ -3,8 +3,12 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { Account, Bot } from '../../bistApi/types';
 import type { ResolvedPrice } from '../../priceApi/types';
-import { type BookChain, type BookChainRow, type BookScope } from '../../domain/chains';
-import { sessionBatchDate, type HolidayCalendar } from '../../domain/calendar';
+import {
+  toIstanbulDate,
+  type BookChain,
+  type BookChainRow,
+  type BookScope,
+} from '../../domain/chains';
 import {
   formatDateKey,
   formatPercentage,
@@ -43,13 +47,14 @@ interface BookGridProps {
   prices: ReadonlyMap<string, ResolvedPrice>;
   pricesTrustworthy: boolean;
   /**
-   * The session the Book is currently filing work under, and the previous session's
-   * closing-auction close per symbol. Together they drive the `today` column: a chain
-   * opened in `todaySessionDate` is measured from its own entry, one carried over from
-   * `closingBars`.
+   * Today's Istanbul calendar date, and the previous trading session's closing-auction
+   * close per symbol. Together they drive the `today` column: a chain opened on
+   * `todayCalendarDate` is measured from its own entry, one carried over from
+   * `closingBars`. This is the wall-clock day, not the trading-session date — a session
+   * rolls to the next day ten minutes past the close, while it is still today by the
+   * clock until midnight, and the column must not zero itself at that boundary.
    */
-  todaySessionDate: string | null;
-  calendar: HolidayCalendar;
+  todayCalendarDate: string | null;
   closingBars: ReadonlyMap<string, number>;
   writesHeldReason: string | null;
   showCanceled: boolean;
@@ -205,8 +210,7 @@ export function BookGrid(props: BookGridProps) {
                               pnlState={pnlState}
                               prices={props.prices}
                               pricesTrustworthy={props.pricesTrustworthy}
-                              todaySessionDate={props.todaySessionDate}
-                              calendar={props.calendar}
+                              todayCalendarDate={props.todayCalendarDate}
                               closingBars={props.closingBars}
                               writesHeldReason={props.writesHeldReason}
                               showCanceled={props.showCanceled}
@@ -250,8 +254,7 @@ interface ChainRowsProps {
   pnlState: FilledPnlState;
   prices: ReadonlyMap<string, ResolvedPrice>;
   pricesTrustworthy: boolean;
-  todaySessionDate: string | null;
-  calendar: HolidayCalendar;
+  todayCalendarDate: string | null;
   closingBars: ReadonlyMap<string, number>;
   writesHeldReason: string | null;
   showCanceled: boolean;
@@ -281,8 +284,7 @@ const ChainRows = memo(function ChainRows(props: ChainRowsProps) {
           prices={props.prices}
           pnlState={props.pnlState}
           pricesTrustworthy={props.pricesTrustworthy}
-          todaySessionDate={props.todaySessionDate}
-          calendar={props.calendar}
+          todayCalendarDate={props.todayCalendarDate}
           closingBars={props.closingBars}
           writesHeldReason={props.writesHeldReason}
           now={props.now}
@@ -305,8 +307,7 @@ const ChainRows = memo(function ChainRows(props: ChainRowsProps) {
                 prices={props.prices}
                 pnlState={props.pnlState}
                 pricesTrustworthy={props.pricesTrustworthy}
-                todaySessionDate={props.todaySessionDate}
-                calendar={props.calendar}
+                todayCalendarDate={props.todayCalendarDate}
                 closingBars={props.closingBars}
                 writesHeldReason={props.writesHeldReason}
                 now={props.now}
@@ -364,8 +365,7 @@ const BookRow = memo(function BookRow({
   prices,
   pnlState,
   pricesTrustworthy,
-  todaySessionDate,
-  calendar,
+  todayCalendarDate,
   closingBars,
   writesHeldReason,
   now,
@@ -377,8 +377,7 @@ const BookRow = memo(function BookRow({
   prices: ReadonlyMap<string, ResolvedPrice>;
   pnlState: FilledPnlState;
   pricesTrustworthy: boolean;
-  todaySessionDate: string | null;
-  calendar: HolidayCalendar;
+  todayCalendarDate: string | null;
   closingBars: ReadonlyMap<string, number>;
   writesHeldReason: string | null;
   now: number;
@@ -392,8 +391,7 @@ const BookRow = memo(function BookRow({
   const todayFigure = bookRowTodayFigure(row, chain, pnlState, {
     marketPrice: price?.price ?? null,
     pricesTrustworthy,
-    todaySessionDate,
-    calendar,
+    todayCalendarDate,
     prevClose: closingBars.get(row.symbol.toUpperCase()) ?? null,
   });
   const today = todayFigure?.value ?? null;
@@ -690,8 +688,7 @@ export function bookRowPnlFigure(
 export interface RowTodayContext {
   readonly marketPrice: number | null;
   readonly pricesTrustworthy: boolean;
-  readonly todaySessionDate: string | null;
-  readonly calendar: HolidayCalendar;
+  readonly todayCalendarDate: string | null;
   readonly prevClose: number | null;
 }
 
@@ -704,10 +701,14 @@ export interface RowTodayFigure {
 }
 
 /**
- * The `today` column: the same P&L the p&l column carries, read from the start of the
- * current session. A chain opened in `todaySessionDate` is measured from its own average
- * entry, so the two columns agree; one carried over from an earlier session is measured
- * from `prevClose`, that session's closing-auction price.
+ * The `today` column: the same P&L the p&l column carries, read from the start of today's
+ * Istanbul calendar day — never the trading session, which rolls to the next day ten
+ * minutes past the close while it is still today by the clock until midnight. Reading the
+ * session date here instead zeroed the column the moment that grace period passed, since a
+ * chain that opened today would suddenly compare itself to today's own (now final) close. A
+ * chain opened on `todayCalendarDate` is measured from its own average entry, so the two
+ * columns agree; one carried over from an earlier day is measured from `prevClose`, the
+ * previous trading session's closing-auction price.
  *
  * `null` means the row carries no today figure at all (a buy, a canceled leg, a round trip
  * closed on an earlier day). A returned figure whose `value` is `null` is withheld — its
@@ -721,7 +722,7 @@ export function bookRowTodayFigure(
   context: RowTodayContext,
 ): RowTodayFigure | null {
   const openedToday =
-    context.todaySessionDate !== null && chain.batchDate === context.todaySessionDate;
+    context.todayCalendarDate !== null && chain.batchDate === context.todayCalendarDate;
   const index = indexPnlState(pnlState);
   const withheld: RowTodayFigure = { value: null, basis: 0 };
 
@@ -749,11 +750,8 @@ export function bookRowTodayFigure(
   }
 
   if (row.source === 'closed-trade' && row.leg === 'close') {
-    const closeSession = sessionBatchDate(
-      row.raw.closeExecuteTime ?? row.raw.closeOrderTime,
-      context.calendar,
-    );
-    if (closeSession === null || closeSession !== context.todaySessionDate) return null;
+    const closeDay = toIstanbulDate(row.raw.closeExecuteTime ?? row.raw.closeOrderTime);
+    if (closeDay === null || closeDay !== context.todayCalendarDate) return null;
     const basisPrice = openedToday ? row.raw.averageOpenPrice : context.prevClose;
     if (basisPrice === null) return withheld;
     return {
@@ -766,17 +764,16 @@ export function bookRowTodayFigure(
 }
 
 /**
- * The strip's `today` figure: every visible chain's session-to-date move, summed, against what
- * those positions and closed-today sells are measured from. All-or-nothing like `unrealized` — one
- * withheld row (no trusted price, no prior close) makes the whole figure unavailable.
+ * The strip's `today` figure: every visible chain's move since today started, summed, against
+ * what those positions and closed-today sells are measured from. All-or-nothing like `unrealized`
+ * — one withheld row (no trusted price, no prior close) makes the whole figure unavailable.
  */
 export function summarizeBookToday(
   chains: readonly BookChain[],
   prices: ReadonlyMap<string, ResolvedPrice>,
   pricesTrustworthy: boolean,
   closingBars: ReadonlyMap<string, number>,
-  todaySessionDate: string | null,
-  calendar: HolidayCalendar,
+  todayCalendarDate: string | null,
 ): { available: boolean; value: number; percent: number | null } {
   const positions = new Map(
     chains.flatMap((chain) => chain.sources.positions).map((position) => [position.id, position]),
@@ -801,8 +798,7 @@ export function summarizeBookToday(
       const figure = bookRowTodayFigure(row, chain, pnlState, {
         marketPrice: prices.get(row.symbol.toUpperCase())?.price ?? null,
         pricesTrustworthy,
-        todaySessionDate,
-        calendar,
+        todayCalendarDate,
         prevClose: closingBars.get(row.symbol.toUpperCase()) ?? null,
       });
       if (figure === null) continue;

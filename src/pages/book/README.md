@@ -187,18 +187,21 @@ buy order never shows one, and the round trip is read off the sell that closed i
 opening leg. Partial fills still contribute their confirmed shares to the scope-heading and
 stat-strip aggregates, without double-counting the full Position stored during a partial sell.
 
-The **today column, right of `p&l`, is the same P&L read from the start of the current session**,
-with its own percentage beside it. A chain whose batch is today's session is measured from its own
-average entry, so its `today` equals its `p&l`; one carried over from an earlier session is measured
-from the previous trading session's closing-auction bar, read from `bars.db` through the same
-`/bridge/price/bars/closing` route Performance uses — the percentage is then against that prior
-close, not the entry cost. It appears on the same rows `p&l` does, but only on a sell that executed
-in the current session — a round trip closed on an earlier day says nothing about today. The figure
-is **withheld, never qualified**: a Position with no trusted live price, or any carried-over row
-whose prior close is missing, leaves the cell empty rather than showing a "last known" figure or
-falling back to the entry price.
+The **today column, right of `p&l`, is the same P&L read from the start of today's Istanbul
+calendar day**, with its own percentage beside it — **never the trading session**, which rolls to
+the next day ten minutes past the close while it is still today by the clock until midnight; reading
+the session date here instead used to zero the column the moment that grace period passed, because a
+chain that opened today would suddenly compare itself to today's own, now-final close. A chain whose
+batch falls on today's calendar date is measured from its own average entry, so its `today` equals
+its `p&l`; one carried over from an earlier day is measured from the previous trading session's
+closing-auction bar, read from `bars.db` through the same `/bridge/price/bars/closing` route
+Performance uses — the percentage is then against that prior close, not the entry cost. It appears on
+the same rows `p&l` does, but only on a sell that executed today — a round trip closed on an earlier
+day says nothing about today. The figure is **withheld, never qualified**: a Position with no trusted
+live price, or any carried-over row whose prior close is missing, leaves the cell empty rather than
+showing a "last known" figure or falling back to the entry price.
 
-The **stat strip leads with `today`, left of `realized`**: every visible chain's session-to-date
-move summed against what those positions and closed-today sells are measured from, with a
+The **stat strip leads with `today`, left of `realized`**: every visible chain's move since today
+started, summed against what those positions and closed-today sells are measured from, with a
 percentage. It is all-or-nothing like `unrealized` — one withheld row makes the whole figure `not
 available`.

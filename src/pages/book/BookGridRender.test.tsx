@@ -2,7 +2,6 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
-import { holidayCalendar } from '../../domain/calendar';
 import { buildBookChains } from '../../domain/chains';
 import {
   makeAccount,
@@ -31,8 +30,7 @@ function renderGrid(
     accounts: [makeAccount()],
     prices: new Map([['THYAO', makeResolvedPrice()]]),
     pricesTrustworthy: true,
-    todaySessionDate: '2026-08-25',
-    calendar: holidayCalendar([]),
+    todayCalendarDate: '2026-08-25',
     closingBars: new Map<string, number>(),
     writesHeldReason: null,
     showCanceled: false,
