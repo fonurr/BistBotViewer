@@ -26,7 +26,8 @@ components; shared components never import a page.
   disabled behind it and the trigger falls back to `inactiveLabel` in placeholder ink; the bot,
   account and symbol controls omit the pair and are always on. `SymbolFilter` never accepts free
   text: a symbol the loaded rows
-  do not name cannot be filtered to, and a typed one would silently return nothing.
+  do not name cannot be filtered to, and a typed one would silently return nothing. Toggling a
+  symbol (by click or Enter) clears the search box so the next one starts fresh.
 - `useMinuteClock` ticks relative copy — a scheduled countdown, how early a `fire now` goes —
   on the minute boundary, because a quiet snapshot does not re-render on its own.
 

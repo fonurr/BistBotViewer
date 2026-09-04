@@ -189,9 +189,10 @@ interface SymbolFilterProps {
 
 /**
  * The Book's symbol control: a search that filters the known symbols, chips that
- * toggle, and Enter taking the first match. It never accepts free text — a
- * symbol the loaded rows do not name cannot be filtered to, and a typed one
- * would silently return nothing.
+ * toggle, and Enter taking the first match. Toggling a symbol clears the search
+ * so the next one starts fresh. It never accepts free text — a symbol the loaded
+ * rows do not name cannot be filtered to, and a typed one would silently return
+ * nothing.
  */
 export function SymbolFilter({
   name = 'symbols',
@@ -228,6 +229,7 @@ export function SymbolFilter({
     if (next.has(symbol)) next.delete(symbol);
     else next.add(symbol);
     onChange(next);
+    setQuery('');
   };
 
   const handleKey = (event: KeyboardEvent<HTMLInputElement>) => {
