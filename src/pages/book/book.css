@@ -509,6 +509,17 @@
   font-weight: 500;
 }
 
+/*
+ * An order that executed is settled: it is already drawn in --st-done ink, and
+ * the faintest tint behind it separates the legs a chain has finished with from
+ * the ones still in play, the way the dead tint does behind a canceled tail.
+ * It is a shade under the canceled tint on purpose — nothing here needs
+ * attention, and a filled row is the ordinary outcome.
+ */
+.book-row-done {
+  background: var(--st-done-t);
+}
+
 .cancel-in-flight {
   background: var(--st-wait-t);
 }

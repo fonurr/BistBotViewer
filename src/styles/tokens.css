@@ -19,6 +19,8 @@
   --st-live-t: color-mix(in srgb, var(--st-live) 13%, transparent);
   --st-wait-t: color-mix(in srgb, var(--st-wait) 13%, transparent);
   --st-dead-t: color-mix(in srgb, var(--st-dead) 12%, transparent);
+  /* Settled ink has no hue of its own, so its tint is read off the body text. */
+  --st-done-t: color-mix(in srgb, var(--color-text) 5%, transparent);
 
   /* TOKENS.md names these roles but omits values; these are the handoff reference values. */
   --side-buy: #8fc9ac;

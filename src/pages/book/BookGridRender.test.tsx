@@ -223,6 +223,26 @@ describe('BookGrid today column', () => {
   });
 });
 
+describe('BookGrid settled rows', () => {
+  it('tints the rows that executed, and leaves the ones still in play untinted', () => {
+    renderGrid(
+      {},
+      {
+        activeOrders: [makeActiveOrder()],
+        canceledOrders: [],
+        positions: [],
+        closedTrades: [makeClosedTrade({ id: 90, chainId: 'chain-closed' })],
+      },
+    );
+
+    // A round trip draws both legs, and both are settled.
+    expect(document.querySelectorAll('.book-row-done')).toHaveLength(2);
+    // The resting buy is not: it is still in play, so it keeps the page ground.
+    const waiting = document.querySelector('.book-scope-group .book-row')!;
+    expect(waiting).not.toHaveClass('book-row-done');
+  });
+});
+
 describe('BookGrid scope groups', () => {
   it('opens each scope group with its own header line, inside the bot it belongs to', () => {
     renderGrid(

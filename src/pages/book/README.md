@@ -61,6 +61,12 @@ resting time is read off `orderTime`, the exchange's own registration stamp, nev
 column. The one row that takes lines of its own is a cancel in flight: its two sentences span
 the row beneath the cells, because it is the only row whose state changes while you watch it.
 
+An order that **executed** carries the faintest gray tint behind it (`--st-done-t`, read off the
+body text since settled ink has no hue of its own), the way a canceled tail carries the dead tint:
+a trades chain draws every leg it ever had, and the tint is what separates the legs it has finished
+with from the ones still in play. It sits a shade under the canceled tint on purpose — nothing
+there needs attention, and a filled row is the ordinary outcome.
+
 A canceled tail collapses to `+N canceled` in dead ink, the breakdown of who ended the orders,
 and `show` on the right; opened, the rows sit inside the tint with the note and `hide` beneath
 them. **Switching the never-opened scope on opens the tails with it** — a chain in that scope owns

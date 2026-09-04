@@ -432,7 +432,7 @@ const BookRow = memo(function BookRow({
 
   return (
     <div
-      className={`book-row${opener ? ' book-row-opener' : ' book-row-leg'}${row.cancelInFlight ? ' cancel-in-flight' : ''}${flashing ? ' row-flash' : ''}`}
+      className={`book-row${opener ? ' book-row-opener' : ' book-row-leg'}${status.role === 'done' ? ' book-row-done' : ''}${row.cancelInFlight ? ' cancel-in-flight' : ''}${flashing ? ' row-flash' : ''}`}
       role="row"
     >
       <div className={`book-spine ${statusClass(status.role)}`} role="cell" aria-hidden="true" />
