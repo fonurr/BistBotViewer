@@ -240,8 +240,6 @@ describe('BookGrid scope groups', () => {
       'Waiting',
       'Trades',
     ]);
-    expect(screen.getByText('1 chain · 1 buy order, nothing bought yet')).toBeVisible();
-    expect(screen.getByText('1 chain · bought and sold · realized')).toBeVisible();
     // The header opens its group: the chains it counts follow it, not the reverse.
     const botGroup = document.querySelector('.book-bot-group')!;
     expect(botGroup.querySelector('.book-scope-group')?.firstElementChild).toBe(headings[0]);

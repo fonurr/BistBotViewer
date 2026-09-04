@@ -872,9 +872,9 @@ function canceledByCopy(rows: readonly BookChainRow[]): string {
 
 /**
  * Grouping is date -> bot -> scope, and the scope line opens its own group
- * rather than sitting in a strip above the page: the reference draws
- * `waiting  3 chains - 6 buy orders, nothing bought yet` immediately before
- * the chains it counts, under the bot that owns them.
+ * rather than sitting in a strip above the page: it names the scope, and its
+ * aggregate where the scope has one, immediately before the chains it heads,
+ * under the bot that owns them.
  */
 function groupChains(chains: readonly BookChain[]) {
   const dates = new Map<string, Map<string, BookChain[]>>();
@@ -919,9 +919,6 @@ function ScopeHeading({
   return (
     <header className="book-scope-heading">
       <span className="kicker">{scopeLabels[scope]}</span>
-      <span className="muted">
-        {plural(chains.length, 'chain')} · {summary.detail}
-      </span>
       {summary.aggregate === null ? null : (
         <span className={summary.tone}>{summary.aggregate}</span>
       )}
@@ -931,26 +928,18 @@ function ScopeHeading({
   );
 }
 
+/**
+ * A scope heading carries the group's aggregate and nothing else. Waiting and
+ * never-opened chains have no figure to sum, so their headings are the scope
+ * word alone.
+ */
 export function scopeGroupSummary(
   scope: BookScope,
   chains: readonly BookChain[],
   pnlState: FilledPnlState,
   prices: ReadonlyMap<string, ResolvedPrice>,
   pricesTrustworthy: boolean,
-): { detail: string; aggregate: string | null; note?: string; tone: string } {
-  if (scope === 'waiting') {
-    const waitingRows = chains.flatMap((chain) => chain.activeRows.filter((row) => row.isWaiting));
-    // `6 buy orders` reads better than `6 waiting orders` when they all go
-    // one way, and the side is the fact worth stating.
-    const sides = new Set(waitingRows.map((row) => row.direction));
-    const noun = sides.size === 1 ? `${[...sides][0]} order` : 'waiting order';
-    return {
-      detail: `${plural(waitingRows.length, noun)}, nothing bought yet`,
-      aggregate: null,
-      tone: 'muted',
-    };
-  }
-
+): { aggregate: string | null; note?: string; tone: string } {
   if (scope === 'positions') {
     // Ids are only unique within their own source table, so an exposure is
     // matched on both its source and its id.
@@ -967,7 +956,6 @@ export function scopeGroupSummary(
       else unrealized += unrealizedPnl(exposure, marketPrice);
     }
     return {
-      detail: 'bought, not yet sold · unrealized',
       aggregate: everyPriceKnown
         ? `${formatSignedNumber(unrealized)}${pricesTrustworthy ? '' : ' · last known'}`
         : 'not available',
@@ -991,7 +979,6 @@ export function scopeGroupSummary(
       0,
     );
     return {
-      detail: 'bought and sold · realized',
       aggregate: formatSignedNumber(realized),
       // A trades chain draws every order it ever had, and the settled ones sit
       // in --st-done; the heading says so once rather than per row.
@@ -1000,9 +987,5 @@ export function scopeGroupSummary(
     };
   }
 
-  return {
-    detail: 'never opened a position, nobody retried it',
-    aggregate: null,
-    tone: 'muted',
-  };
+  return { aggregate: null, tone: 'muted' };
 }

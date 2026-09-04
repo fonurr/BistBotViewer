@@ -34,9 +34,10 @@ being worked, and it is what keeps the Book quick when every date is selected an
 switched on. A shut batch still names its date, its weekday and how many chains it holds, so
 nothing is hidden that a reader has to open the batch to learn. `BookGrid` keeps two sets rather
 than one: `opened` is what a reader asked for and `closed` is the newest batch they shut, so the
-default follows the newest batch whatever the filters make it. The scope line (`waiting · 3 chains · 6 buy orders, nothing bought yet`) **opens its own
-group**, immediately above the chains it counts, names the side when the waiting orders all go
-one way, and carries that group's aggregate — unrealized for positions, realized for trades. The
+default follows the newest batch whatever the filters make it. The scope line **opens its own
+group**, immediately above the chains it heads, and is the scope's word plus that group's
+aggregate — unrealized for positions, realized for trades — and nothing else. It restates
+neither the chain count the batch heading already carries nor what the scope means. The
 focused `no closing order` list spans scopes on purpose, so it groups by bot alone.
 
 Row vocabulary follows the visual reference: an opener carries its symbol alone and a leg carries
