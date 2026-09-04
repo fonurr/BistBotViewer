@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -43,6 +43,9 @@ vi.mock('../../app/dataHooks', () => ({
 const api = vi.hoisted(() => ({ cancelPendingOrderRequests: vi.fn() }));
 vi.mock('../../bistApi/client', () => ({ bistApi: api }));
 
+const priceApiMock = vi.hoisted(() => ({ getClosingAuctionBars: vi.fn() }));
+vi.mock('../../priceApi/client', () => ({ priceApi: priceApiMock }));
+
 const runtime = vi.hoisted(() => ({ writesHeldReason: null as string | null }));
 vi.mock('../../app/ViewerRuntime', () => ({
   useViewerRuntime: () => ({
@@ -78,6 +81,8 @@ beforeEach(() => {
   book.data = emptyRead();
   runtime.writesHeldReason = null;
   api.cancelPendingOrderRequests.mockReset();
+  priceApiMock.getClosingAuctionBars.mockReset();
+  priceApiMock.getClosingAuctionBars.mockResolvedValue([]);
 });
 
 afterEach(() => vi.clearAllMocks());
@@ -181,6 +186,33 @@ describe('The Book page states', () => {
     const strip = document.querySelector('.book-stat-strip')!;
     expect(strip).toHaveTextContent('last known');
     expect(strip.querySelector('.number-untrusted')).not.toBeNull();
+  });
+
+  it('reads a prior close for a carried-over position and fills its today cell', async () => {
+    // The fixture position opened on 25.08; the test clock is well past it, so it
+    // is carried over and its today figure is read from the previous session.
+    book.data = { ...emptyRead(), positions: [makePosition({ quantity: 100, averagePrice: 280 })] };
+    priceApiMock.getClosingAuctionBars.mockResolvedValue([
+      { symbol: 'THYAO', sessionDate: '2099-01-01', close: 300, volume: 1, barTs: 1 },
+    ]);
+    renderBook();
+
+    await waitFor(() =>
+      expect(priceApiMock.getClosingAuctionBars).toHaveBeenCalledWith([
+        expect.objectContaining({ symbol: 'THYAO' }),
+      ]),
+    );
+    // Live price 305.5 against a 300 prior close, 100 shares.
+    await waitFor(() =>
+      expect(document.querySelector('.book-row-opener .book-today')?.textContent).toBe('+550'),
+    );
+  });
+
+  it('does not read closing bars when nothing is carried over', () => {
+    book.data = { ...emptyRead(), activeOrders: [makeActiveOrder()] };
+    renderBook();
+
+    expect(priceApiMock.getClosingAuctionBars).not.toHaveBeenCalled();
   });
 });
 

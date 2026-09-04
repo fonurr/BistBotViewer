@@ -1,4 +1,11 @@
-import { FIXTURE_NOW_MS, makeActiveOrder, makeBookReadFixture } from '../../src/test/fixtures';
+import {
+  FIXTURE_NOW_MS,
+  makeActiveOrder,
+  makeAuctionBar,
+  makeBookReadFixture,
+  makePosition,
+  makePriceReadFixture,
+} from '../../src/test/fixtures';
 import { expect, makeBrowserScenario, test } from './safeHarness';
 
 test.describe('The Book safety smoke', () => {
@@ -17,7 +24,7 @@ test.describe('The Book safety smoke', () => {
     await expect(page.getByRole('heading', { name: 'The Book' })).toBeVisible();
 
     const headers = page.getByRole('columnheader');
-    await expect(headers).toHaveCount(12);
+    await expect(headers).toHaveCount(13);
     await expect(headers).toHaveText([
       '',
       'symbol',
@@ -27,6 +34,7 @@ test.describe('The Book safety smoke', () => {
       'fill',
       'slip',
       'p&l',
+      'today',
       'ord time',
       'ack time',
       'status',
@@ -52,7 +60,7 @@ test.describe('The Book safety smoke', () => {
       columnDisplay: 'grid',
       dataDisplay: 'grid',
       htmlMinWidth: '1180px',
-      rowCellCount: 12,
+      rowCellCount: 13,
       viewportWidth: 900,
     });
     expect(layout.columnTemplate).toBe(layout.dataTemplate);
@@ -141,6 +149,38 @@ test.describe('The Book safety smoke', () => {
     ).toBeVisible();
     await expect(dialog.getByText('exit · stop loss at −2,00% of the average fill')).toBeVisible();
     await expect(dialog.getByText(/The server may add narrower ones of its own/)).toBeVisible();
+  });
+
+  test('reads a carried-over position"s today figure from the previous close', async ({
+    page,
+    safeBridge,
+  }) => {
+    const base = makeBookReadFixture();
+    safeBridge.useScenario(
+      makeBrowserScenario({
+        bist: {
+          ...base,
+          activeOrders: [],
+          positions: [
+            makePosition({
+              // Opened before today's session, so `today` is read from the prior close.
+              orderTime: Date.parse('2026-08-20T07:00:00.000Z'),
+              executeTime: Date.parse('2026-08-20T07:00:02.000Z'),
+            }),
+          ],
+        },
+        price: makePriceReadFixture({
+          closingBars: [makeAuctionBar({ symbol: 'THYAO', sessionDate: '2026-08-24', close: 300 })],
+        }),
+      }),
+    );
+    await page.goto('/book');
+    await safeBridge.stream.open();
+
+    const opener = page.locator('article[aria-label="THYAO chain"] .book-row-opener');
+    // Live 305,50 against a 300 prior close, 100 shares — and p&l still reads from the entry.
+    await expect(opener.locator('.book-today')).toHaveText('+550');
+    await expect(opener.locator('.book-pnl')).toContainText('+400');
   });
 
   test('traps modal focus, closes the top layer with Escape, and returns focus', async ({

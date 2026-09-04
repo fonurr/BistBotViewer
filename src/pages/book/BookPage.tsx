@@ -1,16 +1,18 @@
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { useBookData, useBotBudgets, useFleetPrices } from '../../app/dataHooks';
-import { bistKeys } from '../../app/queryKeys';
+import { bistKeys, priceKeys } from '../../app/queryKeys';
 import { useViewerRuntime } from '../../app/ViewerRuntime';
 import { bistApi } from '../../bistApi/client';
 import { asBistApiError } from '../../bistApi/errors';
 import type { Bot, ErrorRow, PendingOrderRequest, ScheduleSpec } from '../../bistApi/types';
+import { priceApi } from '../../priceApi/client';
 import { Modal } from '../../components/Modal';
 import { ResultList, type ActionResult } from '../../components/ResultList';
 import { accountIdentityKey } from '../../domain/accounts';
+import { holidayCalendar, previousTradingDate, sessionBatchDate } from '../../domain/calendar';
 import { buildBookChains, type BookChain, type BookScope } from '../../domain/chains';
 import {
   formatDate,
@@ -129,6 +131,51 @@ export function BookPage() {
   const summary = useMemo(
     () => summarize(visibleChains, priceFeed.prices, priceFeed.trustworthy, budgets.data, botById),
     [botById, budgets.data, priceFeed.prices, priceFeed.trustworthy, visibleChains],
+  );
+
+  // The `today` column reads each chain's P&L from the start of the current session:
+  // from its own entry when it opened today, from the previous session's closing
+  // auction when it was carried over. Only the carried-over chains need a bar read.
+  const calendar = useMemo(() => holidayCalendar(data.holidays), [data.holidays]);
+  const todaySessionDate = useMemo(() => sessionBatchDate(Date.now(), calendar), [calendar]);
+  const basisSessionDate = useMemo(
+    () => (todaySessionDate === null ? null : previousTradingDate(todaySessionDate, calendar)),
+    [calendar, todaySessionDate],
+  );
+  const overnightSymbols = useMemo(
+    () => [
+      ...new Set(
+        visibleChains
+          .filter(
+            (chain) =>
+              (chain.scope === 'positions' || chain.scope === 'trades') &&
+              chain.batchDate !== todaySessionDate,
+          )
+          .map((chain) => chain.symbol.toUpperCase()),
+      ),
+    ],
+    [todaySessionDate, visibleChains],
+  );
+  const closingBarsQuery = useQuery({
+    queryKey: priceKeys.closingBars(
+      `book:${basisSessionDate ?? 'none'}:${overnightSymbols.join(',')}`,
+    ),
+    queryFn: () =>
+      priceApi.getClosingAuctionBars(
+        overnightSymbols.map((symbol) => ({ symbol, sessionDate: basisSessionDate! })),
+      ),
+    enabled: snapshotAvailable && basisSessionDate !== null && overnightSymbols.length > 0,
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: false,
+  });
+  const closingBars = useMemo(
+    () =>
+      new Map(
+        (closingBarsQuery.data ?? [])
+          .filter((bar) => Number.isFinite(bar.close) && bar.close > 0)
+          .map((bar) => [bar.symbol.toUpperCase(), bar.close] as const),
+      ),
+    [closingBarsQuery.data],
   );
   const chips = filterChips(filters, data.bots.length, data.accounts.length);
   const genuineEmpty = chains.length === 0 && data.pendingRequests.length === 0;
@@ -334,6 +381,9 @@ export function BookPage() {
           accounts={data.accounts}
           prices={priceFeed.prices}
           pricesTrustworthy={priceFeed.trustworthy}
+          todaySessionDate={todaySessionDate}
+          calendar={calendar}
+          closingBars={closingBars}
           writesHeldReason={writesHeldReason}
           showCanceled={showCanceled}
           openCanceledChains={canceledOverrides}

@@ -6,6 +6,7 @@ import {
   holidayCalendar,
   isProducerExpectedUp,
   lastCompletedSessionDate,
+  previousTradingDate,
   sessionBatchDate,
 } from './calendar';
 
@@ -58,6 +59,27 @@ describe('sessionBatchDate', () => {
   it('has no batch for a moment that is not one', () => {
     expect(sessionBatchDate(null, calendar())).toBeNull();
     expect(sessionBatchDate(Number.NaN, calendar())).toBeNull();
+  });
+});
+
+describe('previousTradingDate', () => {
+  it('steps back one trading day', () => {
+    // 14.08.2026 is a Friday, 13.08 a Thursday.
+    expect(previousTradingDate('2026-08-14', calendar())).toBe('2026-08-13');
+  });
+
+  it('skips the weekend without a calendar', () => {
+    // 17.08 is a Monday; the trading day before it is Friday 14.08.
+    expect(previousTradingDate('2026-08-17', calendar())).toBe('2026-08-14');
+  });
+
+  it('skips a full holiday where the calendar covers it', () => {
+    const holidays = calendar({ date: '2026-08-13', type: 'full' });
+    expect(previousTradingDate('2026-08-14', holidays)).toBe('2026-08-12');
+    // A half day still trades, so it is not skipped.
+    expect(previousTradingDate('2026-08-14', calendar({ date: '2026-08-13', type: 'half' }))).toBe(
+      '2026-08-13',
+    );
   });
 });
 

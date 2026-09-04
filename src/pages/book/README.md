@@ -127,3 +127,13 @@ filled sell** (realized — a partial sell's confirmed shares, a closed round tr
 buy order never shows one, and the round trip is read off the sell that closed it, not off the
 opening leg. Partial fills still contribute their confirmed shares to the scope-heading and
 stat-strip aggregates, without double-counting the full Position stored during a partial sell.
+
+The **today column, at the right of the grid, is the same P&L read from the start of the current
+session**. A chain whose batch is today's session is measured from its own average entry, so its
+`today` equals its `p&l`; one carried over from an earlier session is measured from the previous
+trading session's closing-auction bar, read from `bars.db` through the same `/bridge/price/bars/closing`
+route Performance uses. It appears on the same rows `p&l` does, but only on a sell that executed in
+the current session — a round trip closed on an earlier day says nothing about today. The figure is
+**withheld, never qualified**: a Position with no trusted live price, or any carried-over row whose
+prior close is missing, leaves the cell empty rather than showing a "last known" figure or falling
+back to the entry price. The column carries no aggregate of its own.

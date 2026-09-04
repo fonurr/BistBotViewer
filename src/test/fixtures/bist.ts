@@ -237,6 +237,17 @@ export function makeResolvedPrice(overrides: Partial<ResolvedPrice> = {}): Resol
   };
 }
 
+export function makeAuctionBar(overrides: Partial<AuctionBar> = {}): AuctionBar {
+  return {
+    symbol: 'THYAO',
+    sessionDate: '2026-02-13',
+    close: 300,
+    volume: 1_000_000,
+    barTs: Math.round(FIXTURE_NOW_MS / 1_000),
+    ...overrides,
+  };
+}
+
 export function makeLatestBar(overrides: Partial<LatestBar> = {}): LatestBar {
   return {
     symbol: 'THYAO',

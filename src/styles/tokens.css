@@ -39,7 +39,7 @@
   --font-row: 13px;
   --font-card-title: 20px;
   --font-figure: 20px;
-  --book-grid: 3px 100px 46px 84px 70px 70px 62px 112px 96px 96px 1fr 148px;
+  --book-grid: 3px 100px 46px 84px 70px 70px 62px 112px 92px 96px 96px 1fr 148px;
 }
 
 @keyframes spin {

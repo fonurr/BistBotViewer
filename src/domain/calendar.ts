@@ -82,6 +82,19 @@ export function rollToTradingDay(day: string, holidays: HolidayCalendar): string
 }
 
 /**
+ * The trading day immediately before `day`, or null when a year back is closed. Used to name the
+ * session whose closing auction is the overnight reference for a position carried into `day`.
+ */
+export function previousTradingDate(day: string, holidays: HolidayCalendar): string | null {
+  let cursor = previousDay(day);
+  for (let rolled = 0; rolled <= MAX_DAYS_AHEAD; rolled += 1) {
+    if (isTradingDay(cursor, holidays)) return cursor;
+    cursor = previousDay(cursor);
+  }
+  return null;
+}
+
+/**
  * The session an order stamped at this moment could reach — the batch it belongs to.
  *
  * The batch is not the clock day the order was written. An order written more than ten

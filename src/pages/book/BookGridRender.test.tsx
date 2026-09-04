@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
+import { holidayCalendar } from '../../domain/calendar';
 import { buildBookChains } from '../../domain/chains';
 import {
   makeAccount,
@@ -30,6 +31,9 @@ function renderGrid(
     accounts: [makeAccount()],
     prices: new Map([['THYAO', makeResolvedPrice()]]),
     pricesTrustworthy: true,
+    todaySessionDate: '2026-08-25',
+    calendar: holidayCalendar([]),
+    closingBars: new Map<string, number>(),
     writesHeldReason: null,
     showCanceled: false,
     openCanceledChains: new Set<string>(),
@@ -164,11 +168,58 @@ describe('BookGrid row vocabulary', () => {
     // SPEC 2: the chain's own row reads `Closed`; `Filled` is the leg word.
     expect(screen.getByText('Closed')).toBeVisible();
     expect(screen.getByText('Filled')).toBeVisible();
-    // The closing sell leg carries the realized result; the opening buy leg
-    // shows no P&L, and the trades group states the same total once more.
-    expect(screen.getAllByText('+600')).toHaveLength(1);
+    // The closing sell leg carries the realized result in p&l, and — since this
+    // round trip opened and closed in the current session — the same figure in
+    // the today column. The opening buy leg shows neither.
+    expect(screen.getAllByText('+600')).toHaveLength(2);
     expect(screen.getByText('+600,00')).toBeVisible();
     expect(document.querySelectorAll('.book-actions button')).toHaveLength(0);
+  });
+});
+
+describe('BookGrid today column', () => {
+  const carriedOverPosition = () =>
+    makePosition({
+      quantity: 100,
+      averagePrice: 280,
+      orderTime: Date.parse('2026-08-18T06:55:00.000Z'),
+      executeTime: Date.parse('2026-08-18T06:55:02.000Z'),
+    });
+
+  it('heads the grid with a today column', () => {
+    renderGrid();
+    expect(screen.getByRole('columnheader', { name: 'today' })).toBeVisible();
+  });
+
+  it('marks a carried-over position from the previous close when the bar is present', () => {
+    renderGrid(
+      { closingBars: new Map([['THYAO', 300]]) },
+      {
+        activeOrders: [],
+        canceledOrders: [],
+        positions: [carriedOverPosition()],
+        closedTrades: [],
+      },
+    );
+
+    // Live price 305.5 against a 300 prior close, 100 shares.
+    const todayCell = document.querySelector('.book-row-opener .book-today')!;
+    expect(todayCell.textContent).toBe('+550');
+  });
+
+  it('withholds the today figure when the prior close is missing', () => {
+    renderGrid(
+      { closingBars: new Map<string, number>() },
+      {
+        activeOrders: [],
+        canceledOrders: [],
+        positions: [carriedOverPosition()],
+        closedTrades: [],
+      },
+    );
+
+    const todayCell = document.querySelector('.book-row-opener .book-today')!;
+    expect(todayCell.textContent).toBe('');
   });
 });
 
