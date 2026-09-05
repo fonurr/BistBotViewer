@@ -213,10 +213,21 @@ export interface BuildPerformanceReportInput {
   readonly trades: readonly ClosedTrade[];
   readonly closingBars: readonly AuctionBar[];
   readonly holidays: readonly Holiday[];
-  /** Epoch milliseconds. The trailing 90-calendar-day window includes this Istanbul day. */
+  /**
+   * Epoch milliseconds: the moment the report is read. A round trip whose close
+   * was acknowledged after it has not happened yet and stays out, whichever
+   * batches the window holds.
+   */
   readonly asOf: number;
   /** Optional inclusive ISO day for UI-selected ranges; defaults to the trailing 90 days. */
   readonly startDate?: string;
+  /**
+   * The newest batch the window holds, defaulting to `asOf`'s own Istanbul day.
+   * It bounds the batches, never the closes: a trip opened inside the window
+   * and closed after it is still the window's, which is what makes this a set
+   * of batches rather than a set of closes.
+   */
+  readonly endDate?: string;
 }
 
 interface CalendarWindow {
@@ -242,13 +253,17 @@ export function buildPerformanceReport(input: BuildPerformanceReportInput): Perf
     throw new RangeError('Performance asOf must be a finite epoch-millisecond value.');
   }
 
-  const endDate = toIstanbulDate(input.asOf);
-  if (endDate === null) {
+  const readDate = toIstanbulDate(input.asOf);
+  if (readDate === null) {
     throw new RangeError('Performance asOf is outside the supported Date range.');
+  }
+  const endDate = input.endDate ?? readDate;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+    throw new RangeError('Performance endDate must be a valid ISO day.');
   }
   const startDate = input.startDate ?? shiftIsoDate(endDate, -(PERFORMANCE_WINDOW_DAYS - 1));
   if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || startDate > endDate) {
-    throw new RangeError('Performance startDate must be a valid ISO day on or before asOf.');
+    throw new RangeError('Performance startDate must be a valid ISO day on or before endDate.');
   }
   const windowDays = datesBetween(startDate, endDate).length;
   const fullHolidays = new Set(

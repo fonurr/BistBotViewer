@@ -173,16 +173,28 @@ export function PerformancePage() {
     () => windowBounds(dateRange, batchDates, today),
     [batchDates, dateRange, today],
   );
+  // Today's close, not the window's: it is the far edge of what has happened,
+  // and a window ending last week does not make this week's closes unobserved.
+  // The batch this moment belongs to, which is where the range control's
+  // `latest` stops — an evening order is already the next session's business.
+  const currentSession = sessionBatchDate(Date.now(), calendar) ?? today;
+  // An evening order already filed under tomorrow's session reaches past today.
+  const latestBatch = batchDates.at(-1) ?? today;
+  const readAt = endOfIstanbulDay(latestBatch > today ? latestBatch : today);
   const baseReport = useMemo(
     () =>
       buildPerformanceReport({
         trades: scopedTrades,
         closingBars: [],
         holidays: data.holidays,
-        asOf: endOfIstanbulDay(bounds.to),
+        // The window bounds the batches; `asOf` is only the line a close cannot
+        // be on the far side of, so a trip opened in the window and closed
+        // after it still counts as the window's.
+        asOf: readAt,
         startDate: bounds.from,
+        endDate: bounds.to,
       }),
-    [bounds.from, bounds.to, data.holidays, scopedTrades],
+    [bounds.from, bounds.to, data.holidays, readAt, scopedTrades],
   );
   const barKey = baseReport.requiredClosingBars
     .map((key) => `${key.symbol}:${key.sessionDate}`)
@@ -224,10 +236,14 @@ export function PerformancePage() {
         trades: scopedTrades,
         closingBars: bars.data ?? [],
         holidays: data.holidays,
-        asOf: endOfIstanbulDay(bounds.to),
+        // The window bounds the batches; `asOf` is only the line a close cannot
+        // be on the far side of, so a trip opened in the window and closed
+        // after it still counts as the window's.
+        asOf: readAt,
         startDate: bounds.from,
+        endDate: bounds.to,
       }),
-    [bars.data, bounds.from, bounds.to, data.holidays, scopedTrades],
+    [bars.data, bounds.from, bounds.to, data.holidays, readAt, scopedTrades],
   );
   const completeSelectedBots = selectedBots.filter((bot) => bot.complete);
   const committedKnown =
@@ -304,9 +320,11 @@ export function PerformancePage() {
             open={openFilter === 'dates'}
             setOpen={setOpenFilter}
             dates={batchDates}
+            ready={sourceReady}
+            currentSession={currentSession}
             range={dateRange}
             onChange={setDateRange}
-            note="These are batch dates, not calendar days — the session a round trip was opened in, which is the day every figure below is filed under."
+            note="Only a session a round trip in scope was opened in can be picked — that batch is the day every figure below is filed under."
           />
           <MultiSelectFilter
             name="bots"
@@ -1336,11 +1354,11 @@ function unavailableReason(metric: PerformanceMetric): string {
   return metric.available ? '' : metric.reason.replaceAll('-', ' ');
 }
 /**
- * The window the report is computed over. An open end stands for the widest the
- * loaded batches reach: the earliest one below, and today above — or the latest
- * batch where an evening order has already been filed under tomorrow's session.
- * The lower end can never pass the upper, so a range left behind by a narrowing
- * filter degrades to a single day rather than an impossible window.
+ * The batches the report is computed over. Both ends are set by the range
+ * control once a batch has loaded; before that they stand for the widest the
+ * loaded batches reach. The lower end can never pass the upper, so a range left
+ * behind by a narrowing filter degrades to a single day rather than to an
+ * impossible window.
  */
 function windowBounds(range: DateRange, batchDates: readonly string[], today: string) {
   const latestBatch = batchDates.at(-1) ?? today;

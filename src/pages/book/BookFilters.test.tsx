@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { accountIdentityKey } from '../../domain/accounts';
 import { buildBookChains } from '../../domain/chains';
 import {
+  FIXTURE_DAY,
   makeAccount,
   makeActiveOrder,
   makeBot,
@@ -33,6 +34,10 @@ describe('BookFilters account identity', () => {
         ]}
         accounts={accounts}
         chains={[]}
+        batchDates={[]}
+        batchesLoaded
+        currentSession={FIXTURE_DAY}
+        onSettleDates={vi.fn()}
         noClosingOrderCount={0}
         mismatchCount={0}
         canceledCount={0}
@@ -73,6 +78,10 @@ describe('BookFilters bot picks', () => {
         ]}
         accounts={[makeAccount()]}
         chains={[]}
+        batchDates={[]}
+        batchesLoaded
+        currentSession={FIXTURE_DAY}
+        onSettleDates={vi.fn()}
         noClosingOrderCount={0}
         mismatchCount={0}
         canceledCount={0}
@@ -150,6 +159,10 @@ describe('BookFilters canceled status filter', () => {
         bots={[makeBot({ id: 'bot-alpha' }), makeBot({ id: 'bot-beta' })]}
         accounts={[makeAccount()]}
         chains={chains}
+        batchDates={[]}
+        batchesLoaded
+        currentSession={FIXTURE_DAY}
+        onSettleDates={vi.fn()}
         noClosingOrderCount={0}
         mismatchCount={0}
         canceledCount={4}
@@ -242,6 +255,10 @@ describe('BookFilters canceled status filter', () => {
           positions: [],
           closedTrades: [],
         })}
+        batchDates={[]}
+        batchesLoaded
+        currentSession={FIXTURE_DAY}
+        onSettleDates={vi.fn()}
         noClosingOrderCount={0}
         mismatchCount={0}
         canceledCount={0}
@@ -288,6 +305,10 @@ describe('BookFilters reason filter', () => {
         bots={[makeBot({ id: 'bot-alpha' })]}
         accounts={[makeAccount()]}
         chains={chains}
+        batchDates={[]}
+        batchesLoaded
+        currentSession={FIXTURE_DAY}
+        onSettleDates={vi.fn()}
         noClosingOrderCount={0}
         mismatchCount={0}
         canceledCount={2}
@@ -378,6 +399,10 @@ describe('BookFilters reason filter', () => {
           positions: [],
           closedTrades: [],
         })}
+        batchDates={[]}
+        batchesLoaded
+        currentSession={FIXTURE_DAY}
+        onSettleDates={vi.fn()}
         noClosingOrderCount={0}
         mismatchCount={0}
         canceledCount={0}
@@ -414,6 +439,10 @@ describe('BookFilters source filter', () => {
         bots={[makeBot({ id: 'bot-alpha' })]}
         accounts={[makeAccount()]}
         chains={chains}
+        batchDates={[]}
+        batchesLoaded
+        currentSession={FIXTURE_DAY}
+        onSettleDates={vi.fn()}
         noClosingOrderCount={0}
         mismatchCount={0}
         canceledCount={3}
@@ -478,6 +507,10 @@ describe('BookFilters source filter', () => {
           positions: [],
           closedTrades: [],
         })}
+        batchDates={[]}
+        batchesLoaded
+        currentSession={FIXTURE_DAY}
+        onSettleDates={vi.fn()}
         noClosingOrderCount={0}
         mismatchCount={0}
         canceledCount={0}

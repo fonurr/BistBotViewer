@@ -67,8 +67,11 @@ test.describe('The Book at a year of batches', () => {
     await page.clock.setFixedTime(new Date(FIXTURE_NOW_MS));
     await page.goto('/book');
     await safeBridge.stream.open();
-    // The reported stall: every date selected, and `Trades` switched on.
-    await page.locator('.seg-opt').filter({ hasText: 'Trades' }).click();
+    // The reported stall: every date selected, with `Trades` on — which it now
+    // is from the first render, so only the range has to be widened.
+    await page.locator('.date-range .filter-trigger').click();
+    await page.getByRole('button', { name: 'all', exact: true }).click();
+    await page.keyboard.press('Escape');
     await expect(page.locator('.book-grid-wrap')).toBeVisible();
   });
 

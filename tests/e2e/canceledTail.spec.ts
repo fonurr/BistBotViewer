@@ -39,11 +39,16 @@ test.beforeEach(async ({ page, safeBridge }) => {
 
 test('hides canceled legs behind a toggle that is itself the count', async ({ page }) => {
   const toggle = page.locator('.canceled-global');
-  await expect(toggle).toHaveText('1 canceled order hidden');
-  // The count is the control: it carries no instruction to click it.
-  await expect(toggle).not.toContainText('show');
-
   const tail = page.locator('.canceled-tail');
+  // The never-opened scope is on from the first render and the toggle comes in
+  // with it, because that scope draws nothing but canceled legs.
+  await expect(toggle).toHaveText('1 canceled order shown');
+  // The count is the control: it carries no instruction to click it.
+  await expect(toggle).not.toContainText('hide');
+  await expect(tail.locator('.book-row')).toHaveCount(1);
+
+  await toggle.click();
+  await expect(toggle).toHaveText('1 canceled order hidden');
   await expect(tail.locator('.book-row')).toHaveCount(0);
 
   await toggle.click();

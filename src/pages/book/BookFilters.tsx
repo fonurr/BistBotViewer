@@ -20,9 +20,17 @@ import { scopeLabels, type BookFilterState } from './types';
 interface BookFiltersProps {
   filters: BookFilterState;
   onChange: (filters: BookFilterState) => void;
+  /** The range settling on its default, which is nobody's edit. */
+  onSettleDates: (range: { from: string | null; to: string | null }) => void;
   bots: readonly Bot[];
   accounts: readonly Account[];
   chains: readonly BookChain[];
+  /** Every batch the loaded chains were filed under, ascending. */
+  batchDates: readonly string[];
+  /** Whether every Book read is in, so the range can settle on its default. */
+  batchesLoaded: boolean;
+  /** The batch this moment belongs to, which is where `latest` stops. */
+  currentSession: string;
   noClosingOrderCount: number;
   mismatchCount: number;
   canceledCount: number;
@@ -56,13 +64,6 @@ export function BookFilters(props: BookFiltersProps) {
     () => [...new Set(props.chains.map((chain) => chain.symbol))].sort(),
     [props.chains],
   );
-  const batchDates = useMemo(
-    () =>
-      [
-        ...new Set(props.chains.flatMap((chain) => (chain.batchDate ? [chain.batchDate] : []))),
-      ].sort(),
-    [props.chains],
-  );
   const canceledStatuses = useMemo(() => canceledStatusOptions(props.chains), [props.chains]);
   const reasons = useMemo(() => reasonOptions(props.chains), [props.chains]);
   const sources = useMemo(() => sourceOptions(props.chains), [props.chains]);
@@ -91,8 +92,10 @@ export function BookFilters(props: BookFiltersProps) {
       reasons: null,
       sourceFilter: false,
       sources: null,
-      batchFrom: null,
-      batchTo: null,
+      /* The widest range, stated outright: leaving it unset would send the
+         range control back to its default and clear this filter with it. */
+      batchFrom: props.batchDates[0] ?? null,
+      batchTo: props.batchDates.at(-1) ?? null,
       noClosingOrder: true,
     });
   };
@@ -271,7 +274,10 @@ export function BookFilters(props: BookFiltersProps) {
           open={open === 'dates'}
           setOpen={setOpen}
           align="right"
-          dates={batchDates}
+          defaultRange="latest"
+          dates={props.batchDates}
+          ready={props.batchesLoaded}
+          currentSession={props.currentSession}
           range={{ from: filters.batchFrom, to: filters.batchTo }}
           onChange={(range) =>
             onChange({
@@ -281,7 +287,8 @@ export function BookFilters(props: BookFiltersProps) {
               noClosingOrder: false,
             })
           }
-          note="These are batch dates, not calendar days — a session where no bot ran has no batch and simply is not in the list."
+          onSettle={props.onSettleDates}
+          note="Only a day the loaded chains were filed under can be picked. A session where no bot ran has no batch, so the calendar and the steppers both pass over it."
         />
         <span className="book-toolbar-spacer" />
         {props.noClosingOrderCount > 0 || props.mismatchCount > 0 ? (

@@ -91,13 +91,22 @@ it is not drawn at all where they kept none.
 Account selection uses the stored account and brokerage together; matching account numbers at
 different brokerages remain separate filters.
 
-The **batch range** is `components/DateRangeFilter`, and Performance draws the same control over
-the same list, so a range set on one page means the same set of sessions on the other. Its list
-holds only the dates the loaded chains were filed under — a session where no bot ran has no batch
-and is simply not in it — but its two steppers walk **calendar days**, so a window can be nudged
-onto a day that holds nothing. Both ends move together until one reaches the first or last loaded
-batch; that end then holds while the other keeps moving, and the stepper only goes disabled once
-neither can move.
+The **batch range** is `components/DateRangeFilter`, and Performance draws the same control, so a
+range means the same set of sessions on both pages. The Book opens on the **batch the desk has reached** — every
+scope switched on over one session's work, which is what the page is for and what keeps it quick
+across a year of them. That batch is `sessionBatchDate` of the moment, not today's date: on a
+Saturday it is Monday's session, because Friday's orders written past the close are already filed
+under it. A scheduled order is filed further out still, under the session it is aimed at, and the
+Book does not open there. The control also waits for every read to land before settling, since the
+nine of them return independently and the default is taken once. The canceled toggle starts where switching the never-opened scope on
+would put it, because that scope draws nothing but canceled legs and would otherwise open on a
+row of collapsed stubs.
+
+Because the range is always set, the `filtered` row carries a chip for it only where it is
+narrower than the loaded batches, and that chip names the days it kept. Anything that means to
+widen the range — that chip, the empty-Book reason, the needs-a-human toggle that clears the
+rest — states the widest range outright rather than unsetting it, since an unset range is what
+sends the control back to the newest batch.
 
 The **canceled-status filter** lists every status the loaded canceled orders carry, in the display
 form the status cells print (`By user`, not `CanceledByUser`), so raw wire values that share a

@@ -101,6 +101,68 @@ function renderBook() {
   );
 }
 
+describe('the batch range the Book opens on', () => {
+  /*
+   * Saturday the 22nd. Friday's orders were written past the close, so they are
+   * already filed under Monday the 24th — the session the desk is working, and
+   * the batch the Book has to open on. A sell scheduled for Tuesday sits one
+   * batch further out, under a session nobody has reached.
+   */
+  const SATURDAY = Date.parse('2026-08-22T11:00:00+03:00');
+  const fridayEvening = () =>
+    makeActiveOrder({
+      id: 9,
+      clientOrderId: 'monday-open',
+      chainId: 'monday-open',
+      symbol: 'ASELS',
+      orderTime: Date.parse('2026-08-21T18:30:00+03:00'),
+      sentTime: Date.parse('2026-08-21T18:30:01+03:00'),
+    });
+  const scheduledForTuesday = () =>
+    makeActiveOrder({
+      id: 10,
+      clientOrderId: 'tuesday-open',
+      chainId: 'tuesday-open',
+      symbol: 'KCHOL',
+      status: 'Scheduled',
+      scheduledTime: Date.parse('2026-08-25T10:00:00+03:00'),
+      orderTime: Date.parse('2026-08-21T18:35:00+03:00'),
+      sentTime: null,
+    });
+
+  it('opens on the batch the desk has reached, not on one a schedule reaches past it', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(SATURDAY);
+    book.data = {
+      ...emptyRead(),
+      activeOrders: [fridayEvening(), scheduledForTuesday()],
+    };
+    renderBook();
+
+    expect(screen.getByRole('button', { name: '24.08.26' })).toBeVisible();
+  });
+
+  it('waits for every read before settling, so the first one back cannot pick the day', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(SATURDAY);
+    // The Book's nine reads land independently. Settling on a first snapshot
+    // would let whichever came back first choose the day, and the default is
+    // taken once and never revisited.
+    book.data = { ...emptyRead(), isPending: true, activeOrders: [scheduledForTuesday()] };
+    const view = renderBook();
+    expect(screen.getByRole('button', { name: 'Every batch' })).toBeVisible();
+
+    book.data = { ...emptyRead(), activeOrders: [fridayEvening(), scheduledForTuesday()] };
+    view.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter initialEntries={['/book']}>
+          <BookPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByRole('button', { name: '24.08.26' })).toBeVisible();
+  });
+});
+
 describe('The Book page states', () => {
   it('renders nothing in the content area when there is genuinely no data', () => {
     renderBook();
@@ -116,8 +178,7 @@ describe('The Book page states', () => {
     book.data = { ...emptyRead(), activeOrders: [makeActiveOrder()] };
     renderBook();
 
-    await user.click(document.querySelector('.seg-opt input')!);
-    await user.click(document.querySelectorAll('.seg-opt input')[1]!);
+    for (const scope of document.querySelectorAll('.seg-opt input')) await user.click(scope);
 
     expect(screen.getByText(/Nothing selected/)).toBeVisible();
   });
@@ -164,16 +225,23 @@ describe('The Book page states', () => {
     };
     renderBook();
 
+    // A never-opened chain is all canceled legs: drawing that scope while they
+    // are hidden would leave collapsed stubs, so the toggle follows the scope
+    // in — and the scope is on from the first render.
     const toggle = document.querySelector('.canceled-global')!;
-    expect(toggle).toHaveTextContent(/hidden$/);
+    expect(toggle).toHaveTextContent(/shown/);
 
-    // A never-opened chain is all canceled legs: asking for the scope while
-    // they are hidden would draw collapsed stubs, so the toggle follows it in.
     const neverOpened = screen.getByRole('checkbox', { name: 'Never Opened' });
+    await user.click(neverOpened);
+    await user.click(toggle);
+    expect(toggle).toHaveTextContent(/hidden/);
+
+    // Asking for the scope again brings them back with it.
     await user.click(neverOpened);
     expect(toggle).toHaveTextContent(/shown/);
 
-    // Switching the scope back off is not a reason to hide them again.
+    // Switching the scope back off is not a reason to hide them again: by then
+    // the reader may be reading canceled legs on chains that traded.
     await user.click(neverOpened);
     expect(toggle).toHaveTextContent(/shown/);
   });
@@ -196,13 +264,15 @@ describe('The Book page states', () => {
     };
     renderBook();
 
-    // The never-opened chain is out of scope, so its dead leg is not one of
-    // the rows this toggle would uncover and it is not in the count.
+    // Both dead legs are in scope on load, so both are in the count.
     const toggle = document.querySelector('.canceled-global')!;
-    expect(toggle).toHaveTextContent('1 canceled order hidden');
-
-    await user.click(screen.getByRole('checkbox', { name: 'Never Opened' }));
     expect(toggle).toHaveTextContent('2 canceled orders shown');
+
+    // Dropping the never-opened scope drops its chain, and its leg leaves the
+    // count with it: the toggle counts the rows the filters kept, never the
+    // whole loaded book.
+    await user.click(screen.getByRole('checkbox', { name: 'Never Opened' }));
+    expect(toggle).toHaveTextContent('1 canceled order shown');
   });
 
   it('opens the stored mismatch row verbatim, and says the viewer cannot resolve it', async () => {
@@ -489,16 +559,10 @@ describe('the reason filter', () => {
       .map((chain) => chain.getAttribute('aria-label')?.replace(' chain', '') ?? '')
       .sort();
 
-  const showEveryScope = async (user: ReturnType<typeof userEvent.setup>) => {
-    await user.click(screen.getByRole('checkbox', { name: 'Trades' }));
-    await user.click(screen.getByRole('checkbox', { name: 'Never Opened' }));
-  };
-
   it('narrows to chains with a recorded reason, whichever row carries it', async () => {
     const user = userEvent.setup();
     book.data = fourChains();
     renderBook();
-    await showEveryScope(user);
 
     expect(chainsInGrid()).toEqual(['AKBNK', 'GARAN', 'SISE', 'THYAO']);
 
@@ -514,7 +578,6 @@ describe('the reason filter', () => {
     const user = userEvent.setup();
     book.data = fourChains();
     renderBook();
-    await showEveryScope(user);
 
     await user.click(screen.getByRole('button', { name: 'any reason' }));
     await user.click(screen.getByRole('checkbox', { name: 'filter' }));
@@ -528,7 +591,6 @@ describe('the reason filter', () => {
     const user = userEvent.setup();
     book.data = fourChains();
     renderBook();
-    await showEveryScope(user);
 
     await user.click(screen.getByRole('button', { name: 'any reason' }));
     await user.click(screen.getByRole('checkbox', { name: 'filter' }));
@@ -583,13 +645,11 @@ describe('the source filter', () => {
       .map((chain) => chain.getAttribute('aria-label')?.replace(' chain', '') ?? '')
       .sort();
 
-  it('prints who ended a leg beside its status', async () => {
-    const user = userEvent.setup();
+  it('prints who ended a leg beside its status', () => {
     book.data = fourChains();
     renderBook();
 
-    await user.click(screen.getByRole('button', { name: /canceled orders? hidden/ }));
-
+    // The canceled legs are drawn from the first render, with the scope.
     expect(screen.getByText(/By user · User/)).toBeVisible();
   });
 

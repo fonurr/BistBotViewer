@@ -12,7 +12,7 @@ import { priceApi } from '../../priceApi/client';
 import { Modal } from '../../components/Modal';
 import { ResultList, type ActionResult } from '../../components/ResultList';
 import { accountIdentityKey } from '../../domain/accounts';
-import { holidayCalendar, previousTradingDate } from '../../domain/calendar';
+import { holidayCalendar, previousTradingDate, sessionBatchDate } from '../../domain/calendar';
 import { buildBookChains, rowReasons, type BookChain, type BookScope } from '../../domain/chains';
 import {
   formatDate,
@@ -36,6 +36,7 @@ import { displayStatus } from '../../domain/status';
 import { BookFilters } from './BookFilters';
 import { BookGrid, summarizeBookToday } from './BookGrid';
 import { OrderDialog, type OrderDialogAction } from './OrderDialog';
+import { rangeLabel } from '../../components/DateRangeFilter';
 import { defaultBookFilters, type BookFilterState } from './types';
 import './book.css';
 
@@ -56,7 +57,10 @@ export function BookPage() {
   const runtime = useViewerRuntime();
   const [searchParams, setSearchParams] = useSearchParams();
   const [filters, setFilters] = useState<BookFilterState>(defaultBookFilters);
-  const [showCanceled, setShowCanceled] = useState(false);
+  // The never-opened scope is on by default, and it draws nothing but canceled
+  // legs — so the toggle starts where switching that scope on would put it,
+  // rather than opening the Book on a row of collapsed stubs.
+  const [showCanceled, setShowCanceled] = useState(defaultBookFilters.scopes.has('canceled'));
   const [canceledOverrides, setCanceledOverrides] = useState<ReadonlySet<string>>(new Set());
   const [openChain, setOpenChain] = useState<OpenChainState | null>(null);
   const [mismatchOpen, setMismatchOpen] = useState(false);
@@ -73,6 +77,13 @@ export function BookPage() {
         holidays: data.holidays,
       }),
     [data.activeOrders, data.canceledOrders, data.closedTrades, data.holidays, data.positions],
+  );
+  // Every batch the loaded chains were filed under, which is the whole universe
+  // the range control offers and the span its chip is measured against.
+  const batchDates = useMemo(
+    () =>
+      [...new Set(chains.flatMap((chain) => (chain.batchDate ? [chain.batchDate] : [])))].sort(),
+    [chains],
   );
   const botById = useMemo(() => new Map(data.bots.map((bot) => [bot.id, bot])), [data.bots]);
   const symbolsNeedingPrices = useMemo(
@@ -206,7 +217,11 @@ export function BookPage() {
       ),
     [closingBars, priceFeed.prices, priceFeed.trustworthy, todayCalendarDate, visibleChains],
   );
-  const chips = filterChips(filters, data.bots.length, data.accounts.length);
+  // The batch this moment belongs to: on a Saturday, Monday's session, because
+  // Friday's evening orders are already filed under it.
+  const currentSession =
+    sessionBatchDate(Date.now(), calendar) ?? batchDates.at(-1) ?? todayCalendarDate;
+  const chips = filterChips(filters, data.bots.length, data.accounts.length, batchDates);
   const genuineEmpty = chains.length === 0 && data.pendingRequests.length === 0;
   const filteredEmpty = !genuineEmpty && visibleChains.length === 0 && visiblePending.length === 0;
   const emptyCulprits = useMemo(
@@ -314,9 +329,18 @@ export function BookPage() {
       <BookFilters
         filters={filters}
         onChange={applyFilters}
+        onSettleDates={(range) =>
+          /* Settling on the default is not an edit: routed through applyFilters
+             it would drop the `?bot=` deep link the page had just been opened
+             with, and clear the no-exit toggle with it. */
+          setFilters((current) => ({ ...current, batchFrom: range.from, batchTo: range.to }))
+        }
         bots={data.bots}
         accounts={data.accounts}
         chains={chains}
+        batchDates={batchDates}
+        batchesLoaded={!data.isPending}
+        currentSession={currentSession}
         noClosingOrderCount={noClosingOrderCount}
         mismatchCount={mismatchRows.length}
         canceledCount={visibleCanceledCount}
@@ -621,12 +645,24 @@ export function narrowingsThatEmptiedTheBook(
       clear: (current) => ({ ...current, sourceFilter: false, sources: null }),
     });
   }
-  if (filters.batchFrom !== null || filters.batchTo !== null) {
+  const loadedBatches = [
+    ...new Set(chains.flatMap((chain) => (chain.batchDate ? [chain.batchDate] : []))),
+  ].sort();
+  if (
+    (filters.batchFrom !== null && filters.batchFrom !== loadedBatches[0]) ||
+    (filters.batchTo !== null && filters.batchTo !== loadedBatches.at(-1))
+  ) {
     candidates.push({
       key: 'dates',
       phrase: 'the batch range',
       sentence: 'No chain opened inside the selected batch range.',
-      clear: (current) => ({ ...current, batchFrom: null, batchTo: null }),
+      // The widest range, not an unset one: unset sends the control back to its
+      // default, which is the very narrowing this offers to undo.
+      clear: (current) => ({
+        ...current,
+        batchFrom: loadedBatches[0] ?? null,
+        batchTo: loadedBatches.at(-1) ?? null,
+      }),
     });
   }
 
@@ -1327,7 +1363,12 @@ function noExitSentence(chains: readonly BookChain[]): string {
   return `${heldPart}, and ${waitingPart}`;
 }
 
-function filterChips(filters: BookFilterState, botCount: number, accountCount: number) {
+function filterChips(
+  filters: BookFilterState,
+  botCount: number,
+  accountCount: number,
+  batchDates: readonly string[],
+) {
   const chips: Array<{
     key: string;
     label: string;
@@ -1394,11 +1435,19 @@ function filterChips(filters: BookFilterState, botCount: number, accountCount: n
         filters.sources === null ? 'with a named source' : plural(filters.sources.size, 'source'),
       clear: (current) => ({ ...current, sourceFilter: false, sources: null }),
     });
-  if (filters.batchFrom || filters.batchTo)
+  // The range is always set — one batch is the default — so the chip appears
+  // only where it is narrower than the loaded batches, and names the days it
+  // kept rather than the fact that a range exists.
+  const earliestBatch = batchDates[0] ?? null;
+  const latestBatch = batchDates.at(-1) ?? null;
+  if (
+    (filters.batchFrom !== null && filters.batchFrom !== earliestBatch) ||
+    (filters.batchTo !== null && filters.batchTo !== latestBatch)
+  )
     chips.push({
       key: 'dates',
-      label: 'batch range',
-      clear: (current) => ({ ...current, batchFrom: null, batchTo: null }),
+      label: rangeLabel({ from: filters.batchFrom, to: filters.batchTo }),
+      clear: (current) => ({ ...current, batchFrom: earliestBatch, batchTo: latestBatch }),
     });
   return chips;
 }

@@ -29,14 +29,27 @@ components; shared components never import a page.
   do not name cannot be filtered to, and a typed one would silently return nothing. Toggling a
   symbol (by click or Enter) clears the search box so the next one starts fresh.
 - `DateRangeFilter` is the one batch-range control, built on `FilterPopover` and shared by the
-  Book and Performance so a range means the same thing on both. `null` at either end is open —
-  the earliest batch loaded, or the latest — and the trigger reads `Every batch` while both are.
+  Book and Performance so a range means the same thing on both. **Every date it can reach is a
+  batch date**: the steppers walk the loaded list and the calendar disables every day no batch was
+  filed under, so a window over a day nothing was filed in cannot be asked for. `null` at either
+  end is not a range but the state before the first read; the control resolves it to its
+  `defaultRange` as soon as a batch exists — `latest` for the Book, whose subject is a day's work,
+  and `all` for Performance, where a report over one day is not a report. A page that clears the
+  filter back to `null` therefore gets that default back, so a control meaning to widen a range
+  must state the widest one outright.
   Its whole-set shortcuts sit on the same row `MultiSelectFilter` gives `all` and `none`:
-  `latest`, `last 5`, `all`. A stepper sits either side of the trigger and walks the window **one
-  calendar day**, not one batch, so a day no bot ran is a day the window can land on. An end
-  already against the loaded bounds stays put while the other end moves, which shortens the window
-  against the edge rather than refusing the step; only when neither end can move does `shiftRange`
-  return `null` and the stepper go disabled.
+  `latest`, `last 5`, `all`. `all` is a range like any other and names its days rather than
+  reading as unset. `latest` is the newest batch **the desk has reached** — `currentSession`,
+  which is `sessionBatchDate` of this moment and not today's calendar day: on a Saturday it is
+  Monday's session, because Friday's evening orders are already filed under it. A scheduled order
+  reaches further still, being filed under whichever session it is aimed at, and `latest` stops
+  short of that; `all`, the steppers and the calendar all still go on, because those are real
+  batches. Settling waits on `ready`: a page's reads land one at a time, the default is taken once
+  and never revisited, so a first snapshot must not get to choose the day. Five steppers surround the trigger — `‹` and `›` walk the whole window, and
+  the `+ / −` pair on each side moves that side's edge alone. None of them shortens the window
+  against a bound: a step that cannot be taken whole is refused, and `stepRange` returning `null`
+  is what disables the button that asked. The trigger is a fixed width and names one batch as one
+  date, so a range collapsing does not resize the toolbar under the hand that collapsed it.
 - `useMinuteClock` ticks relative copy — a scheduled countdown, how early a `fire now` goes —
   on the minute boundary, because a quiet snapshot does not re-render on its own.
 

@@ -502,22 +502,122 @@ a:hover {
   color: var(--color-accent-300);
 }
 
-/* The batch range and its two steppers are one control, so the arrows sit
-   tight against the trigger rather than taking the toolbar's own gap. */
+/* The batch range and its five steppers are one control, so they wear the
+   trigger's own frame and sit tight against it rather than taking the
+   toolbar's gap. */
 .date-range {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1);
+}
+
+.date-range .input {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.date-range .input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.date-range .input:disabled:hover {
+  border-color: var(--color-divider);
 }
 
 .date-step {
-  width: 24px;
+  width: 22px;
   min-height: 32px;
   height: 32px;
   padding: 0;
 }
 
-.date-fields,
+/* The pair that moves one edge alone: later above earlier, stacked to the
+   height of the one trigger they both act on. */
+.date-nudge {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.date-nudge .input {
+  width: 20px;
+  min-height: 15px;
+  height: 15px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+}
+
+/* Fixed, so a range collapsing to one date does not resize the toolbar under
+   the hand that collapsed it. */
+.date-range .filter-trigger {
+  width: 172px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.batch-calendar {
+  margin-top: var(--space-4);
+}
+
+.batch-calendar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: var(--space-2);
+  font-size: var(--font-small);
+}
+
+.batch-calendar-head .btn {
+  padding: 2px 4px;
+}
+
+.batch-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.batch-weekday {
+  padding-bottom: var(--space-1);
+  color: var(--mut);
+  font-size: var(--font-kicker);
+  text-align: center;
+}
+
+.batch-day {
+  min-height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  font-size: var(--font-meta);
+  cursor: pointer;
+}
+
+/* A day no batch was filed under is not a choice, so it reads as background
+   rather than as an option that refused. */
+.batch-day:disabled {
+  color: color-mix(in srgb, var(--color-text) 26%, transparent);
+  cursor: default;
+}
+
+.batch-day:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--color-text) 45%, transparent);
+}
+
+.batch-day.is-inside {
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+}
+
+.batch-day.is-edge {
+  background: color-mix(in srgb, var(--color-accent) 28%, transparent);
+  color: var(--color-accent-200);
+}
+
 .form-fields,
 .guard-fields,
 .schedule-fields {
@@ -526,11 +626,6 @@ a:hover {
   gap: var(--space-3);
 }
 
-.date-fields {
-  margin-top: var(--space-4);
-}
-
-.date-fields .field,
 .form-fields .field,
 .guard-fields .field,
 .schedule-fields .field {
@@ -538,7 +633,6 @@ a:hover {
   font-size: var(--font-small);
 }
 
-.date-fields .input,
 .form-fields .input,
 .guard-fields .input,
 .schedule-fields .input {
