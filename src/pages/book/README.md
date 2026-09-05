@@ -150,8 +150,8 @@ form; a value that names the default it came from (`lowerLimit: floor`) prints v
 default's number says nothing without its name, and a value of a shape the contract does not
 describe is left out rather than guessed at.
 
-**`source` sits beside the status, not in that line at all** — `By user · User`, joined on the same
-middle dot and drawn in the status's own hue by `RowVerdict`, because who ended an order is the
+**`source` sits beside the status, not in that line at all** — `By user by User`, joined with "by"
+and drawn in the status's own hue by `RowVerdict`, because who ended an order is the
 other half of the verdict rather than a qualifier of it. Only a stored death names one: nothing says
 who is behind a live order, and a row without one simply shows its status. The contract calls the
 field `source`; on a Book row that name is already the row's origin table, so the row carries it as

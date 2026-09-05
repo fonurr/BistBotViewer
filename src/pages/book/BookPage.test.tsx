@@ -650,7 +650,7 @@ describe('the source filter', () => {
     renderBook();
 
     // The canceled legs are drawn from the first render, with the scope.
-    expect(screen.getByText(/By user · User/)).toBeVisible();
+    expect(screen.getByText(/By user by User/)).toBeVisible();
   });
 
   it('narrows to chains that lost a leg to a ticked hand', async () => {
