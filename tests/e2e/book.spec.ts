@@ -24,13 +24,14 @@ test.describe('The Book safety smoke', () => {
     await expect(page.getByRole('heading', { name: 'The Book' })).toBeVisible();
 
     const headers = page.getByRole('columnheader');
-    await expect(headers).toHaveCount(13);
+    await expect(headers).toHaveCount(14);
     await expect(headers).toHaveText([
       '',
       'symbol',
       'qty',
       'side / type',
       'order',
+      'market',
       'fill',
       'slip',
       'p&l',
@@ -59,8 +60,8 @@ test.describe('The Book safety smoke', () => {
     expect(layout).toMatchObject({
       columnDisplay: 'grid',
       dataDisplay: 'grid',
-      htmlMinWidth: '1180px',
-      rowCellCount: 13,
+      htmlMinWidth: '1250px',
+      rowCellCount: 14,
       viewportWidth: 900,
     });
     expect(layout.columnTemplate).toBe(layout.dataTemplate);

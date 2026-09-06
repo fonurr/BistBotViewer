@@ -93,6 +93,56 @@ describe('BookGrid row vocabulary', () => {
     expect(cells.filter((text) => text === '').length).toBeGreaterThanOrEqual(3);
   });
 
+  it('draws the market the order was decided against between order and fill', () => {
+    renderGrid();
+
+    const headings = [...document.querySelectorAll('.book-columns [role="columnheader"]')].map(
+      (cell) => cell.textContent,
+    );
+    expect(headings.slice(4, 7)).toEqual(['order', 'market', 'fill']);
+
+    const market = document.querySelector('.book-row .book-market-price')!;
+    expect(market.textContent).toBe('68,10');
+    // An observation, drawn like the asked price beside it and never like the fill.
+    expect(market).not.toHaveClass('book-fill-price');
+  });
+
+  it('leaves the market cell empty on a scheduled row, which decided nothing yet', () => {
+    renderGrid(
+      {},
+      {
+        activeOrders: [
+          makeActiveOrder({
+            status: 'Scheduled',
+            matriksOrderId: null,
+            orderTime: null,
+            sentTime: null,
+            marketPrice: null,
+            scheduledTime: Date.now() + 3_600_000,
+            whenType: 'BeforeClose',
+          }),
+        ],
+        canceledOrders: [],
+        positions: [],
+        closedTrades: [],
+      },
+    );
+
+    expect(document.querySelector('.book-row .book-market-price')!.textContent).toBe('');
+  });
+
+  it('splits a round trip"s market price per side, because it is two decisions', () => {
+    renderGrid(
+      {},
+      { activeOrders: [], canceledOrders: [], positions: [], closedTrades: [makeClosedTrade()] },
+    );
+
+    const markets = [...document.querySelectorAll('.book-row .book-market-price')].map(
+      (cell) => cell.textContent,
+    );
+    expect(markets).toEqual(['299,50', '306,40']);
+  });
+
   it('carries both facts on a cancel in flight and disables its actions with a reason', () => {
     renderGrid(
       {},

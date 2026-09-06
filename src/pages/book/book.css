@@ -403,7 +403,8 @@
  * what it asked for steps back into muted. `captured-value` still adds its
  * italic over this for a market order's price.
  */
-.book-order-price {
+.book-order-price,
+.book-market-price {
   color: var(--mut);
 }
 

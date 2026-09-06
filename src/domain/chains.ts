@@ -32,6 +32,14 @@ interface BookChainRowBase {
   readonly intentType: OrderType | null;
   readonly orderPrice: number | null;
   readonly averagePrice: number | null;
+  /**
+   * What the stock was trading at in the instant the server decided to place
+   * the order — an observation of the market the order price was chosen
+   * against, written once at the order's birth and never revised. `null`
+   * wherever the server had no price to stand behind, on a scheduled row
+   * (nothing decided yet) and on rows written before the field existed.
+   */
+  readonly marketPrice: number | null;
   readonly orderTime: number | null;
   readonly acknowledgementTime: number | null;
   readonly scheduledTime: number | null;
@@ -444,6 +452,7 @@ function normalizeActiveOrder(order: ActiveOrder): BookActiveOrderRow {
     intentType: order.intentType,
     orderPrice: order.orderPrice,
     averagePrice: order.filledQuantity > 0 ? order.averagePrice : null,
+    marketPrice: order.marketPrice ?? null,
     orderTime: order.orderTime,
     acknowledgementTime: null,
     scheduledTime: order.scheduledTime ?? null,
@@ -478,6 +487,7 @@ function normalizeCanceledOrder(order: CanceledOrder): BookCanceledOrderRow {
     intentType: order.intentType,
     orderPrice: order.orderPrice,
     averagePrice: null,
+    marketPrice: order.marketPrice ?? null,
     orderTime: order.orderTime,
     acknowledgementTime: order.cancelTime,
     scheduledTime: null,
@@ -513,6 +523,7 @@ function normalizePosition(position: Position): BookPositionRow {
     intentType: null,
     orderPrice: position.orderPrice,
     averagePrice: position.averagePrice,
+    marketPrice: position.marketPrice ?? null,
     orderTime: position.orderTime,
     acknowledgementTime: position.executeTime,
     scheduledTime: null,
@@ -554,6 +565,7 @@ function normalizeClosedTrade(trade: ClosedTrade): [BookClosedTradeRow, BookClos
       direction: 'buy',
       orderPrice: trade.openOrderPrice,
       averagePrice: trade.averageOpenPrice,
+      marketPrice: trade.openMarketPrice ?? null,
       orderTime: trade.openOrderTime,
       acknowledgementTime: trade.openExecuteTime,
       status: 'Closed',
@@ -572,6 +584,7 @@ function normalizeClosedTrade(trade: ClosedTrade): [BookClosedTradeRow, BookClos
       direction: 'sell',
       orderPrice: trade.closeOrderPrice,
       averagePrice: trade.averageClosePrice,
+      marketPrice: trade.closeMarketPrice ?? null,
       orderTime: trade.closeOrderTime,
       acknowledgementTime: trade.closeExecuteTime,
       status: 'Closed',

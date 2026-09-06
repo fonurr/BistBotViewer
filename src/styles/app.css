@@ -1,10 +1,10 @@
 html {
-  min-width: 1180px;
+  min-width: 1250px;
   background: var(--color-bg);
 }
 
 body {
-  min-width: 1180px;
+  min-width: 1250px;
   min-height: 100vh;
   margin: 0;
   overflow-x: auto;
@@ -14,7 +14,7 @@ body {
 }
 
 .page-pad {
-  min-width: 1180px;
+  min-width: 1250px;
   padding: var(--space-8) var(--space-8) 60px;
 }
 

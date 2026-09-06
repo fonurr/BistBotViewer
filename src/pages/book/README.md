@@ -50,7 +50,16 @@ symbol, and there they are given in full rather than abbreviated to a tail. The
 **The asked price is gray and the fill is not**: `order` is only the setting a row was sent
 with, while `fill` is the figure the `slip` and `p&l` beside it are both read off, so the fill
 column keeps the row's ink and weight and the order column steps back into muted (a market
-order's captured price keeps its italic over that). The
+order's captured price keeps its italic over that). Between them, `market` is the server's
+`marketPrice` — what the stock was trading at in the instant the order was decided, the number
+`order` was chosen against. It is an **observation**, not an intent and not a fill, so it is drawn
+in the order column's muted ink rather than the fill's; it is written once at the order's birth and
+never revised (an edit leaves it alone), and it is carried unchanged onto whatever the order
+becomes, which is why a position and a closed leg show one too — a round trip splits it per side
+(`openMarketPrice`/`closeMarketPrice`). The cell stays **empty** wherever the server had no price to
+stand behind: a scheduled row (nothing decided yet), a symbol its price producer was down for or
+does not track, an order placed outside this server, and every row written before the field
+existed. Nothing older is substituted for it. The
 status cell states its qualifier **inline** in muted ink after a middle dot — `New · resting 22m
 · 40 of 150 filled`, `Position · held 3d 2h`, `By user · canceled in the MatriksIQ terminal`. On a
 canceled row that qualifier is the server's own `reason` first, then the verbatim wire

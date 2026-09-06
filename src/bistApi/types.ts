@@ -216,6 +216,15 @@ export const activeOrderSchema = z
     type: orderTypeSchema,
     orderPrice: z.number().nullable(),
     averagePrice: z.number(),
+    /**
+     * What the stock was trading at in the instant the server decided to place
+     * this order — an observation, never an intent and never a fill. Written
+     * once at the order's birth and carried unchanged onto whatever the order
+     * becomes. `null` where there was no price to stand behind, and on every
+     * scheduled row (nothing has been decided yet). Optional because a server
+     * that predates the column omits it, and that must not fail a Book read.
+     */
+    marketPrice: z.number().nullable().optional(),
     timeInForce: z.string(),
     status: orderStatusSchema,
     cancelSource: z.enum(['bot', 'server', 'user']).nullable(),
@@ -258,6 +267,8 @@ export const canceledOrderSchema = z
     direction: directionSchema,
     type: orderTypeSchema,
     orderPrice: z.number().nullable(),
+    /** The market the dead order was decided against, carried from its row. */
+    marketPrice: z.number().nullable().optional(),
     timeInForce: z.string(),
     status: orderStatusSchema,
     explanation: z.string().nullable(),
@@ -295,6 +306,8 @@ export const positionSchema = z
     quantity: z.number().int(),
     averagePrice: z.number(),
     orderPrice: z.number(),
+    /** The market the opening buy was decided against; it never moves. */
+    marketPrice: z.number().nullable().optional(),
     closePrice: storedPriceRuleSchema,
     chainId: z.string().nullable(),
     retryOfClientOrderId: z.string().nullable(),
@@ -326,6 +339,13 @@ export const closedTradeSchema = z
     averageClosePrice: z.number(),
     openOrderPrice: z.number(),
     closeOrderPrice: z.number().nullable(),
+    /**
+     * The market each side was decided against, split per side because a round
+     * trip is two decisions taken at two prices. `closeMarketPrice` is null for
+     * a sale made outside this server.
+     */
+    openMarketPrice: z.number().nullable().optional(),
+    closeMarketPrice: z.number().nullable().optional(),
     chainId: z.string().nullable(),
     openRetryOfClientOrderId: z.string().nullable(),
     closeRetryOfClientOrderId: z.string().nullable(),

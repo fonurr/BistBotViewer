@@ -1052,6 +1052,11 @@ function PendingBaskets({
                   <div className="align-right">
                     {stock.price === undefined ? '' : formatNumber(stock.price)}
                   </div>
+                  {/* market, fill, slip, p&l, today, ord time, ack time: a queued
+                      stock has none of them yet, and each keeps its own cell so
+                      the row stays on the Book's column grid. */}
+                  <div />
+                  <div />
                   <div />
                   <div />
                   <div />

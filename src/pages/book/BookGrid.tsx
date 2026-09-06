@@ -69,6 +69,7 @@ const columnLabels = [
   'qty',
   'side / type',
   'order',
+  'market',
   'fill',
   'slip',
   'p&l',
@@ -164,7 +165,7 @@ export function BookGrid(props: BookGridProps) {
                     <div
                       key={`${label}:${index}`}
                       role="columnheader"
-                      className={(index >= 4 && index <= 8) || index === 12 ? 'align-right' : ''}
+                      className={(index >= 4 && index <= 9) || index === 13 ? 'align-right' : ''}
                     >
                       {label}
                     </div>
@@ -477,6 +478,16 @@ const BookRow = memo(function BookRow({
       >
         {row.orderPrice === null ? '' : formatNumber(row.orderPrice)}
       </div>
+      {/*
+       * The market the order was decided against: an observation of the tape
+       * at the instant the server chose `orderPrice`, never an intent and never
+       * a fill, so it is drawn like the asked price beside it rather than like
+       * the fill. It is written once and never revised, and stays empty
+       * wherever the server had no price to stand behind.
+       */}
+      <div role="cell" className="align-right book-market-price">
+        {row.marketPrice === null ? '' : formatNumber(row.marketPrice)}
+      </div>
       <div role="cell" className="align-right book-fill-price">
         {row.averagePrice === null ? '' : formatNumber(row.averagePrice)}
       </div>
@@ -584,6 +595,7 @@ function rowFlashSignature(row: BookChainRow): string {
     row.filledQuantity,
     row.canceledQuantity,
     row.orderPrice,
+    row.marketPrice,
     row.averagePrice,
     row.scheduledTime,
     row.cancelInFlight,
