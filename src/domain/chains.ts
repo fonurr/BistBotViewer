@@ -41,7 +41,7 @@ interface BookChainRowBase {
    */
   readonly marketPrice: number | null;
   readonly orderTime: number | null;
-  readonly acknowledgementTime: number | null;
+  readonly finalSeenTime: number | null;
   readonly scheduledTime: number | null;
   readonly status: BookRowStatus;
   readonly isWaiting: boolean;
@@ -454,7 +454,7 @@ function normalizeActiveOrder(order: ActiveOrder): BookActiveOrderRow {
     averagePrice: order.filledQuantity > 0 ? order.averagePrice : null,
     marketPrice: order.marketPrice ?? null,
     orderTime: order.orderTime,
-    acknowledgementTime: null,
+    finalSeenTime: null,
     scheduledTime: order.scheduledTime ?? null,
     status: order.status,
     isWaiting: isWaitingOrderStatus(order.status),
@@ -489,7 +489,7 @@ function normalizeCanceledOrder(order: CanceledOrder): BookCanceledOrderRow {
     averagePrice: null,
     marketPrice: order.marketPrice ?? null,
     orderTime: order.orderTime,
-    acknowledgementTime: order.cancelTime,
+    finalSeenTime: order.finalSeenTime,
     scheduledTime: null,
     status: order.status,
     isWaiting: false,
@@ -525,7 +525,7 @@ function normalizePosition(position: Position): BookPositionRow {
     averagePrice: position.averagePrice,
     marketPrice: position.marketPrice ?? null,
     orderTime: position.orderTime,
-    acknowledgementTime: position.executeTime,
+    finalSeenTime: position.finalSeenTime,
     scheduledTime: null,
     status: 'Position',
     isWaiting: false,
@@ -567,7 +567,7 @@ function normalizeClosedTrade(trade: ClosedTrade): [BookClosedTradeRow, BookClos
       averagePrice: trade.averageOpenPrice,
       marketPrice: trade.openMarketPrice ?? null,
       orderTime: trade.openOrderTime,
-      acknowledgementTime: trade.openExecuteTime,
+      finalSeenTime: trade.openFinalSeenTime,
       status: 'Closed',
       // The opening buy's own reason is not carried on a round trip; only the
       // sell's is. An invented one would be worse than the blank.
@@ -586,7 +586,7 @@ function normalizeClosedTrade(trade: ClosedTrade): [BookClosedTradeRow, BookClos
       averagePrice: trade.averageClosePrice,
       marketPrice: trade.closeMarketPrice ?? null,
       orderTime: trade.closeOrderTime,
-      acknowledgementTime: trade.closeExecuteTime,
+      finalSeenTime: trade.closeFinalSeenTime,
       status: 'Closed',
       reason: reasonKey(trade.closeReason),
       reasonData: trade.closeReasonData ?? null,
@@ -702,13 +702,13 @@ function openingTimestamp(row: BookChainRow): number | null {
     return firstTimestamp(row.orderTime, row.raw.sentTime);
   }
   if (row.source === 'canceled') {
-    return firstTimestamp(row.orderTime, row.raw.sentTime, row.acknowledgementTime);
+    return firstTimestamp(row.orderTime, row.raw.sentTime, row.finalSeenTime);
   }
-  return firstTimestamp(row.orderTime, row.acknowledgementTime);
+  return firstTimestamp(row.orderTime, row.finalSeenTime);
 }
 
 function rowTimestamp(row: BookChainRow): number | null {
-  return firstTimestamp(row.orderTime, row.scheduledTime, row.acknowledgementTime);
+  return firstTimestamp(row.orderTime, row.scheduledTime, row.finalSeenTime);
 }
 
 function compareRows(left: BookChainRow, right: BookChainRow): number {

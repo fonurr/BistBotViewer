@@ -21,9 +21,9 @@ function trade(overrides: Partial<ClosedTrade> = {}): ClosedTrade {
     positionId: 'position-1',
     symbol: 'THYAO',
     openOrderTime: at('2026-08-20T07:00:00.000Z'),
-    openExecuteTime: at('2026-08-20T07:01:00.000Z'),
+    openFinalSeenTime: at('2026-08-20T07:01:00.000Z'),
     closeOrderTime: at('2026-08-24T12:00:00.000Z'),
-    closeExecuteTime: at('2026-08-24T12:01:00.000Z'),
+    closeFinalSeenTime: at('2026-08-24T12:01:00.000Z'),
     quantity: 10,
     averageOpenPrice: 100,
     averageClosePrice: 110,
@@ -64,12 +64,12 @@ describe('buildPerformanceReport', () => {
     const istanbulNextDay = trade({
       id: 1,
       openOrderTime: at('2026-08-24T21:30:00.000Z'),
-      closeExecuteTime: at('2026-08-25T11:00:00.000Z'),
+      closeFinalSeenTime: at('2026-08-25T11:00:00.000Z'),
     });
     const firstWindowDay = trade({
       id: 2,
       openOrderTime: at('2026-05-28T08:00:00.000Z'),
-      openExecuteTime: at('2026-05-28T08:01:00.000Z'),
+      openFinalSeenTime: at('2026-05-28T08:01:00.000Z'),
       averageClosePrice: 105,
     });
     const tooOld = trade({
@@ -78,10 +78,10 @@ describe('buildPerformanceReport', () => {
     });
     const future = trade({
       id: 4,
-      closeExecuteTime: at('2026-08-25T13:00:00.000Z'),
+      closeFinalSeenTime: at('2026-08-25T13:00:00.000Z'),
     });
-    const missingDate = trade({ id: 5, closeExecuteTime: null });
-    const missingOpeningStamp = trade({ id: 6, openOrderTime: null, openExecuteTime: null });
+    const missingDate = trade({ id: 5, closeFinalSeenTime: null });
+    const missingOpeningStamp = trade({ id: 6, openOrderTime: null, openFinalSeenTime: null });
     // Written on a Saturday, so its batch is the Monday it could first reach.
     const weekendOpening = trade({
       id: 7,
@@ -121,7 +121,7 @@ describe('buildPerformanceReport', () => {
     ]);
     expect(result.exclusions).toMatchObject({
       missingOpeningStampCount: 1,
-      missingCloseAcknowledgementCount: 1,
+      missingCloseFinalSeenCount: 1,
       beforeWindowCount: 1,
       futureCount: 1,
       openedAfterHoursCount: 2,
@@ -280,16 +280,16 @@ describe('buildPerformanceReport', () => {
     });
   });
 
-  it('holds a round trip between its two acknowledgement stamps, never a latency', () => {
+  it('holds a round trip between its two final-seen stamps, never a latency', () => {
     const result = report({
       trades: [
         trade({ id: 1 }),
         trade({
           id: 2,
-          openExecuteTime: at('2026-08-24T09:00:00.000Z'),
-          closeExecuteTime: at('2026-08-24T11:00:00.000Z'),
+          openFinalSeenTime: at('2026-08-24T09:00:00.000Z'),
+          closeFinalSeenTime: at('2026-08-24T11:00:00.000Z'),
         }),
-        trade({ id: 3, openExecuteTime: null }),
+        trade({ id: 3, openFinalSeenTime: null }),
       ],
     });
 
@@ -401,13 +401,13 @@ describe('buildPerformanceReport', () => {
         trade({
           id: 1,
           openOrderTime: at('2026-08-24T10:00:00.000Z'),
-          closeExecuteTime: at('2026-08-25T11:00:00.000Z'),
+          closeFinalSeenTime: at('2026-08-25T11:00:00.000Z'),
         }),
         // Written inside the half day's own session.
         trade({
           id: 2,
           openOrderTime: at('2026-08-25T06:30:00.000Z'),
-          closeExecuteTime: at('2026-08-25T11:00:00.000Z'),
+          closeFinalSeenTime: at('2026-08-25T11:00:00.000Z'),
         }),
       ],
     });

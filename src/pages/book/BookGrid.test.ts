@@ -177,7 +177,7 @@ describe('Book row today figure', () => {
           averageOpenPrice: 300,
           averageClosePrice: 306,
           openOrderTime: earlier,
-          openExecuteTime: earlier + 2_000,
+          openFinalSeenTime: earlier + 2_000,
         }),
       ],
     });
@@ -256,7 +256,7 @@ describe('summarizeBookToday', () => {
       quantity: 100,
       averagePrice: 280,
       orderTime: Date.parse('2026-08-18T07:00:00.000Z'),
-      executeTime: Date.parse('2026-08-18T07:00:02.000Z'),
+      finalSeenTime: Date.parse('2026-08-18T07:00:02.000Z'),
     });
     const chains = buildBookChains({
       activeOrders: [],
@@ -295,7 +295,7 @@ describe('summarizeBookToday', () => {
       quantity: 100,
       averagePrice: 280,
       orderTime: Date.parse('2026-08-18T07:00:00.000Z'),
-      executeTime: Date.parse('2026-08-18T07:00:02.000Z'),
+      finalSeenTime: Date.parse('2026-08-18T07:00:02.000Z'),
     });
     const chains = buildBookChains({
       activeOrders: [],

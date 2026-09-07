@@ -75,7 +75,7 @@ const columnLabels = [
   'p&l',
   'today',
   'ord time',
-  'ack time',
+  'final',
   'status',
   'act',
 ];
@@ -529,7 +529,7 @@ const BookRow = memo(function BookRow({
         <RowTime timestamp={orderTime} batchDate={batchDate} />
       </div>
       <div role="cell" className="muted book-time">
-        <RowTime timestamp={row.acknowledgementTime} batchDate={batchDate} />
+        <RowTime timestamp={row.finalSeenTime} batchDate={batchDate} />
       </div>
       <div
         role="cell"
@@ -599,7 +599,7 @@ function rowFlashSignature(row: BookChainRow): string {
     row.averagePrice,
     row.scheduledTime,
     row.cancelInFlight,
-    row.acknowledgementTime,
+    row.finalSeenTime,
   ].join('|');
 }
 
@@ -762,7 +762,7 @@ export function bookRowTodayFigure(
   }
 
   if (row.source === 'closed-trade' && row.leg === 'close') {
-    const closeDay = toIstanbulDate(row.raw.closeExecuteTime ?? row.raw.closeOrderTime);
+    const closeDay = toIstanbulDate(row.raw.closeFinalSeenTime ?? row.raw.closeOrderTime);
     if (closeDay === null || closeDay !== context.todayCalendarDate) return null;
     const basisPrice = openedToday ? row.raw.averageOpenPrice : context.prevClose;
     if (basisPrice === null) return withheld;

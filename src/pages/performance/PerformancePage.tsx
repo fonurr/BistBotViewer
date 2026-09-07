@@ -162,7 +162,10 @@ export function PerformancePage() {
       [
         ...new Set(
           scopedTrades.flatMap((trade) => {
-            const batch = sessionBatchDate(trade.openOrderTime ?? trade.openExecuteTime, calendar);
+            const batch = sessionBatchDate(
+              trade.openOrderTime ?? trade.openFinalSeenTime,
+              calendar,
+            );
             return batch === null ? [] : [batch];
           }),
         ),
@@ -463,7 +466,7 @@ export function scopeCanceledRetries(
     // the chain it belongs to, so a window holds an evening rejection and the trade its
     // ladder finally opened together.
     const batch = sessionBatchDate(
-      order.orderTime ?? order.sentTime ?? order.cancelTime,
+      order.orderTime ?? order.sentTime ?? order.finalSeenTime,
       options.calendar,
     );
     if (batch === null) {
@@ -567,7 +570,7 @@ function PerformanceStrip({ summary }: { summary: PerformanceAggregate }) {
         : 'not available',
       sub: summary.medianHoldDurationMs.available
         ? `median ${formatCompactDuration(summary.medianHoldDurationMs.value)}`
-        : 'no pair of acknowledgement stamps',
+        : 'no pair of final-seen stamps',
       tone: summary.averageHoldDurationMs.available ? undefined : 'status-warn',
       subTone: summary.medianHoldDurationMs.available ? 'muted' : 'status-warn',
     },
@@ -1236,9 +1239,9 @@ function Limitations({
           it and not the closes that landed there. {report.exclusions.openedAfterHoursCount} were
           written past their own session and count in the next one.{' '}
           {plural(report.exclusions.missingOpeningStampCount, 'row')} carried no opening stamp and{' '}
-          {plural(report.exclusions.missingCloseAcknowledgementCount, 'row')} no close
-          acknowledgement; neither can be placed in time, and both were excluded. The execute stamps
-          behind hold remain acknowledgement times, not fill times.
+          {plural(report.exclusions.missingCloseFinalSeenCount, 'row')} no close final-seen stamp;
+          neither can be placed in time, and both were excluded. The stamps behind hold remain
+          observation times, not fill times.
         </p>
       </article>
       <article className="card">

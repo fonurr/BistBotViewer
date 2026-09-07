@@ -17,7 +17,7 @@ const position = {
   positionId: 'p-1',
   symbol: 'BURCE',
   orderTime: 1,
-  executeTime: 2,
+  finalSeenTime: 2,
   orderQuantity: 120,
   quantity: 120,
   averagePrice: 38.2,

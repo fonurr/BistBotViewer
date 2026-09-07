@@ -37,7 +37,7 @@ test.describe('The Book safety smoke', () => {
       'p&l',
       'today',
       'ord time',
-      'ack time',
+      'final',
       'status',
       'act',
     ]);
@@ -166,7 +166,7 @@ test.describe('The Book safety smoke', () => {
             makePosition({
               // Opened before today's session, so `today` is read from the prior close.
               orderTime: Date.parse('2026-08-20T07:00:00.000Z'),
-              executeTime: Date.parse('2026-08-20T07:00:02.000Z'),
+              finalSeenTime: Date.parse('2026-08-20T07:00:02.000Z'),
             }),
           ],
         },

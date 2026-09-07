@@ -231,7 +231,7 @@ describe('BookGrid today column', () => {
       quantity: 100,
       averagePrice: 280,
       orderTime: Date.parse('2026-08-18T06:55:00.000Z'),
-      executeTime: Date.parse('2026-08-18T06:55:02.000Z'),
+      finalSeenTime: Date.parse('2026-08-18T06:55:02.000Z'),
     });
 
   it('heads the grid with a today column', () => {
@@ -360,9 +360,9 @@ describe('BookGrid batches', () => {
         clientOpenOrderId: 'client-newer-open',
         clientCloseOrderId: 'client-newer-close',
         openOrderTime: newer,
-        openExecuteTime: newer + 2_000,
+        openFinalSeenTime: newer + 2_000,
         closeOrderTime: newer + 3_600_000,
-        closeExecuteTime: newer + 3_603_000,
+        closeFinalSeenTime: newer + 3_603_000,
       }),
       makeClosedTrade({
         id: 502,
@@ -371,9 +371,9 @@ describe('BookGrid batches', () => {
         clientOpenOrderId: 'client-older-open',
         clientCloseOrderId: 'client-older-close',
         openOrderTime: older,
-        openExecuteTime: older + 2_000,
+        openFinalSeenTime: older + 2_000,
         closeOrderTime: older + 3_600_000,
-        closeExecuteTime: older + 3_603_000,
+        closeFinalSeenTime: older + 3_603_000,
       }),
     ];
   }

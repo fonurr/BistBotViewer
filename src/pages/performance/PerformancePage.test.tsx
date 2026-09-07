@@ -126,9 +126,9 @@ describe('Performance scope and unavailable values', () => {
         id: 4,
         orderTime: Date.parse('2026-08-24T12:00:00+03:00'),
         sentTime: Date.parse('2026-08-24T11:59:59+03:00'),
-        cancelTime: Date.parse('2026-08-24T12:05:00+03:00'),
+        finalSeenTime: Date.parse('2026-08-24T12:05:00+03:00'),
       }),
-      canceled({ id: 5, orderTime: null, sentTime: null, cancelTime: null }),
+      canceled({ id: 5, orderTime: null, sentTime: null, finalSeenTime: null }),
       canceled({ id: 6, retryOfClientOrderId: null }),
       // Rejected on the Monday evening, past the last minute an order could reach that
       // session: this attempt was aimed at Tuesday and belongs in Tuesday's batch.
@@ -136,7 +136,7 @@ describe('Performance scope and unavailable values', () => {
         id: 7,
         orderTime: Date.parse('2026-08-24T21:30:00+03:00'),
         sentTime: Date.parse('2026-08-24T21:29:59+03:00'),
-        cancelTime: Date.parse('2026-08-24T21:30:05+03:00'),
+        finalSeenTime: Date.parse('2026-08-24T21:30:05+03:00'),
       }),
     ];
     const scope = {
@@ -305,8 +305,8 @@ describe('Performance curve honesty', () => {
           clientCloseOrderId: 'client-thyao-second-close',
           // A batch of its own, which is the unit the curve walks.
           openOrderTime: Date.parse('2026-08-24T10:00:00+03:00'),
-          openExecuteTime: Date.parse('2026-08-24T10:00:02+03:00'),
-          closeExecuteTime: Date.parse('2026-08-24T15:00:00+03:00'),
+          openFinalSeenTime: Date.parse('2026-08-24T10:00:02+03:00'),
+          closeFinalSeenTime: Date.parse('2026-08-24T15:00:00+03:00'),
           closeOrderTime: Date.parse('2026-08-24T14:59:00+03:00'),
         }),
       ],
@@ -390,7 +390,7 @@ function canceled(overrides: Partial<CanceledOrder> = {}): CanceledOrder {
     symbol: 'THYAO',
     orderTime: Date.parse('2026-08-25T10:00:00+03:00'),
     sentTime: Date.parse('2026-08-25T10:00:01+03:00'),
-    cancelTime: Date.parse('2026-08-25T10:05:00+03:00'),
+    finalSeenTime: Date.parse('2026-08-25T10:05:00+03:00'),
     orderQuantity: 10,
     canceledQuantity: 10,
     direction: 'sell',

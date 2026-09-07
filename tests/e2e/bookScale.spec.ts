@@ -38,9 +38,9 @@ function scaledTrades() {
       symbol: `SYM${String(index % 40).padStart(2, '0')}`,
       chainId: `chain-scale-${index}`,
       openOrderTime: openTime,
-      openExecuteTime: openTime + 2_000,
+      openFinalSeenTime: openTime + 2_000,
       closeOrderTime: openTime + 60 * 60 * 1_000,
-      closeExecuteTime: openTime + 60 * 60 * 1_000 + 3_000,
+      closeFinalSeenTime: openTime + 60 * 60 * 1_000 + 3_000,
     });
   });
 }

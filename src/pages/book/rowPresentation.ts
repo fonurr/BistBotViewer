@@ -60,7 +60,7 @@ export function bookRowPresentation(
   opener = false,
 ): BookRowPresentation {
   if (row.source === 'position') {
-    const held = heldFor(row.acknowledgementTime ?? row.orderTime, now);
+    const held = heldFor(row.finalSeenTime ?? row.orderTime, now);
     return chain.hasNoClosingOrder
       ? { label: 'Position — no closing order', role: 'dead', exposed: true }
       : { label: 'Position', detail: parts(muted(held)), role: 'fill' };
@@ -141,7 +141,7 @@ export function bookRowPresentation(
     detail.push(muted('the exchange outcome is unknown; its quantity stays claimed'));
   } else if (row.source === 'active' && row.isWaiting) {
     // How long it has rested is read off the exchange's own registration
-    // stamp, never off the ack column (SPEC 3: ack is an upper bound).
+    // stamp, never off the final column (SPEC 3: finalSeenTime is an upper bound).
     detail.push(muted(heldFor(row.orderTime, now, 'resting')));
     // Only a genuine partial fill earns the `x of y filled` clause: a resting
     // order with nothing filled says so by resting, and a fully filled one is
@@ -188,8 +188,8 @@ function closedTradeHold(row: BookChainRow, chain: BookChain): string | undefine
   const close = chain.tradeRows.find(
     (candidate) => candidate.leg === 'close' && candidate.rawId === row.rawId,
   );
-  if (!close || close.acknowledgementTime === null || row.acknowledgementTime === null) {
+  if (!close || close.finalSeenTime === null || row.finalSeenTime === null) {
     return undefined;
   }
-  return heldFor(row.acknowledgementTime, close.acknowledgementTime);
+  return heldFor(row.finalSeenTime, close.finalSeenTime);
 }

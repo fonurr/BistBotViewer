@@ -24,7 +24,7 @@ to the next trading day. `domain/calendar.ts` owns that rule and reads it agains
 `GetHolidays` calendar; without one it still rolls off a weekend and off the close, since an
 absent holiday row cannot prove a weekday was open. A row whose own day is not the batch date
 then states its date beside the clock, which is what `formatRowTime` already does. Ord time and
-ack time carry their seconds: the minute is what a reader scans, so `formatRowTimeParts` hands
+the final stamp carry their seconds: the minute is what a reader scans, so `formatRowTimeParts` hands
 the seconds back separately and the cell draws them — their colon with them — at half opacity.
 
 A batch heading is the control that opens its batch: the whole line is a button with a chevron
@@ -66,7 +66,7 @@ canceled row that qualifier is the server's own `reason` first, then the verbati
 `explanation`, then the retry count — every part that is stored, joined by middle dots. The
 `x of y filled` clause is drawn **only for a genuine partial fill** (some filled, not all): a
 resting order with nothing filled says as much by resting, and a filled one is not waiting. A
-resting time is read off `orderTime`, the exchange's own registration stamp, never off the ack
+resting time is read off `orderTime`, the exchange's own registration stamp, never off the final-seen
 column. The one row that takes lines of its own is a cancel in flight: its two sentences span
 the row beneath the cells, because it is the only row whose state changes while you watch it.
 

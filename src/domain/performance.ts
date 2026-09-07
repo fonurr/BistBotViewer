@@ -15,7 +15,7 @@ export type PerformanceUnavailableReason =
   | 'true-fill-times-not-provided'
   | 'order-type-not-stored-on-closed-trades'
   | 'close-order-price-not-stored'
-  | 'acknowledgement-times-incomplete'
+  | 'final-seen-times-incomplete'
   | 'portfolio-balance-history-not-provided'
   | 'holiday-calendar-coverage-unavailable'
   | 'no-business-days'
@@ -71,7 +71,7 @@ export interface PerformanceTrade {
    */
   readonly exitSlippagePercent: PerformanceMetric;
   /**
-   * Close acknowledgement minus open acknowledgement. Both stamps come from this
+   * Close final-seen minus open final-seen. Both stamps come from this
    * server's own clock, so the difference is a hold duration; it is never a
    * time-to-fill or a latency, which API.md rules out deriving.
    */
@@ -181,7 +181,7 @@ export interface PerformanceExclusions {
   readonly includedTradeCount: number;
   readonly beforeWindowCount: number;
   readonly futureCount: number;
-  readonly missingCloseAcknowledgementCount: number;
+  readonly missingCloseFinalSeenCount: number;
   /** Excluded: no opening stamp, so the batch it belongs to cannot be named. */
   readonly missingOpeningStampCount: number;
   /** Included: written after its own day could take an order, so it counts in the next session. */
@@ -215,7 +215,7 @@ export interface BuildPerformanceReportInput {
   readonly holidays: readonly Holiday[];
   /**
    * Epoch milliseconds: the moment the report is read. A round trip whose close
-   * was acknowledged after it has not happened yet and stays out, whichever
+   * was seen to end after it has not happened yet and stays out, whichever
    * batches the window holds.
    */
   readonly asOf: number;
@@ -277,24 +277,24 @@ export function buildPerformanceReport(input: BuildPerformanceReportInput): Perf
   const included: PerformanceTrade[] = [];
   let beforeWindowCount = 0;
   let futureCount = 0;
-  let missingCloseAcknowledgementCount = 0;
+  let missingCloseFinalSeenCount = 0;
   let missingOpeningStampCount = 0;
   let openedAfterHoursCount = 0;
 
   for (const trade of input.trades) {
     // A round trip whose close was never observed cannot be placed in time at all — neither
     // its hold nor the fact that it happened before `asOf` — so it stays out of the report.
-    const closeAcknowledgement = trade.closeExecuteTime;
-    if (closeAcknowledgement === null || !Number.isFinite(closeAcknowledgement)) {
-      missingCloseAcknowledgementCount += 1;
+    const closeFinalSeen = trade.closeFinalSeenTime;
+    if (closeFinalSeen === null || !Number.isFinite(closeFinalSeen)) {
+      missingCloseFinalSeenCount += 1;
       continue;
     }
-    if (closeAcknowledgement > input.asOf) {
+    if (closeFinalSeen > input.asOf) {
       futureCount += 1;
       continue;
     }
 
-    const openingStamp = firstFiniteStamp(trade.openOrderTime, trade.openExecuteTime);
+    const openingStamp = firstFiniteStamp(trade.openOrderTime, trade.openFinalSeenTime);
     const businessDate = sessionBatchDate(openingStamp, calendarDays);
     if (businessDate === null) {
       missingOpeningStampCount += 1;
@@ -399,7 +399,7 @@ export function buildPerformanceReport(input: BuildPerformanceReportInput): Perf
       includedTradeCount: included.length,
       beforeWindowCount,
       futureCount,
-      missingCloseAcknowledgementCount,
+      missingCloseFinalSeenCount,
       missingOpeningStampCount,
       openedAfterHoursCount,
       calendarUnverifiedTradeCount,
@@ -430,7 +430,7 @@ function normalizePerformanceTrade(trade: ClosedTrade, businessDate: string): Pe
     grossReturnPercent,
     entrySlippagePercent: slipMetric(trade.openOrderPrice, trade.averageOpenPrice, 'entry'),
     exitSlippagePercent: slipMetric(trade.closeOrderPrice, trade.averageClosePrice, 'exit'),
-    holdDurationMs: holdMetric(trade.openExecuteTime, trade.closeExecuteTime),
+    holdDurationMs: holdMetric(trade.openFinalSeenTime, trade.closeFinalSeenTime),
   };
 }
 
@@ -457,13 +457,17 @@ function slipMetric(
 }
 
 function holdMetric(
-  openExecuteTime: number | null,
-  closeExecuteTime: number | null,
+  openFinalSeenTime: number | null,
+  closeFinalSeenTime: number | null,
 ): PerformanceMetric {
-  if (openExecuteTime === null || closeExecuteTime === null || closeExecuteTime < openExecuteTime) {
-    return unavailableMetric('acknowledgement-times-incomplete', 0, 1);
+  if (
+    openFinalSeenTime === null ||
+    closeFinalSeenTime === null ||
+    closeFinalSeenTime < openFinalSeenTime
+  ) {
+    return unavailableMetric('final-seen-times-incomplete', 0, 1);
   }
-  return availableMetric(closeExecuteTime - openExecuteTime, 1);
+  return availableMetric(closeFinalSeenTime - openFinalSeenTime, 1);
 }
 
 function aggregatePerformance(
@@ -521,8 +525,8 @@ function aggregatePerformance(
       losing.length === 0
         ? unavailableMetric('no-losing-trades')
         : availableMetric(grossLoss / losing.length, losing.length),
-    averageHoldDurationMs: meanMetric(holds, trades.length, 'acknowledgement-times-incomplete'),
-    medianHoldDurationMs: medianMetric(holds, trades.length, 'acknowledgement-times-incomplete'),
+    averageHoldDurationMs: meanMetric(holds, trades.length, 'final-seen-times-incomplete'),
+    medianHoldDurationMs: medianMetric(holds, trades.length, 'final-seen-times-incomplete'),
     retriedChainCount: countRetriedChains(trades),
     drawdown,
     slippage: summarizeSlippage(trades),

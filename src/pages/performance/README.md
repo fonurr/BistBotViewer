@@ -17,7 +17,7 @@ estimates.
   priceless market sell or a manual close, and that leg then yields nothing rather than a zero.
   The **limit/market split the reference shows is not derivable**: ClosedTrades stores prices but
   not order type, and the slippage section states that once.
-- **Hold** is `closeExecuteTime − openExecuteTime`. Both are stamps from this server's own clock,
+- **Hold** is `closeFinalSeenTime − openFinalSeenTime`. Both are stamps from this server's own clock,
   so their difference is a duration. It is never a time-to-fill or a latency — `API.md` rules those
   out, because each stamp is an upper bound on when the shares actually traded.
 - **Retried** counts distinct chains whose stored `openRetryOf…`/`closeRetryOf…` identifier is set.
@@ -38,7 +38,7 @@ set of batches rather than a set of closes — one opened before the window and 
 out, one opened inside it and closed after is in. An opening written after hours, at a weekend or
 on a full holiday counts in the next trading session, and the standing note says how many.
 
-Execution timestamps are acknowledgement times, not true fill times. A round trip whose close was
+`finalSeenTime` stamps are observation times, not true fill times. A round trip whose close was
 never observed is excluded, because nothing then places it in time; so is one carrying no opening
 stamp, because nothing names its batch. Missing current-session closing bars are polled so a bar
 written later can replace an earlier unavailable metric.
