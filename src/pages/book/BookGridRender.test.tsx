@@ -417,3 +417,92 @@ describe('BookGrid batches', () => {
     expect(screen.getByLabelText('OLDER chain')).toBeVisible();
   });
 });
+
+describe('BookGrid budget headings', () => {
+  /* The line is a flex row, so its spacing is `gap` rather than text. */
+  const text = (element: Element | null) =>
+    element === null
+      ? null
+      : [...element.children].map((child) => child.textContent?.trim()).join(' ');
+
+  it('closes the batch and the bot heading with the same three figures', () => {
+    renderGrid();
+
+    // 40 shares asked for at 68,25, none filled yet: the plan stands, nothing is spent.
+    const expected = '· budget 0,00 (0,00%) · 0,00 (0,00%) · 2.730,00';
+    expect(text(document.querySelector('.book-date-heading .book-budget'))).toBe(expected);
+    expect(text(document.querySelector('.book-bot-heading .book-budget'))).toBe(expected);
+  });
+
+  it('reserves the market buy buffer in the plan and in what the fills committed', () => {
+    renderGrid(
+      {},
+      {
+        activeOrders: [
+          makeActiveOrder({
+            type: 'market',
+            intentType: 'market',
+            status: 'PartiallyFilled',
+            filledQuantity: 20,
+            averagePrice: 69,
+          }),
+        ],
+        canceledOrders: [],
+        positions: [],
+        closedTrades: [],
+      },
+    );
+
+    // 20 x 68,25 x 1,1 committed and 20 x 69,00 paid, against 40 x 68,25 x 1,1 planned.
+    expect(text(document.querySelector('.book-bot-heading .book-budget'))).toBe(
+      '· budget 1.501,50 (50,00%) · 1.380,00 (45,95%) · 3.003,00',
+    );
+  });
+
+  it('withholds the whole line when a visible buy has no price to plan against', () => {
+    renderGrid(
+      {},
+      {
+        activeOrders: [
+          makeActiveOrder({
+            status: 'Scheduled',
+            matriksOrderId: null,
+            orderTime: null,
+            sentTime: null,
+            orderQuantity: null,
+            orderPrice: null,
+            scheduledTime: Date.now() + 60 * 60 * 1_000,
+          }),
+        ],
+        canceledOrders: [],
+        positions: [],
+        closedTrades: [],
+      },
+    );
+
+    expect(text(document.querySelector('.book-bot-heading .book-budget'))).toBe(
+      '· budget not available',
+    );
+    expect(document.querySelector('.book-budget .status-warn')).toBeVisible();
+  });
+
+  it('says nothing at all for a group whose chains own no buy', () => {
+    renderGrid(
+      {},
+      {
+        activeOrders: [
+          makeActiveOrder({
+            direction: 'sell',
+            chainId: null,
+            parentClientOrderId: null,
+          }),
+        ],
+        canceledOrders: [],
+        positions: [],
+        closedTrades: [],
+      },
+    );
+
+    expect(document.querySelector('.book-budget')).toBeNull();
+  });
+});

@@ -20,6 +20,7 @@ import {
   plural,
   weekdayName,
 } from '../../domain/format';
+import { bookBudget, budgetShare } from '../../domain/budget';
 import {
   deriveFilledPnlState,
   type FilledPnlState,
@@ -162,6 +163,7 @@ export function BookGrid(props: BookGridProps) {
                 batch{dateGroup.date === 'unknown' ? '' : ` · ${weekdayName(dateGroup.date)}`}
               </span>
               <span className="muted">{plural(dateGroup.chains.length, 'chain')}</span>
+              <BudgetSummary chains={dateGroup.chains} />
             </button>
             {open ? (
               <>
@@ -197,6 +199,7 @@ export function BookGrid(props: BookGridProps) {
                           {bot?.accountId ?? 'account unset'}
                           {bot?.brokerageId ? ` · ${bot.brokerageId}` : ''}
                         </span>
+                        <BudgetSummary chains={botGroup.chains} />
                         <span className="book-bot-rule" />
                       </header>
                       {botGroup.scopes.map((scopeGroup) => (
@@ -931,6 +934,56 @@ function groupChains(chains: readonly BookChain[]) {
 }
 
 const SCOPE_ORDER: readonly BookScope[] = ['waiting', 'positions', 'trades', 'canceled'];
+
+/**
+ * What the buys under a heading meant to spend and what they spent, read off the
+ * chains actually drawn — so the filters and the scope toggles decide what it
+ * counts. Three figures separated the way this page separates everything else:
+ * the shares acquired at the price their order asked for, what those shares
+ * really cost, and the whole order at that same asked price. The first two carry
+ * their share of the third, which is the only comparison the line is for.
+ *
+ * A group with no buy in it says nothing rather than `0,00`; a group holding one
+ * buy that cannot be priced withholds the whole line, the way an unpriceable
+ * symbol withholds unrealized P&L.
+ */
+function BudgetSummary({ chains }: { chains: readonly BookChain[] }) {
+  const budget = useMemo(() => bookBudget(chains), [chains]);
+  if (budget.kind === 'none') return null;
+  if (budget.kind === 'unknown') {
+    return (
+      <span className="book-budget">
+        <span className="book-budget-dot">·</span>
+        <span className="kicker">budget</span>
+        <span className="status-warn">not available</span>
+      </span>
+    );
+  }
+
+  const committed = budgetShare(budget.committed, budget.planned);
+  const spent = budgetShare(budget.spent, budget.planned);
+  return (
+    <span className="book-budget">
+      <span className="book-budget-dot">·</span>
+      <span className="kicker">budget</span>
+      <span>
+        {formatNumber(budget.committed)}
+        {committed === null ? null : (
+          <span className="book-budget-share">{` (${formatPercentage(committed, 2, false)})`}</span>
+        )}
+      </span>
+      <span className="book-budget-dot">·</span>
+      <span>
+        {formatNumber(budget.spent)}
+        {spent === null ? null : (
+          <span className="book-budget-share">{` (${formatPercentage(spent, 2, false)})`}</span>
+        )}
+      </span>
+      <span className="book-budget-dot">·</span>
+      <span className="muted">{formatNumber(budget.planned)}</span>
+    </span>
+  );
+}
 
 function ScopeHeading({
   scope,

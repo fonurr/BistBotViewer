@@ -47,6 +47,40 @@ aggregate — unrealized for positions, realized for trades — and nothing else
 neither the chain count the batch heading already carries nor what the scope means. The
 focused `no closing order` list spans scopes on purpose, so it groups by bot alone.
 
+### The budget line
+
+Both the batch heading and the bot heading carry the **buy budget of the chains under them** —
+`· budget 118.250,00 (98,54%) · 116.430,50 (97,03%) · 120.000,00`, from `domain/budget.ts`. It sits
+beside what the heading already says about the group, joined to it by the same middle dot, before the rule that closes the bot line,
+rather than pinned to the far right: it is read in the same pass as the batch's date or the bot's
+account, not hunted for at the other end of a 1440px row. Read left to right: what the shares actually acquired committed at the price
+their order asked for, what those shares really cost, and the whole order at that same asked
+price. The first two carry their share of the third, which is the only comparison the line is
+for. It is computed from the chains **actually drawn**, so every filter and every scope toggle
+decides what it counts.
+
+- A resting **market** buy reserves 10% extra budget per share, so the first and third figures
+  carry `× 1.1` where the buy was a market buy (`../MatriksOrder/API.md` — "Budget and limits").
+  The second never does: once a buy fills there is nothing left to estimate.
+- ⚠️ **An unknown order type is read as a market buy.** Neither `Positions` nor `ClosedTrades`
+  stores the opening buy's `type`, so once a buy fills and its ActiveOrders row is gone, nothing
+  left says how it was priced — only a buy whose own active or canceled row still states `limit`
+  escapes the buffer. Reserving the 10% is the reading that cannot understate what the bot
+  committed. **If MatriksOrder ever carries the buy's `type` onto those two tables, read it in
+  `buyBudgetBuffer` instead of assuming.**
+- A chain contributes **one** budget however many attempts it took. An automatic `Retry` keeps the
+  chain's id and restates the same intent; it does not ask for a second budget. The attempt that
+  filled is the one a Positions row names in `clientOrderId`; without one, the newest buy the
+  chain owns is the live intent, since every earlier attempt is already dead.
+- The acquired shares are taken from wherever they ended up: a position holds what is left of the
+  opening buy and each round trip holds a slice already sold, so the two compose back into
+  everything that buy ever filled. An active buy's own `filledQuantity` is only read when neither
+  exists — while a position stands for the same order, counting both would buy the shares twice.
+- Whether the position is open or closed changes nothing. Only a buy that **cannot be priced** —
+  no `orderPrice`, or a scheduled buy not yet sized — does, and then the whole line reads
+  `budget not available` in amber rather than a total that silently drops a chain, the same
+  all-or-nothing rule unrealized P&L follows.
+
 Row vocabulary follows the visual reference: an opener carries its symbol alone and a leg carries
 nothing in that column — the opener above already said the symbol and the hairline says where the
 chain ends, so a leg only speaks its symbol to a screen reader. A **sell row leaves the qty column

@@ -315,6 +315,35 @@
   background: linear-gradient(to right, var(--color-accent) calc(100% - 64px), transparent);
 }
 
+/*
+ * The budget line sits with what the heading already says about the group,
+ * before the rule that closes the line rather than pinned to the far right —
+ * it is read in the same pass as the batch's date or the bot's account, not
+ * hunted for at the other end of a 1440px row. Middle dots separate the three
+ * figures the way this page separates every other run-on clause; a comma would
+ * read as a decimal here.
+ */
+.book-budget {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  white-space: nowrap;
+  font-size: var(--font-meta);
+}
+
+.book-budget .kicker,
+.book-budget .muted,
+.book-budget-dot,
+.book-budget-share {
+  color: var(--mut);
+}
+
+.book-budget .muted,
+.book-budget-dot,
+.book-budget-share {
+  font-size: var(--font-meta);
+}
+
 .book-scope-heading {
   display: flex;
   align-items: center;
