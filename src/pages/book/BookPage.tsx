@@ -34,7 +34,7 @@ import {
 } from '../../domain/orders';
 import { displayStatus } from '../../domain/status';
 import { BookFilters } from './BookFilters';
-import { BookGrid, summarizeBookToday } from './BookGrid';
+import { BookGrid, ColumnDivider, summarizeBookToday } from './BookGrid';
 import { OrderDialog, type OrderDialogAction } from './OrderDialog';
 import { rangeLabel } from '../../components/DateRangeFilter';
 import { defaultBookFilters, type BookFilterState } from './types';
@@ -1078,16 +1078,20 @@ function PendingBaskets({
                   </div>
                   {/* market, fill, slip, p&l, today, created, sent, order, final:
                       a queued stock has none of them yet, and each keeps its own
-                      cell so the row stays on the Book's column grid. */}
+                      cell — and the bands between them their divider — so the row
+                      stays on the Book's column grid. */}
+                  <div />
+                  <div />
+                  <div />
+                  <ColumnDivider />
+                  <div />
+                  <div />
+                  <ColumnDivider />
                   <div />
                   <div />
                   <div />
                   <div />
-                  <div />
-                  <div />
-                  <div />
-                  <div />
-                  <div />
+                  <ColumnDivider />
                   <div
                     className={
                       stock.cancelAtFloor ? 'book-status status-warn' : 'book-status status-wait'

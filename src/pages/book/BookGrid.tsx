@@ -64,27 +64,49 @@ interface BookGridProps {
   onOpenChain: (chain: BookChain, action?: OrderDialogAction) => void;
 }
 
-const columnLabels = [
-  '',
-  'symbol',
-  'qty',
-  'side / type',
-  'order',
-  'market',
-  'fill',
-  'slip',
-  'p&l',
-  'today',
-  'created',
-  'sent',
-  'order',
-  'final',
-  'status',
-  'act',
+/**
+ * The grid's columns in order. A `divider` is a real column, not a border on the
+ * cell beside it — see `.book-divider` — and it separates the four bands the row
+ * reads in: what the order asked for and what it got, the two views of P&L, the
+ * four clocks, and the verdict. `alignRight` marks the figure columns and `act`.
+ */
+type BookColumn =
+  { readonly label: string; readonly alignRight?: true } | { readonly divider: true };
+
+const DIVIDER: BookColumn = { divider: true };
+
+const columns: readonly BookColumn[] = [
+  { label: '' },
+  { label: 'symbol' },
+  { label: 'qty' },
+  { label: 'side / type' },
+  { label: 'order', alignRight: true },
+  { label: 'market', alignRight: true },
+  { label: 'fill', alignRight: true },
+  { label: 'slip', alignRight: true },
+  DIVIDER,
+  { label: 'p&l', alignRight: true },
+  { label: 'today', alignRight: true },
+  DIVIDER,
+  { label: 'created' },
+  { label: 'sent' },
+  { label: 'order' },
+  { label: 'final' },
+  DIVIDER,
+  { label: 'status' },
+  { label: 'act', alignRight: true },
 ];
 
-/** The last column (`act`) draws right-aligned; so do the six figure columns. */
-const ACT_COLUMN_INDEX = columnLabels.length - 1;
+/**
+ * One band divider, on the row grid. It is hidden from the accessibility tree the
+ * way the status spine is: it carries no value, and a reader crossing it would only
+ * hear an empty cell between two it does need.
+ */
+export function ColumnDivider({ header = false }: { header?: boolean }) {
+  return (
+    <div className="book-divider" role={header ? 'columnheader' : 'cell'} aria-hidden="true" />
+  );
+}
 
 export function BookGrid(props: BookGridProps) {
   const now = useMinuteClock();
@@ -168,19 +190,19 @@ export function BookGrid(props: BookGridProps) {
             {open ? (
               <>
                 <div className="book-columns" role="row">
-                  {columnLabels.map((label, index) => (
-                    <div
-                      key={`${label}:${index}`}
-                      role="columnheader"
-                      className={
-                        (index >= 4 && index <= 9) || index === ACT_COLUMN_INDEX
-                          ? 'align-right'
-                          : ''
-                      }
-                    >
-                      {label}
-                    </div>
-                  ))}
+                  {columns.map((column, index) =>
+                    'divider' in column ? (
+                      <ColumnDivider header key={`divider:${index}`} />
+                    ) : (
+                      <div
+                        key={`${column.label}:${index}`}
+                        role="columnheader"
+                        className={column.alignRight ? 'align-right' : ''}
+                      >
+                        {column.label}
+                      </div>
+                    ),
+                  )}
                 </div>
                 {dateGroup.bots.map((botGroup) => {
                   const bot = botById.get(botGroup.botId);
@@ -510,6 +532,7 @@ const BookRow = memo(function BookRow({
       <div role="cell" className="align-right book-slip">
         {slip === null ? '' : formatSlip(slip)}
       </div>
+      <ColumnDivider />
       <div role="cell" className={`align-right book-pnl ${pnlClass(pnl, pnlTrusted)}`}>
         {pnl === null ? (
           ''
@@ -538,6 +561,7 @@ const BookRow = memo(function BookRow({
           </>
         )}
       </div>
+      <ColumnDivider />
       <div role="cell" className="muted book-time">
         <RowTime timestamp={row.createdTime} batchDate={batchDate} />
       </div>
@@ -550,6 +574,7 @@ const BookRow = memo(function BookRow({
       <div role="cell" className="muted book-time">
         <RowTime timestamp={row.finalSeenTime} batchDate={batchDate} />
       </div>
+      <ColumnDivider />
       <div
         role="cell"
         /* A settled row's word stays in body ink; only its spine is --st-done,

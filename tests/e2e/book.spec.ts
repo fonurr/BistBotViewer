@@ -63,7 +63,9 @@ test.describe('The Book safety smoke', () => {
       columnDisplay: 'grid',
       dataDisplay: 'grid',
       htmlMinWidth: '1440px',
-      rowCellCount: 16,
+      // 16 columns of data plus the three band dividers, which are aria-hidden
+      // and so never reach the 16 column headers counted above.
+      rowCellCount: 19,
       viewportWidth: 900,
     });
     expect(layout.columnTemplate).toBe(layout.dataTemplate);

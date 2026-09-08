@@ -81,6 +81,19 @@ decides what it counts.
   `budget not available` in amber rather than a total that silently drops a chain, the same
   all-or-nothing rule unrealized P&L follows.
 
+The grid reads in **four bands**, split by a hairline: what the order asked for and what it got
+(`symbol` through `slip`), the two views of P&L (`p&l`, `today`), the four clocks (`created`
+through `final`), and the verdict (`status`, `act`). Each hairline is a **column of its own** —
+`.book-divider`, one 1px rule in a 5px column — and not a border on the cell beside it, because
+the row centers its cells and a border would stand only as tall as that one cell's text. Standing
+the full height of a row instead, consecutive rows draw one unbroken rule that breaks exactly
+where the chains, the scope headings and the batches already break, so the split follows the
+grouping on the page rather than cutting a second grid across it. The dividers are
+`aria-hidden`, like the status spine: a reader crossing one would only hear an empty cell between
+two it does need, so the grid still exposes sixteen column headers. Every BIST ticker is five
+letters, so `--book-symbol-col` is sized for one and no wider; what that frees goes to `status`,
+which is the grid's only `1fr`.
+
 Row vocabulary follows the visual reference: an opener carries its symbol alone and a leg carries
 nothing in that column — the opener above already said the symbol and the hairline says where the
 chain ends, so a leg only speaks its symbol to a screen reader. A **sell row leaves the qty column
@@ -226,8 +239,8 @@ The **source filter** is the reason filter's twin over that field: `Broker`, `Bo
 `User`, `External`, ticked in the server's own key form, counting the chains each would keep, off by
 default behind the same switch, and not drawn at all where no loaded row names a hand.
 
-The **origin filter**, to its left, is the same control over `origin` — where the order *came from*,
-the question `source` (who *ended* it) is not. `reason` above already borrows an exit sale's target
+The **origin filter**, to its left, is the same control over `origin` — where the order _came from_,
+the question `source` (who _ended_ it) is not. `reason` above already borrows an exit sale's target
 (`TakeProfit`, `StopLoss`) off this field; the origin filter ticks the whole set the server writes —
 `User` for a person at this interface, `External` for one placed in a brokerage terminal, `Retry`
 for one the server stood back up, and those two exit-sale keys — while the ordinary bot order, which
