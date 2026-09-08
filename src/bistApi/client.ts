@@ -32,6 +32,17 @@ import {
 } from './types';
 
 const bridgeBase = '/bridge/bist';
+
+/**
+ * Every write this viewer makes is a person acting through the UI, never a bot,
+ * so MatriksOrder is always told the actor is `"User"`. The field is named for
+ * the column its answer lands in: `origin` on `SendOrders` (where the order came
+ * from), `source` on `CancelOrders` / `CancelPendingOrderRequests` (who ended the
+ * order). It is what stamps `origin: "User"` on the orders and `source: "User"`
+ * on the cancels — see the Origin section of ../MatriksOrder/API.md.
+ */
+const WRITE_ACTOR = 'User' as const;
+
 const emptyResponseSchema = z.object({}).passthrough();
 const sessionSchema = z.object({ csrfToken: z.string().min(20) });
 const errorEnvelopeSchema = z
@@ -262,9 +273,12 @@ export const bistApi = {
       write: true,
     }),
   sendOrders: (request: SendOrdersRequest) =>
-    rpc('SendOrders', sendOrdersRequestSchema.parse(request), sendOrdersResponseSchema, {
-      write: true,
-    }),
+    rpc(
+      'SendOrders',
+      { ...sendOrdersRequestSchema.parse(request), origin: WRITE_ACTOR },
+      sendOrdersResponseSchema,
+      { write: true },
+    ),
   editOrders: (request: EditOrdersRequest) =>
     rpc(
       'EditOrders',
@@ -278,7 +292,14 @@ export const bistApi = {
       { write: true },
     ),
   cancelOrders: (botId: string, orderIds: string[]) =>
-    rpc('CancelOrders', { botId, orderIds }, emptyResponseSchema, { write: true }),
+    rpc('CancelOrders', { botId, orderIds, source: WRITE_ACTOR }, emptyResponseSchema, {
+      write: true,
+    }),
   cancelPendingOrderRequests: (botId: string, ids: number[]) =>
-    rpc('CancelPendingOrderRequests', { botId, ids }, cancelPendingResponseSchema, { write: true }),
+    rpc(
+      'CancelPendingOrderRequests',
+      { botId, ids, source: WRITE_ACTOR },
+      cancelPendingResponseSchema,
+      { write: true },
+    ),
 };

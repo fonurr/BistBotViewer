@@ -153,6 +153,42 @@ describe('bistApi write errors', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('names the "User" actor on every write', async () => {
+    const fetchMock = vi.fn<typeof fetch>((url) =>
+      Promise.resolve(
+        String(url).endsWith('/session')
+          ? jsonResponse({ csrfToken: 's'.repeat(32) })
+          : jsonResponse({}),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const bodyOf = (rpcName: string) => {
+      const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith(`/rpc/${rpcName}`));
+      return JSON.parse(String(call?.[1]?.body));
+    };
+
+    // Only the request body that left the viewer matters here; a thin mock
+    // response makes the response-schema parse throw, which is fine to swallow.
+    await bistApi.cancelOrders('bot-1', ['order-1']).catch(() => {});
+    expect(bodyOf('CancelOrders')).toMatchObject({ source: 'User' });
+
+    await bistApi.cancelPendingOrderRequests('bot-1', [7]).catch(() => {});
+    expect(bodyOf('CancelPendingOrderRequests')).toMatchObject({ source: 'User' });
+
+    // SendOrders takes the actor as `origin`, not `source` — it records where
+    // the order began, not who ended one.
+    await bistApi
+      .sendOrders({
+        botId: 'bot-1',
+        direction: 'buy',
+        type: 'limit',
+        stocks: [{ symbol: 'AKBNK', price: 38.16, quantity: 10 }],
+      })
+      .catch(() => {});
+    expect(bodyOf('SendOrders')).toMatchObject({ origin: 'User' });
+  });
+
   it('carries a rule through, and lets an explicit null disarm one', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}));
     vi.stubGlobal('fetch', fetchMock);

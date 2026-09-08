@@ -8,6 +8,10 @@ Rules:
 - Browser requests are same-origin `/bridge/bist/*`; the upstream URL is never exposed.
 - RPC names are allowlisted by the bridge. Mutations require a per-launch CSRF token.
 - A write is sent once. The client and bridge never retry it.
+- Every write names the `"User"` actor: this viewer is only ever a person acting through the UI. The
+  field is named for the column its answer lands in — `origin` on `SendOrders`, `source` on
+  `CancelOrders` and `CancelPendingOrderRequests` — and it is what puts `origin: "User"` on the
+  orders and `source: "User"` on the cancels.
 - `CancelOrders` success is only `Accepted`; SSE or a later snapshot confirms the move.
 - SSE has no replay IDs. Every reconnect refetches active snapshots before applying new events.
 - Table reads reject an empty bot list locally instead of calling the server with `[]`.
