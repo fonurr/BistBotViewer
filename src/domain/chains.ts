@@ -64,6 +64,15 @@ interface BookChainRowBase {
   /** The numbers behind that reason, for the few reasons that carry any. */
   readonly reasonData: ReasonData | null;
   /**
+   * The server's own `origin` key for where the order came from — `User`,
+   * `External`, `Retry`, `TakeProfit`, `StopLoss` — and `null` for the ordinary
+   * order a bot asked for. `reason` above only ever borrows an exit sale's
+   * target off this same field; every other origin is kept here alone, so the
+   * origin filter can tick a person or an outside desk too. A position carries
+   * its opening buy's origin, and a round trip one per side.
+   */
+  readonly origin: string | null;
+  /**
    * Who put the row in the status it is in — `Broker`, `Bot`, `Server` or
    * `User`. The contract calls this field `source`; here that name is already
    * the row's own origin table, so the two are kept apart by name. Only a
@@ -470,6 +479,7 @@ function normalizeActiveOrder(order: ActiveOrder): BookActiveOrderRow {
     cancelInFlight: order.cancelSource !== null,
     reason: why.reason,
     reasonData: why.reasonData,
+    origin: reasonKey(order.origin),
     statusSource: null,
     cancelReason: reasonKey(order.cancelReason),
     cancelReasonData: order.cancelReasonData ?? null,
@@ -506,6 +516,7 @@ function normalizeCanceledOrder(order: CanceledOrder): BookCanceledOrderRow {
     cancelInFlight: false,
     reason: reasonKey(order.reason),
     reasonData: order.reasonData ?? null,
+    origin: reasonKey(order.origin),
     statusSource: reasonKey(order.source),
   };
 }
@@ -543,6 +554,7 @@ function normalizePosition(position: Position): BookPositionRow {
     cancelInFlight: false,
     reason: null,
     reasonData: null,
+    origin: reasonKey(position.origin),
     statusSource: null,
   };
 }
@@ -585,6 +597,7 @@ function normalizeClosedTrade(trade: ClosedTrade): [BookClosedTradeRow, BookClos
       // sell's is. An invented one would be worse than the blank.
       reason: null,
       reasonData: null,
+      origin: reasonKey(trade.openOrigin),
       statusSource: null,
     },
     {
@@ -604,6 +617,7 @@ function normalizeClosedTrade(trade: ClosedTrade): [BookClosedTradeRow, BookClos
       // Why the position was closed is the closing sell's `origin` now — an
       // exit sale names its target here, an ordinary bot sell says nothing.
       ...originReason(trade.closeOrigin, trade.closeOriginData),
+      origin: reasonKey(trade.closeOrigin),
       statusSource: null,
     },
   ];

@@ -34,6 +34,14 @@ export interface BookFilterState {
   sourceFilter: boolean;
   /** `null` is every source, in the server's own key form. */
   sources: ReadonlySet<string> | null;
+  /**
+   * Whether the origin filter applies at all. Off by default for the same cause
+   * as the three above: the ordinary bot order names no origin, so a chain built
+   * only of those drops out even with every origin ticked.
+   */
+  originFilter: boolean;
+  /** `null` is every origin, in the server's own key form. */
+  origins: ReadonlySet<string> | null;
   batchFrom: string | null;
   batchTo: string | null;
   noClosingOrder: boolean;
@@ -54,6 +62,8 @@ export const defaultBookFilters: BookFilterState = {
   reasons: null,
   sourceFilter: false,
   sources: null,
+  originFilter: false,
+  origins: null,
   /* Null is not "every batch" but the moment before one has loaded;
      `DateRangeFilter` resolves it to every loaded batch as soon as one exists. */
   batchFrom: null,

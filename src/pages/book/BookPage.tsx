@@ -117,13 +117,14 @@ export function BookPage() {
   const visiblePending = useMemo(
     () =>
       /* A queued basket has no order yet, so it owns no canceled leg, no
-         recorded reason and nobody who ended it: nothing in it can match a
-         canceled status, a reason or a source, and it drops with the chains
-         that cannot match. */
+         recorded reason, no origin and nobody who ended it: nothing in it can
+         match a canceled status, a reason, an origin or a source, and it drops
+         with the chains that cannot match. */
       filters.noClosingOrder ||
       filters.canceledStatusFilter ||
       filters.reasonFilter ||
       filters.sourceFilter ||
+      filters.originFilter ||
       !filters.scopes.has('waiting')
         ? []
         : data.pendingRequests.filter((request) => {
@@ -645,6 +646,17 @@ export function narrowingsThatEmptiedTheBook(
       clear: (current) => ({ ...current, sourceFilter: false, sources: null }),
     });
   }
+  if (filters.originFilter) {
+    candidates.push({
+      key: 'origins',
+      phrase: 'the origin filter',
+      sentence:
+        filters.origins !== null && filters.origins.size === 0
+          ? 'No origin is selected.'
+          : 'No chain owns a row from one of the selected origins.',
+      clear: (current) => ({ ...current, originFilter: false, origins: null }),
+    });
+  }
   const loadedBatches = [
     ...new Set(chains.flatMap((chain) => (chain.batchDate ? [chain.batchDate] : []))),
   ].sort();
@@ -690,6 +702,7 @@ function chainMatches(
     return false;
   if (filters.reasonFilter && !matchesReason(chain, filters.reasons)) return false;
   if (filters.sourceFilter && !matchesSource(chain, filters.sources)) return false;
+  if (filters.originFilter && !matchesOrigin(chain, filters.origins)) return false;
   if (chain.batchDate !== null && filters.batchFrom && chain.batchDate < filters.batchFrom)
     return false;
   if (chain.batchDate !== null && filters.batchTo && chain.batchDate > filters.batchTo)
@@ -732,6 +745,17 @@ function matchesReason(chain: BookChain, reasons: ReadonlySet<string> | null): b
 function matchesSource(chain: BookChain, sources: ReadonlySet<string> | null): boolean {
   return chain.rows.some(
     (row) => row.statusSource !== null && (sources === null || sources.has(row.statusSource)),
+  );
+}
+
+/**
+ * The same chain-not-row selection once more, over where an order came from. The
+ * ordinary bot order names no origin, which is why switching the filter on
+ * narrows the Book even with every origin ticked.
+ */
+function matchesOrigin(chain: BookChain, origins: ReadonlySet<string> | null): boolean {
+  return chain.rows.some(
+    (row) => row.origin !== null && (origins === null || origins.has(row.origin)),
   );
 }
 
@@ -1441,6 +1465,13 @@ function filterChips(
       label:
         filters.sources === null ? 'with a named source' : plural(filters.sources.size, 'source'),
       clear: (current) => ({ ...current, sourceFilter: false, sources: null }),
+    });
+  if (filters.originFilter)
+    chips.push({
+      key: 'origins',
+      label:
+        filters.origins === null ? 'with a named origin' : plural(filters.origins.size, 'origin'),
+      clear: (current) => ({ ...current, originFilter: false, origins: null }),
     });
   // The range is always set — every loaded batch is the default — so the chip
   // appears only where it is narrower than the loaded batches, and names the

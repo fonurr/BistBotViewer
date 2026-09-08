@@ -67,6 +67,7 @@ export function BookFilters(props: BookFiltersProps) {
   const canceledStatuses = useMemo(() => canceledStatusOptions(props.chains), [props.chains]);
   const reasons = useMemo(() => reasonOptions(props.chains), [props.chains]);
   const sources = useMemo(() => sourceOptions(props.chains), [props.chains]);
+  const origins = useMemo(() => originOptions(props.chains), [props.chains]);
 
   const toggleScope = (scope: BookScope) => {
     const next = new Set(filters.scopes);
@@ -92,6 +93,8 @@ export function BookFilters(props: BookFiltersProps) {
       reasons: null,
       sourceFilter: false,
       sources: null,
+      originFilter: false,
+      origins: null,
       /* The widest range, stated outright: leaving it unset would send the
          range control back to its default and clear this filter with it. */
       batchFrom: props.batchDates[0] ?? null,
@@ -230,6 +233,33 @@ export function BookFilters(props: BookFiltersProps) {
             one="status"
             many="statuses"
             note="On, the Book keeps a chain only where one of its own canceled orders carries a ticked status — and then draws the whole chain, canceled legs and all. A chain that never lost a leg has nothing to match, so it drops out even with every status ticked."
+          />
+        ) : null}
+        {origins.length > 0 ? (
+          <MultiSelectFilter
+            name="origins"
+            open={open === 'origins'}
+            setOpen={setOpen}
+            heading="where the loaded orders came from"
+            help="The server's own `origin` keys: `User` for a person at this interface, `External` for one placed in a brokerage terminal, `Retry` for one the server stood back up, `TakeProfit` / `StopLoss` for its own exit sale. The ordinary bot order names none. Every key the loaded book carries, whichever bots the rest of the toolbar keeps."
+            options={origins}
+            picks={[{ label: 'none', select: new Set<string>() }]}
+            active={props.filters.originFilter}
+            onActiveChange={(active) =>
+              onChange({
+                ...filters,
+                originFilter: active,
+                origins: null,
+                noClosingOrder: false,
+              })
+            }
+            activeLabel="filter"
+            inactiveLabel="any origin"
+            selected={filters.origins}
+            onChange={(origins) => onChange({ ...filters, origins, noClosingOrder: false })}
+            one="origin"
+            many="origins"
+            note="On, the Book keeps a chain only where one of its own rows names a ticked origin, and then draws the whole chain. A chain built only of ordinary bot orders names none, so it drops out even with every origin ticked."
           />
         ) : null}
         {sources.length > 0 ? (
@@ -389,6 +419,23 @@ export function sourceOptions(chains: readonly BookChain[]): FilterOption[] {
   return [...chainsBySource.entries()]
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([source, count]) => ({ key: source, label: source, count }));
+}
+
+/**
+ * Every `origin` key the loaded rows name, in the server's own form — the
+ * ordinary bot order's blank left out, since it is not something a reader ticks.
+ * Read across every row, canceled or live, and each option counts the chains it
+ * would keep rather than the rows.
+ */
+export function originOptions(chains: readonly BookChain[]): FilterOption[] {
+  const chainsByOrigin = new Map<string, number>();
+  for (const chain of chains) {
+    const origins = new Set(chain.rows.flatMap((row) => (row.origin === null ? [] : [row.origin])));
+    for (const origin of origins) chainsByOrigin.set(origin, (chainsByOrigin.get(origin) ?? 0) + 1);
+  }
+  return [...chainsByOrigin.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([origin, count]) => ({ key: origin, label: origin, count }));
 }
 
 function countBy<T>(values: readonly T[], key: (value: T) => string): Map<string, number> {

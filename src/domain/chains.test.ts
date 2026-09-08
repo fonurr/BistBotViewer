@@ -496,6 +496,47 @@ describe('buildBookChains', () => {
     });
   });
 
+  it('carries the raw origin key onto every kind of row, blank for the ordinary bot order', () => {
+    const [chain] = build({
+      activeOrders: [
+        active({ id: 1, chainId: 'o', clientOrderId: 'o', origin: null }),
+        active({
+          id: 2,
+          chainId: 'o',
+          clientOrderId: 'o-sell',
+          direction: 'sell',
+          status: 'New',
+          origin: 'User',
+        }),
+      ],
+      canceledOrders: [
+        canceled({
+          id: 3,
+          chainId: 'o',
+          clientOrderId: 'o-dead',
+          parentClientOrderId: 'o',
+          origin: 'Retry',
+        }),
+      ],
+      positions: [position({ id: 4, chainId: 'o', clientOrderId: 'o', origin: 'External' })],
+      closedTrades: [
+        trade({ id: 5, chainId: 'o', clientOpenOrderId: 'o', closeOrigin: 'StopLoss' }),
+      ],
+    });
+    const originByClient = Object.fromEntries(
+      (chain?.rows ?? []).map((row) => [`${row.source}:${row.clientOrderId}`, row.origin]),
+    );
+
+    expect(originByClient['active:o']).toBeNull();
+    expect(originByClient['active:o-sell']).toBe('User');
+    expect(originByClient['canceled:o-dead']).toBe('Retry');
+    expect(originByClient['position:o']).toBe('External');
+    // A round trip splits the origin per side: the close leg is `StopLoss`, the
+    // open leg keeps its own (here the default blank).
+    expect(chain?.tradeRows.find((row) => row.leg === 'close')?.origin).toBe('StopLoss');
+    expect(chain?.tradeRows.find((row) => row.leg === 'open')?.origin).toBeNull();
+  });
+
   it('files every chain under exactly one scope, by the stage its own life reached', () => {
     const waitingOnly = build({
       activeOrders: [active({ id: 1, chainId: 'w', clientOrderId: 'w' })],

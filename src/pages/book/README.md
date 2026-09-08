@@ -92,8 +92,8 @@ runs one way only: switching the scope back off leaves the toggle where the read
 by then they may be reading canceled legs on chains that traded.
 
 `BookFilters` owns the batch-range control, additive scopes, and the bot, account, symbol,
-canceled-status, source, and reason controls — the batch range leads the toolbar row, then the
-scopes, then the popover triggers in that order. The
+canceled-status, origin, source, and reason controls — the batch range leads the toolbar row, then
+the scopes, then the popover triggers in that order. The
 bot, account and symbol controls are `components/EntityFilters` and the batch range is
 `components/DateRangeFilter`, which the Bots and Performance
 pages import unchanged — the Book defines the shape, and no page reimplements it. A trigger states
@@ -183,6 +183,17 @@ keeps its own muted `asked by the server` clause and is not folded in here.
 The **source filter** is the reason filter's twin over that field: `Broker`, `Bot`, `Server`,
 `User`, `External`, ticked in the server's own key form, counting the chains each would keep, off by
 default behind the same switch, and not drawn at all where no loaded row names a hand.
+
+The **origin filter**, to its left, is the same control over `origin` — where the order *came from*,
+the question `source` (who *ended* it) is not. `reason` above already borrows an exit sale's target
+(`TakeProfit`, `StopLoss`) off this field; the origin filter ticks the whole set the server writes —
+`User` for a person at this interface, `External` for one placed in a brokerage terminal, `Retry`
+for one the server stood back up, and those two exit-sale keys — while the ordinary bot order, which
+names no origin, is not listed. It reads every row, canceled or live, a chain qualifying where any
+of its rows names a ticked origin and then drawn whole. Built from the whole loaded book, never
+following the other filters, counting chains not rows, off by default behind the same switch — a
+chain built only of ordinary bot orders drops out even with every origin ticked — and not drawn
+where no loaded row names one.
 
 That line carries **three inks, loudest first** (`BookRowDetailTone`, drawn by `RowDetail` for both
 the grid and the chain dialog). What the server decided — the reason and its numbers — is a fact of

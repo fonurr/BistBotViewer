@@ -526,3 +526,115 @@ describe('BookFilters source filter', () => {
     expect(screen.queryByRole('button', { name: 'any source' })).toBeNull();
   });
 });
+
+describe('BookFilters origin filter', () => {
+  const chains = buildBookChains({
+    activeOrders: [
+      makeActiveOrder({ id: 1, clientOrderId: 'live', chainId: 'chain-live', origin: 'User' }),
+      // The ordinary bot order names no origin and cannot match.
+      makeActiveOrder({ id: 2, clientOrderId: 'quiet', chainId: 'chain-quiet', origin: null }),
+    ],
+    canceledOrders: [
+      makeCanceledOrder({ id: 401, clientOrderId: 'c1', chainId: 'chain-a', origin: 'Retry' }),
+      // Two legs of the same origin in one chain still count one chain.
+      makeCanceledOrder({ id: 402, clientOrderId: 'c2', chainId: 'chain-a', origin: 'Retry' }),
+    ],
+    positions: [],
+    closedTrades: [makeClosedTrade({ id: 301, chainId: 'chain-t', closeOrigin: 'StopLoss' })],
+  });
+
+  const renderFilters = (onChange: () => void, filters = defaultBookFilters) =>
+    render(
+      <BookFilters
+        filters={filters}
+        onChange={onChange}
+        bots={[makeBot({ id: 'bot-alpha' })]}
+        accounts={[makeAccount()]}
+        chains={chains}
+        batchDates={[]}
+        batchesLoaded
+        currentSession={FIXTURE_DAY}
+        onSettleDates={vi.fn()}
+        noClosingOrderCount={0}
+        mismatchCount={0}
+        canceledCount={2}
+        canceledVisible={false}
+        manualOpenLegs={0}
+        manualClosedChains={0}
+        onToggleCanceled={vi.fn()}
+        onOpenMismatch={vi.fn()}
+      />,
+    );
+
+  it('lists every origin the loaded rows name, counting chains', async () => {
+    const user = userEvent.setup();
+    renderFilters(vi.fn());
+
+    await user.click(screen.getByRole('button', { name: 'any origin' }));
+
+    expect(screen.getByRole('checkbox', { name: /User/ })).toBeVisible();
+    expect(screen.getByRole('checkbox', { name: /StopLoss/ })).toBeVisible();
+    expect(screen.getByRole('checkbox', { name: /Retry/ }).closest('label')).toHaveTextContent(
+      /Retry1$/,
+    );
+  });
+
+  it('starts off, with every box ticked and disabled', async () => {
+    const user = userEvent.setup();
+    renderFilters(vi.fn());
+
+    await user.click(screen.getByRole('button', { name: 'any origin' }));
+    for (const box of screen.getAllByRole('checkbox', { name: /User|Retry|StopLoss/ })) {
+      expect(box).toBeChecked();
+      expect(box).toBeDisabled();
+    }
+  });
+
+  it('drops an origin once it is on, and pins every origin back when switched off', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    renderFilters(onChange, { ...defaultBookFilters, originFilter: true });
+
+    await user.click(screen.getByRole('button', { name: '3 origins' }));
+    await user.click(screen.getByRole('checkbox', { name: /Retry/ }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ origins: new Set(['StopLoss', 'User']) }),
+    );
+
+    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ originFilter: false, origins: null }),
+    );
+  });
+
+  it('offers no control at all where every row is an ordinary bot order', () => {
+    render(
+      <BookFilters
+        filters={defaultBookFilters}
+        onChange={vi.fn()}
+        bots={[makeBot()]}
+        accounts={[makeAccount()]}
+        chains={buildBookChains({
+          activeOrders: [makeActiveOrder({ id: 1, clientOrderId: 'live', chainId: 'live' })],
+          canceledOrders: [],
+          positions: [],
+          closedTrades: [],
+        })}
+        batchDates={[]}
+        batchesLoaded
+        currentSession={FIXTURE_DAY}
+        onSettleDates={vi.fn()}
+        noClosingOrderCount={0}
+        mismatchCount={0}
+        canceledCount={0}
+        canceledVisible={false}
+        manualOpenLegs={0}
+        manualClosedChains={0}
+        onToggleCanceled={vi.fn()}
+        onOpenMismatch={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'any origin' })).toBeNull();
+  });
+});
