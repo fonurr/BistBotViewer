@@ -103,6 +103,25 @@ export function BookFilters(props: BookFiltersProps) {
   return (
     <>
       <div className="book-toolbar">
+        <DateRangeFilter
+          open={open === 'dates'}
+          setOpen={setOpen}
+          defaultRange="all"
+          dates={props.batchDates}
+          ready={props.batchesLoaded}
+          currentSession={props.currentSession}
+          range={{ from: filters.batchFrom, to: filters.batchTo }}
+          onChange={(range) =>
+            onChange({
+              ...filters,
+              batchFrom: range.from,
+              batchTo: range.to,
+              noClosingOrder: false,
+            })
+          }
+          onSettle={props.onSettleDates}
+          note="Only a day the loaded chains were filed under can be picked. A session where no bot ran has no batch, so the calendar and the steppers both pass over it."
+        />
         <div className="seg" aria-label="Book scopes">
           {scopes.map((scope) => (
             <label className="seg-opt" key={scope}>
@@ -213,6 +232,33 @@ export function BookFilters(props: BookFiltersProps) {
             note="On, the Book keeps a chain only where one of its own canceled orders carries a ticked status — and then draws the whole chain, canceled legs and all. A chain that never lost a leg has nothing to match, so it drops out even with every status ticked."
           />
         ) : null}
+        {sources.length > 0 ? (
+          <MultiSelectFilter
+            name="sources"
+            open={open === 'sources'}
+            setOpen={setOpen}
+            heading="who ended the loaded orders"
+            help="The server's own keys for who: `Broker` is Matriks or the exchange, `Bot` the calling bot, `Server` a guard or an exit this server decided, `User` a person in the MatriksIQ terminal. Every key the loaded book carries, whichever bots the rest of the toolbar keeps."
+            options={sources}
+            picks={[{ label: 'none', select: new Set<string>() }]}
+            active={props.filters.sourceFilter}
+            onActiveChange={(active) =>
+              onChange({
+                ...filters,
+                sourceFilter: active,
+                sources: null,
+                noClosingOrder: false,
+              })
+            }
+            activeLabel="filter"
+            inactiveLabel="any source"
+            selected={filters.sources}
+            onChange={(sources) => onChange({ ...filters, sources, noClosingOrder: false })}
+            one="source"
+            many="sources"
+            note="On, the Book keeps a chain only where one of its own dead orders names a ticked source, and then draws the whole chain. Only a stored death names who ended it, so a chain whose legs all still live has nothing to match and drops out even with every source ticked."
+          />
+        ) : null}
         {reasons.length > 0 ? (
           <MultiSelectFilter
             name="reasons"
@@ -243,53 +289,6 @@ export function BookFilters(props: BookFiltersProps) {
             note="On, the Book keeps a chain where any one of its rows — live, scheduled, canceled or the sell that closed a trade — carries a ticked reason, and then draws the whole chain. A chain the server recorded no reason for has nothing to match, so it drops out even with every reason ticked."
           />
         ) : null}
-        {sources.length > 0 ? (
-          <MultiSelectFilter
-            name="sources"
-            open={open === 'sources'}
-            setOpen={setOpen}
-            heading="who ended the loaded orders"
-            help="The server's own keys for who: `Broker` is Matriks or the exchange, `Bot` the calling bot, `Server` a guard or an exit this server decided, `User` a person in the MatriksIQ terminal. Every key the loaded book carries, whichever bots the rest of the toolbar keeps."
-            options={sources}
-            picks={[{ label: 'none', select: new Set<string>() }]}
-            active={props.filters.sourceFilter}
-            onActiveChange={(active) =>
-              onChange({
-                ...filters,
-                sourceFilter: active,
-                sources: null,
-                noClosingOrder: false,
-              })
-            }
-            activeLabel="filter"
-            inactiveLabel="any source"
-            selected={filters.sources}
-            onChange={(sources) => onChange({ ...filters, sources, noClosingOrder: false })}
-            one="source"
-            many="sources"
-            note="On, the Book keeps a chain only where one of its own dead orders names a ticked source, and then draws the whole chain. Only a stored death names who ended it, so a chain whose legs all still live has nothing to match and drops out even with every source ticked."
-          />
-        ) : null}
-        <DateRangeFilter
-          open={open === 'dates'}
-          setOpen={setOpen}
-          align="right"
-          defaultRange="all"
-          dates={props.batchDates}
-          ready={props.batchesLoaded}
-          currentSession={props.currentSession}
-          range={{ from: filters.batchFrom, to: filters.batchTo }}
-          onChange={(range) =>
-            onChange({
-              ...filters,
-              batchFrom: range.from,
-              batchTo: range.to,
-              noClosingOrder: false,
-            })
-          }
-          onSettle={props.onSettleDates}
-          note="Only a day the loaded chains were filed under can be picked. A session where no bot ran has no batch, so the calendar and the steppers both pass over it."
-        />
         <span className="book-toolbar-spacer" />
         {props.noClosingOrderCount > 0 || props.mismatchCount > 0 ? (
           <div className="human-banner" role="status">
