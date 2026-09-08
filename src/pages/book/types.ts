@@ -40,9 +40,10 @@ export interface BookFilterState {
 }
 
 export const defaultBookFilters: BookFilterState = {
-  /* Every scope, because the default batch range is one session: the whole of
-     one day's work is what a reader opens the Book for, and a day is small
-     enough to draw whole. */
+  /* Every scope: the whole of the desk's work is what a reader opens the Book
+     for. The range spans every loaded batch, and only the newest one is drawn
+     expanded — the rest wait behind their chevron — so this stays quick across
+     a year of them. */
   scopes: new Set<BookScope>(['waiting', 'positions', 'trades', 'canceled']),
   botIds: null,
   accountIds: null,
@@ -54,7 +55,7 @@ export const defaultBookFilters: BookFilterState = {
   sourceFilter: false,
   sources: null,
   /* Null is not "every batch" but the moment before one has loaded;
-     `DateRangeFilter` resolves it to the newest batch as soon as one exists. */
+     `DateRangeFilter` resolves it to every loaded batch as soon as one exists. */
   batchFrom: null,
   batchTo: null,
   noClosingOrder: false,

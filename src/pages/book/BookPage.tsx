@@ -656,8 +656,8 @@ export function narrowingsThatEmptiedTheBook(
       key: 'dates',
       phrase: 'the batch range',
       sentence: 'No chain opened inside the selected batch range.',
-      // The widest range, not an unset one: unset sends the control back to its
-      // default, which is the very narrowing this offers to undo.
+      // The widest range, stated outright — the same set the control settles on
+      // by default, named rather than left unset.
       clear: (current) => ({
         ...current,
         batchFrom: loadedBatches[0] ?? null,
@@ -1442,9 +1442,9 @@ function filterChips(
         filters.sources === null ? 'with a named source' : plural(filters.sources.size, 'source'),
       clear: (current) => ({ ...current, sourceFilter: false, sources: null }),
     });
-  // The range is always set — one batch is the default — so the chip appears
-  // only where it is narrower than the loaded batches, and names the days it
-  // kept rather than the fact that a range exists.
+  // The range is always set — every loaded batch is the default — so the chip
+  // appears only where it is narrower than the loaded batches, and names the
+  // days it kept rather than the fact that a range exists.
   const earliestBatch = batchDates[0] ?? null;
   const latestBatch = batchDates.at(-1) ?? null;
   if (

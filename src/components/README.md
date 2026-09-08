@@ -33,10 +33,9 @@ components; shared components never import a page.
   batch date**: the steppers walk the loaded list and the calendar disables every day no batch was
   filed under, so a window over a day nothing was filed in cannot be asked for. `null` at either
   end is not a range but the state before the first read; the control resolves it to its
-  `defaultRange` as soon as a batch exists — `latest` for the Book, whose subject is a day's work,
-  and `all` for Performance, where a report over one day is not a report. A page that clears the
-  filter back to `null` therefore gets that default back, so a control meaning to widen a range
-  must state the widest one outright.
+  `defaultRange` as soon as a batch exists — `all` for both the Book and Performance. A page that
+  clears the filter back to `null` therefore gets that default back, so a control meaning to widen
+  a range states the widest one outright rather than unsetting it.
   Its whole-set shortcuts sit on the same row `MultiSelectFilter` gives `all` and `none`:
   `latest`, `last 5`, `all`. `all` is a range like any other and names its days rather than
   reading as unset. `latest` is the newest batch **the desk has reached** — `currentSession`,

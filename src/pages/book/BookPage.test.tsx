@@ -104,9 +104,10 @@ function renderBook() {
 describe('the batch range the Book opens on', () => {
   /*
    * Saturday the 22nd. Friday's orders were written past the close, so they are
-   * already filed under Monday the 24th — the session the desk is working, and
-   * the batch the Book has to open on. A sell scheduled for Tuesday sits one
-   * batch further out, under a session nobody has reached.
+   * already filed under Monday the 24th — the session the desk is working. A
+   * sell scheduled for Tuesday sits one batch further out, under a session
+   * nobody has reached. The Book opens on every batch it has loaded, so the
+   * default range spans both of those days.
    */
   const SATURDAY = Date.parse('2026-08-22T11:00:00+03:00');
   const fridayEvening = () =>
@@ -130,7 +131,7 @@ describe('the batch range the Book opens on', () => {
       sentTime: null,
     });
 
-  it('opens on the batch the desk has reached, not on one a schedule reaches past it', () => {
+  it('opens on every batch it has loaded, schedule reaching past the session or not', () => {
     vi.spyOn(Date, 'now').mockReturnValue(SATURDAY);
     book.data = {
       ...emptyRead(),
@@ -138,7 +139,7 @@ describe('the batch range the Book opens on', () => {
     };
     renderBook();
 
-    expect(screen.getByRole('button', { name: '24.08.26' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '24.08.26 → 25.08.26' })).toBeVisible();
   });
 
   it('waits for every read before settling, so the first one back cannot pick the day', () => {
@@ -159,7 +160,7 @@ describe('the batch range the Book opens on', () => {
       </QueryClientProvider>,
     );
 
-    expect(screen.getByRole('button', { name: '24.08.26' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '24.08.26 → 25.08.26' })).toBeVisible();
   });
 });
 

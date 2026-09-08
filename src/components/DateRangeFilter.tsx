@@ -40,9 +40,10 @@ interface DateRangeFilterProps {
   range: DateRange;
   onChange: (range: DateRange) => void;
   /**
-   * Which range an unset filter settles on once a batch exists. The Book opens
-   * on the newest session, because a day's work is what it is for; a report
-   * over one day is not a report, so Performance opens on all of them.
+   * Which range an unset filter settles on once a batch exists. Both the Book
+   * and Performance open on `all` — every loaded batch; the Book relies on its
+   * batch-heading collapse, not a narrow range, to stay quick across a year of
+   * them. `latest` stays available as a shortcut and for any other caller.
    */
   defaultRange?: 'latest' | 'all';
   /**

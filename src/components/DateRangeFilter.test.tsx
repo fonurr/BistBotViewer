@@ -64,8 +64,8 @@ describe('rangeLabel', () => {
 
 describe('DateRangeFilter', () => {
   it('settles on its default range as soon as a batch is loaded', async () => {
-    // The Book opens on the newest session; a report over one day is not a
-    // report, so Performance opens on every batch it has.
+    // `latest` settles on the newest batch alone; `all` — the default both the
+    // Book and Performance use — settles on every batch loaded.
     const { unmount } = renderControl('latest');
     expect(await screen.findByRole('button', { name: '26.08.26' })).toBeVisible();
     unmount();

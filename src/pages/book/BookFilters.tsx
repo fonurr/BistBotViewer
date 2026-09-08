@@ -274,7 +274,7 @@ export function BookFilters(props: BookFiltersProps) {
           open={open === 'dates'}
           setOpen={setOpen}
           align="right"
-          defaultRange="latest"
+          defaultRange="all"
           dates={props.batchDates}
           ready={props.batchesLoaded}
           currentSession={props.currentSession}
