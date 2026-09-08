@@ -23,7 +23,8 @@ const position = {
   averagePrice: 38.2,
   orderPrice: 38.16,
   chainId: 'chain-1',
-  retryOfClientOrderId: null,
+  origin: null,
+  originData: null,
 } satisfies Position;
 
 function sell(overrides: Partial<ActiveOrder>): ActiveOrder {
@@ -45,12 +46,12 @@ function sell(overrides: Partial<ActiveOrder>): ActiveOrder {
     timeInForce: '0',
     status: 'New',
     cancelSource: null,
-    retryCount: 0,
+    origin: null,
+    originData: null,
     intentType: 'limit',
     cancelAtFloor: false,
     chainId: 'chain-1',
     parentClientOrderId: 'buy-1',
-    retryOfClientOrderId: null,
     ...overrides,
   };
 }

@@ -76,15 +76,15 @@ export function bookRowPresentation(
   }
   if (row.source === 'canceled') {
     // What says why a leg died: the server's own `reason` first, then the
-    // verbatim wire `explanation` — both when both are stored. The retry count
-    // is what says whether anything will try again (SPEC 2).
+    // verbatim wire `explanation` — both when both are stored. The retry
+    // attempt is what says whether anything will try again (SPEC 2).
     return {
       label: displayStatus(row.raw.status),
       source: row.statusSource ?? undefined,
       detail: parts(
         reasonPart(row.reason, row.reasonData),
         faint(row.raw.explanation?.trim() || undefined),
-        muted(row.raw.retryCount > 0 ? `attempt ${row.raw.retryCount} of 3` : undefined),
+        muted(retryAttempt(row.raw.origin, row.raw.originData)),
       ),
       role: row.raw.status === 'Unconfirmed' ? 'warn' : 'dead',
     };
@@ -120,7 +120,7 @@ export function bookRowPresentation(
               )} that are resting`,
         tone: 'wait',
       },
-      ...(row.raw.cancelSource === 'user'
+      ...(row.raw.cancelSource === 'external'
         ? ([
             {
               text: 'not our cancel: it appeared on the wire, so we know it was asked and not that it landed',
@@ -164,6 +164,21 @@ function parts(
 
 function reasonPart(reason: string | null, data: ReasonData | null): BookRowDetailPart | undefined {
   return reason === null ? undefined : { text: reasonPhrase(reason, data), tone: 'reason' };
+}
+
+/**
+ * The reference's `attempt N of 3` — how many automatic retries the server has
+ * already spent on this chain. It rides in on `origin: "Retry"` with the count
+ * in `originData`; an attempt the server has not counted yet (no `count`) says
+ * nothing, the way a zero count did before.
+ */
+function retryAttempt(
+  origin: string | null | undefined,
+  originData: ReasonData | null | undefined,
+): string | undefined {
+  if (origin !== 'Retry') return undefined;
+  const count = originData?.count;
+  return typeof count === 'number' && count > 0 ? `attempt ${count} of 3` : undefined;
 }
 
 function muted(text: string | undefined): BookRowDetailPart | undefined {

@@ -81,7 +81,9 @@ export function cancelSourceCopy(source: NonNullable<ActiveOrder['cancelSource']
     case 'server':
       return 'asked by the server';
     case 'user':
-      return 'asked by a person, in the terminal';
+      return 'asked by a person, at this interface';
+    case 'external':
+      return 'asked from outside this server, in the terminal';
   }
 }
 

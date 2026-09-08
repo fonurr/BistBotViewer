@@ -20,13 +20,13 @@ estimates.
 - **Hold** is `closeFinalSeenTime − openFinalSeenTime`. Both are stamps from this server's own clock,
   so their difference is a duration. It is never a time-to-fill or a latency — `API.md` rules those
   out, because each stamp is an upper bound on when the shares actually traded.
-- **Retried** counts distinct chains whose stored `openRetryOf…`/`closeRetryOf…` identifier is set.
-  A missing order is not evidence of a retry and is never inferred as one.
-- The **retry ledger** follows those edges: how many chains needed another attempt, how many ever
-  closed, and what the retried fills cost against the price the first attempt had asked. That
-  comparison needs the first attempt's canceled row with a non-market order price; a chain without
-  one is counted as uncompared, never as neutral. CanceledOrders carries no account id, so
-  canceled-only edges are dropped entirely while the account filter is narrowed.
+- **Retried** counts distinct chains whose open or close leg carries `origin: "Retry"`. A missing
+  order is not evidence of a retry and is never inferred as one.
+- The **retry ledger** follows that origin: how many chains needed another attempt, how many ever
+  opened and then closed, and what those round trips realized. What a retried fill cost against the
+  first attempt's asking price is **no longer shown** — the stored edge that named that attempt
+  retired into `origin`, and pairing attempts by hand would be a guess. CanceledOrders carries no
+  account id, so canceled-only retries are dropped entirely while the account filter is narrowed.
 - A bot in scope with **no closed round trip** gets a row saying so. It has no win rate, no
   expectancy and no slip, and averaging it in as zero would be the one figure here nobody could
   reproduce.

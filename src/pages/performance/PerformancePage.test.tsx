@@ -117,7 +117,7 @@ describe('Performance source trust', () => {
 });
 
 describe('Performance scope and unavailable values', () => {
-  it('scopes canceled retry edges by bot, symbol, and the batch they were aimed at', () => {
+  it('scopes canceled retries by bot, symbol, and the batch they were aimed at', () => {
     const rows = [
       canceled({ id: 1 }),
       canceled({ id: 2, botId: 'bot-beta' }),
@@ -129,7 +129,7 @@ describe('Performance scope and unavailable values', () => {
         finalSeenTime: Date.parse('2026-08-24T12:05:00+03:00'),
       }),
       canceled({ id: 5, orderTime: null, sentTime: null, finalSeenTime: null }),
-      canceled({ id: 6, retryOfClientOrderId: null }),
+      canceled({ id: 6, origin: null }),
       // Rejected on the Monday evening, past the last minute an order could reach that
       // session: this attempt was aimed at Tuesday and belongs in Tuesday's batch.
       canceled({
@@ -400,12 +400,12 @@ function canceled(overrides: Partial<CanceledOrder> = {}): CanceledOrder {
     status: 'Rejected',
     explanation: null,
     reason: null,
-    retryCount: 1,
+    origin: 'Retry',
+    originData: { count: 1 },
     intentType: 'limit',
     cancelAtFloor: false,
     chainId: 'chain-thyao-roundtrip',
     parentClientOrderId: null,
-    retryOfClientOrderId: 'previous-thyao-sell',
     ...overrides,
   };
 }

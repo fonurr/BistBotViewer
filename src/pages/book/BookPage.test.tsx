@@ -534,7 +534,7 @@ describe('the reason filter', () => {
         chainId: 'chain-a',
         symbol: 'AKBNK',
         direction: 'sell',
-        reason: 'ScheduledExit',
+        origin: 'TakeProfit',
       }),
       makeActiveOrder({ id: 2, clientOrderId: 'b', chainId: 'chain-b', symbol: 'GARAN' }),
       makeActiveOrder({ id: 3, clientOrderId: 'c', chainId: 'chain-c', symbol: 'SISE' }),
@@ -550,7 +550,7 @@ describe('the reason filter', () => {
       }),
     ],
     closedTrades: [
-      makeClosedTrade({ id: 301, chainId: 'chain-d', symbol: 'THYAO', closeReason: 'StopLoss' }),
+      makeClosedTrade({ id: 301, chainId: 'chain-d', symbol: 'THYAO', closeOrigin: 'StopLoss' }),
     ],
   });
 

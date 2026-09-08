@@ -284,9 +284,10 @@ describe('BookFilters reason filter', () => {
         id: 1,
         clientOrderId: 'live',
         chainId: 'chain-live',
-        reason: 'ScheduledExit',
+        direction: 'sell',
+        origin: 'StopLoss',
       }),
-      makeActiveOrder({ id: 2, clientOrderId: 'quiet', chainId: 'chain-quiet', reason: null }),
+      makeActiveOrder({ id: 2, clientOrderId: 'quiet', chainId: 'chain-quiet', origin: null }),
     ],
     canceledOrders: [
       makeCanceledOrder({ id: 401, clientOrderId: 'c1', chainId: 'chain-a', reason: 'BuyGuard' }),
@@ -294,7 +295,7 @@ describe('BookFilters reason filter', () => {
       makeCanceledOrder({ id: 402, clientOrderId: 'c2', chainId: 'chain-a', reason: 'BuyGuard' }),
     ],
     positions: [],
-    closedTrades: [makeClosedTrade({ id: 301, chainId: 'chain-t', closeReason: 'TakeProfit' })],
+    closedTrades: [makeClosedTrade({ id: 301, chainId: 'chain-t', closeOrigin: 'TakeProfit' })],
   });
 
   const renderFilters = (onChange: () => void, filters = defaultBookFilters) =>
@@ -327,7 +328,7 @@ describe('BookFilters reason filter', () => {
     await user.click(screen.getByRole('button', { name: 'any reason' }));
 
     expect(screen.getByRole('checkbox', { name: /BuyGuard/ })).toBeVisible();
-    expect(screen.getByRole('checkbox', { name: /ScheduledExit/ })).toBeVisible();
+    expect(screen.getByRole('checkbox', { name: /StopLoss/ })).toBeVisible();
     expect(screen.getByRole('checkbox', { name: /TakeProfit/ })).toBeVisible();
   });
 
@@ -337,7 +338,7 @@ describe('BookFilters reason filter', () => {
 
     await user.click(screen.getByRole('button', { name: 'any reason' }));
     for (const box of screen.getAllByRole('checkbox', {
-      name: /BuyGuard|ScheduledExit|TakeProfit/,
+      name: /BuyGuard|StopLoss|TakeProfit/,
     })) {
       expect(box).toBeChecked();
       expect(box).toBeDisabled();
@@ -363,7 +364,7 @@ describe('BookFilters reason filter', () => {
     renderFilters(onChange, { ...defaultBookFilters, reasonFilter: true });
 
     await user.click(screen.getByRole('button', { name: '3 reasons' }));
-    await user.click(screen.getByRole('checkbox', { name: /ScheduledExit/ }));
+    await user.click(screen.getByRole('checkbox', { name: /StopLoss/ }));
     expect(onChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ reasons: new Set(['BuyGuard', 'TakeProfit']) }),
     );

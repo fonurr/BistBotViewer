@@ -68,7 +68,8 @@ existed. Nothing older is substituted for it. The
 status cell states its qualifier **inline** in muted ink after a middle dot — `New · resting 22m
 · 40 of 150 filled`, `Position · held 3d 2h`, `By user · canceled in the MatriksIQ terminal`. On a
 canceled row that qualifier is the server's own `reason` first, then the verbatim wire
-`explanation`, then the retry count — every part that is stored, joined by middle dots. The
+`explanation`, then the retry attempt (`attempt 2 of 3`, off `origin: "Retry"` and its
+`originData.count`) — every part that is stored, joined by middle dots. The
 `x of y filled` clause is drawn **only for a genuine partial fill** (some filled, not all): a
 resting order with nothing filled says as much by resting, and a filled one is not waiting. A
 resting time is read off `orderTime`, the exchange's own registration stamp, never off the final-seen
@@ -139,10 +140,13 @@ controls omit it and are always on. Where a book holds no canceled order at all 
 drawn — a filter over an empty universe is not a control.
 
 The **reason filter** is the same control over a wider field. `reason` is the server's own key for
-why — why an order exists (`ScheduledExit`, `Retry`), why one ended (`BuyGuard`, `Expired`), why a
-cancel is in flight for a live order, and why a position was closed (`TakeProfit`). It is never
-prose, so it is ticked and printed verbatim, exactly as it arrives; a position row is given none,
-because nothing states why a holding exists beyond the buy that opened it. Unlike the status filter
+why — why one ended (`BuyGuard`, `Expired`) on a canceled leg, why a cancel is in flight for a live
+order, and why an exit sale exists (`TakeProfit`, `StopLoss`) on a live order or the sell that
+closed a round trip. The last is read off `origin`, which is where the server moved that answer;
+an automatic retry also rides in on `origin` but is **counted, not filtered** — the Book prints its
+attempt, it does not tick it. `reason` is never prose, so it is ticked and printed verbatim,
+exactly as it arrives; a position row is given none, because nothing states why a holding exists
+beyond the buy that opened it. Unlike the status filter
 above it reads **every** row, not only the canceled ones: a chain qualifies where any of its rows —
 live, scheduled, canceled, or the sell that closed a trade — carries a ticked reason, and is then
 drawn whole. Its list is built from the whole loaded book, never follows the other filters, and each
@@ -173,13 +177,13 @@ field `source`; on a Book row that name is already the row's origin table, so th
 keeps its own muted `asked by the server` clause and is not folded in here.
 
 The **source filter** is the reason filter's twin over that field: `Broker`, `Bot`, `Server`,
-`User`, ticked in the server's own key form, counting the chains each would keep, off by default
-behind the same switch, and not drawn at all where no loaded row names a hand.
+`User`, `External`, ticked in the server's own key form, counting the chains each would keep, off by
+default behind the same switch, and not drawn at all where no loaded row names a hand.
 
 That line carries **three inks, loudest first** (`BookRowDetailTone`, drawn by `RowDetail` for both
 the grid and the chain dialog). What the server decided — the reason and its numbers — is a fact of
 the row and stays in body ink. What this page worked out about the row — `resting 22m`, `no exchange
-id`, who asked for a cancel, the retry count — is muted. Matriks' own words, quoted verbatim in
+id`, who asked for a cancel, the retry attempt — is muted. Matriks' own words, quoted verbatim in
 `explanation`, ride behind at the same half strength as the seconds on a time cell, so a reason is
 never read past to reach an explanation.
 Queued baskets draw as the reference does: a tinted header line naming the request, its next

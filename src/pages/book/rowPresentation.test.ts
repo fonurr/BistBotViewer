@@ -48,15 +48,29 @@ describe('bookRowPresentation canceled detail', () => {
     expect(canceledRow({ reason: null, explanation: null }).detail).toBeUndefined();
   });
 
-  it('keeps the retry count last', () => {
+  it('keeps the retry attempt last', () => {
     expect(
-      text(canceledRow({ reason: 'unconfirmed', explanation: 'İptal edildi', retryCount: 2 })),
+      text(
+        canceledRow({
+          reason: 'unconfirmed',
+          explanation: 'İptal edildi',
+          origin: 'Retry',
+          originData: { count: 2 },
+        }),
+      ),
     ).toBe('unconfirmed · İptal edildi · attempt 2 of 3');
   });
 
   it('says the server verdict in body ink and the quoted wire text behind it', () => {
     expect(
-      inked(canceledRow({ reason: 'Expired', explanation: 'Süresi doldu', retryCount: 1 })),
+      inked(
+        canceledRow({
+          reason: 'Expired',
+          explanation: 'Süresi doldu',
+          origin: 'Retry',
+          originData: { count: 1 },
+        }),
+      ),
     ).toEqual(['reason:Expired', 'faint:Süresi doldu', 'muted:attempt 1 of 3']);
   });
 });
@@ -73,25 +87,36 @@ function activeRow(overrides: Parameters<typeof makeActiveOrder>[0]) {
 }
 
 describe('bookRowPresentation reason on the rows that are not canceled', () => {
-  it('leads a live order’s qualifier line with why the order exists', () => {
-    expect(text(activeRow({ reason: 'ScheduledExit', matriksOrderId: null }))).toBe(
-      'ScheduledExit · no exchange id — not editable until it confirms',
+  it('leads a live order’s qualifier line with why the exit sale exists', () => {
+    expect(text(activeRow({ origin: 'TakeProfit', matriksOrderId: null }))).toBe(
+      'TakeProfit · no exchange id — not editable until it confirms',
     );
-    expect(inked(activeRow({ reason: 'ScheduledExit', matriksOrderId: null }))[0]).toBe(
-      'reason:ScheduledExit',
+    expect(inked(activeRow({ origin: 'TakeProfit', matriksOrderId: null }))[0]).toBe(
+      'reason:TakeProfit',
     );
   });
 
-  it('says nothing where the server recorded no reason', () => {
+  it('says nothing where the order carries no why in its origin', () => {
     expect(
-      activeRow({ reason: null, status: 'Scheduled', scheduledTime: null }).detail,
+      activeRow({ origin: null, status: 'Scheduled', scheduledTime: null }).detail,
+    ).toBeUndefined();
+  });
+
+  it('says nothing on the qualifier line for a retry origin — the Book counts it, not filters it', () => {
+    expect(
+      activeRow({
+        origin: 'Retry',
+        originData: { count: 1 },
+        status: 'Scheduled',
+        scheduledTime: null,
+      }).detail,
     ).toBeUndefined();
   });
 
   it('names why a cancel is in flight beside who asked for it', () => {
-    expect(
-      text(activeRow({ cancelSource: 'server', cancelReason: 'TakeProfit', reason: 'BotRequest' })),
-    ).toBe('BotRequest · asked by the server · TakeProfit');
+    expect(text(activeRow({ cancelSource: 'server', cancelReason: 'TakeProfit' }))).toBe(
+      'asked by the server · TakeProfit',
+    );
   });
 
   it('carries why a position was closed on the sell, never on the opening leg', () => {
@@ -99,7 +124,7 @@ describe('bookRowPresentation reason on the rows that are not canceled', () => {
       activeOrders: [],
       canceledOrders: [],
       positions: [],
-      closedTrades: [makeClosedTrade({ closeReason: 'StopLoss' })],
+      closedTrades: [makeClosedTrade({ closeOrigin: 'StopLoss' })],
     });
     const legs = chain!.tradeRows.map((row) => bookRowPresentation(row, chain!));
 

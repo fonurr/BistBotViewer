@@ -23,7 +23,6 @@ interface BookChainRowBase {
   readonly symbol: string;
   readonly clientOrderId: string | null;
   readonly parentClientOrderId: string | null;
-  readonly retryOfClientOrderId: string | null;
   readonly direction: Direction;
   readonly quantity: number | null;
   readonly filledQuantity: number | null;
@@ -52,11 +51,14 @@ interface BookChainRowBase {
   readonly isWaiting: boolean;
   readonly cancelInFlight: boolean;
   /**
-   * The server's own key for why this row is what it is — why an order exists
-   * (`ScheduledExit`, `Retry`), why one ended (`BuyGuard`, `Expired`), or why a
-   * position was closed (`TakeProfit`). Never prose, and `null` wherever the
-   * server said nothing: a position row is never given one, because nothing
-   * states why a holding exists beyond the buy that opened it.
+   * The server's own key for why this row is what it is — why one ended
+   * (`BuyGuard`, `Expired`) on a canceled leg, or why an exit sale exists
+   * (`TakeProfit`, `StopLoss`, read off `origin`) on a live order or the sell
+   * that closed a round trip. Never prose, and `null` wherever the server said
+   * nothing: a position row is never given one, because nothing states why a
+   * holding exists beyond the buy that opened it. An automatic retry says so in
+   * `origin` rather than here — the Book counts its attempts, it does not filter
+   * on them.
    */
   readonly reason: string | null;
   /** The numbers behind that reason, for the few reasons that carry any. */
@@ -437,6 +439,7 @@ function createAccumulator(key: string, chainId: string | null): ChainAccumulato
 
 function normalizeActiveOrder(order: ActiveOrder): BookActiveOrderRow {
   const scheduled = order.status === 'Scheduled';
+  const why = originReason(order.origin, order.originData);
 
   return {
     key: `order:${stableSourceIdentity(order.clientOrderId, order.id)}`,
@@ -448,7 +451,6 @@ function normalizeActiveOrder(order: ActiveOrder): BookActiveOrderRow {
     symbol: order.symbol,
     clientOrderId: order.clientOrderId,
     parentClientOrderId: order.parentClientOrderId ?? null,
-    retryOfClientOrderId: order.retryOfClientOrderId,
     direction: order.direction,
     quantity: order.orderQuantity,
     filledQuantity: order.filledQuantity,
@@ -466,8 +468,8 @@ function normalizeActiveOrder(order: ActiveOrder): BookActiveOrderRow {
     status: order.status,
     isWaiting: isWaitingOrderStatus(order.status),
     cancelInFlight: order.cancelSource !== null,
-    reason: reasonKey(order.reason),
-    reasonData: order.reasonData ?? null,
+    reason: why.reason,
+    reasonData: why.reasonData,
     statusSource: null,
     cancelReason: reasonKey(order.cancelReason),
     cancelReasonData: order.cancelReasonData ?? null,
@@ -485,7 +487,6 @@ function normalizeCanceledOrder(order: CanceledOrder): BookCanceledOrderRow {
     symbol: order.symbol,
     clientOrderId: order.clientOrderId,
     parentClientOrderId: order.parentClientOrderId ?? null,
-    retryOfClientOrderId: order.retryOfClientOrderId,
     direction: order.direction,
     quantity: order.orderQuantity,
     filledQuantity: null,
@@ -523,7 +524,6 @@ function normalizePosition(position: Position): BookPositionRow {
     symbol: position.symbol,
     clientOrderId: position.clientOrderId,
     parentClientOrderId: null,
-    retryOfClientOrderId: position.retryOfClientOrderId,
     direction: 'buy',
     quantity: position.quantity,
     filledQuantity: position.quantity,
@@ -572,7 +572,6 @@ function normalizeClosedTrade(trade: ClosedTrade): [BookClosedTradeRow, BookClos
       key: `closed-trade:${trade.id}:open`,
       leg: 'open',
       clientOrderId: trade.clientOpenOrderId,
-      retryOfClientOrderId: trade.openRetryOfClientOrderId,
       direction: 'buy',
       orderPrice: trade.openOrderPrice,
       averagePrice: trade.averageOpenPrice,
@@ -593,7 +592,6 @@ function normalizeClosedTrade(trade: ClosedTrade): [BookClosedTradeRow, BookClos
       key: `closed-trade:${trade.id}:close`,
       leg: 'close',
       clientOrderId: trade.clientCloseOrderId,
-      retryOfClientOrderId: trade.closeRetryOfClientOrderId,
       direction: 'sell',
       orderPrice: trade.closeOrderPrice,
       averagePrice: trade.averageClosePrice,
@@ -603,8 +601,9 @@ function normalizeClosedTrade(trade: ClosedTrade): [BookClosedTradeRow, BookClos
       sentTime: trade.closeSentTime ?? null,
       finalSeenTime: trade.closeFinalSeenTime,
       status: 'Closed',
-      reason: reasonKey(trade.closeReason),
-      reasonData: trade.closeReasonData ?? null,
+      // Why the position was closed is the closing sell's `origin` now — an
+      // exit sale names its target here, an ordinary bot sell says nothing.
+      ...originReason(trade.closeOrigin, trade.closeOriginData),
       statusSource: null,
     },
   ];
@@ -818,6 +817,24 @@ export function rowReasons(row: BookChainRow): string[] {
 /** A stored key, or `null` for one the server left blank. Never prose. */
 function reasonKey(reason: string | null | undefined): string | null {
   return reason?.trim() || null;
+}
+
+/**
+ * The `origin` values that answer "why this order exists" the way the retired
+ * `reason` did on a live order and `closeReason` on the closing sell: the
+ * server's own exit sale, and its target. Every other origin — a person
+ * (`User`), an outside desk (`External`), an automatic retry (`Retry`) — is a
+ * different question and is surfaced apart from the reason line, so it is not
+ * folded in here.
+ */
+function originReason(
+  origin: string | null | undefined,
+  originData: ReasonData | null | undefined,
+): { reason: string | null; reasonData: ReasonData | null } {
+  const key = reasonKey(origin);
+  return key === 'TakeProfit' || key === 'StopLoss'
+    ? { reason: key, reasonData: originData ?? null }
+    : { reason: null, reasonData: null };
 }
 
 function compareText(left: string, right: string): number {

@@ -459,7 +459,7 @@ export function scopeCanceledRetries(
   const rows: CanceledOrder[] = [];
   let excludedUntimed = 0;
   for (const order of canceledOrders) {
-    if (!order.chainId || !order.retryOfClientOrderId) continue;
+    if (!order.chainId || order.origin !== 'Retry') continue;
     if (options.botIds !== null && !options.botIds.has(order.botId)) continue;
     if (options.symbols.size > 0 && !options.symbols.has(order.symbol)) continue;
     // A dead attempt is placed in the batch it was aimed at, the same way the Book places
@@ -819,16 +819,15 @@ interface RetryLedgerFigures {
   wonCount: number;
   wonAmount: number;
   deadCount: number;
-  worseCount: number;
-  worseAmount: number;
-  uncomparedCount: number;
   net: number;
 }
 
 /**
- * Follows the stored `retryOf` edge and nothing else: how many chains needed
- * another attempt, how many of them ever closed, and what the retried fills cost
- * against what the first attempt had asked for.
+ * Follows `origin: "Retry"` and nothing else: how many chains needed another
+ * attempt, how many of them ever opened and then closed, and what those round
+ * trips realized. What a retried fill cost against the first attempt's asking
+ * price is no longer computed — the stored edge that named that attempt is gone,
+ * and pairing by hand would be a guess.
  */
 export function summarizeRetryLedger(
   trades: readonly ClosedTrade[],
@@ -840,72 +839,26 @@ export function summarizeRetryLedger(
 
   const retryChains = new Set<string>();
   for (const trade of trades)
-    if (trade.chainId && (trade.openRetryOfClientOrderId || trade.closeRetryOfClientOrderId))
+    if (trade.chainId && (trade.openOrigin === 'Retry' || trade.closeOrigin === 'Retry'))
       retryChains.add(trade.chainId);
   for (const order of canceled)
-    if (order.chainId && order.retryOfClientOrderId) retryChains.add(order.chainId);
-
-  // The price the first attempt asked for. A market row's stored price was
-  // captured at the API call and never sent, so it is not an asking price.
-  const askedByClientOrderId = new Map<string, number>();
-  for (const order of canceled) {
-    if (!order.clientOrderId || order.type === 'market') continue;
-    if (order.orderPrice === null || order.orderPrice <= 0) continue;
-    askedByClientOrderId.set(order.clientOrderId, order.orderPrice);
-  }
+    if (order.chainId && order.origin === 'Retry') retryChains.add(order.chainId);
 
   const completed = [...retryChains].flatMap((chainId) => {
     const trade = tradeByChain.get(chainId);
     return trade ? [trade] : [];
   });
   let wonAmount = 0;
-  let worseCount = 0;
-  let worseAmount = 0;
-  let uncomparedCount = 0;
   for (const trade of completed) {
     wonAmount += trade.quantity * (trade.averageClosePrice - trade.averageOpenPrice);
-    const cost = retryFillCost(trade, askedByClientOrderId);
-    if (cost === null) uncomparedCount += 1;
-    else if (cost > 0) {
-      worseCount += 1;
-      worseAmount -= cost;
-    }
   }
   return {
     chainCount: retryChains.size,
     wonCount: completed.length,
     wonAmount,
     deadCount: retryChains.size - completed.length,
-    worseCount,
-    worseAmount,
-    uncomparedCount,
-    net: wonAmount + worseAmount,
+    net: wonAmount,
   };
-}
-
-/**
- * What the retried legs paid above what the first attempt had asked. A buy above
- * its asking price and a sell below it both cost money; `null` means the first
- * attempt is not in the loaded canceled rows, or asked no price at all.
- */
-function retryFillCost(trade: ClosedTrade, asked: ReadonlyMap<string, number>): number | null {
-  let cost = 0;
-  let compared = false;
-  const openAsked = trade.openRetryOfClientOrderId
-    ? asked.get(trade.openRetryOfClientOrderId)
-    : undefined;
-  if (openAsked !== undefined) {
-    cost += trade.quantity * (trade.averageOpenPrice - openAsked);
-    compared = true;
-  }
-  const closeAsked = trade.closeRetryOfClientOrderId
-    ? asked.get(trade.closeRetryOfClientOrderId)
-    : undefined;
-  if (closeAsked !== undefined) {
-    cost += trade.quantity * (closeAsked - trade.averageClosePrice);
-    compared = true;
-  }
-  return compared ? cost : null;
 }
 
 function RetryLedger({
@@ -922,8 +875,8 @@ function RetryLedger({
   grossRealized: number;
 }) {
   const figures = summarizeRetryLedger(trades, canceled);
-  // A share only reads as one while it is inside the whole. Retrying that moved
-  // more money than the window realized is stated against the figure itself.
+  // A share only reads as one while it is inside the whole. A retried figure
+  // larger than the window realized is stated against the figure itself.
   const share =
     grossRealized > 0 && Math.abs(figures.net) <= grossRealized
       ? `${formatPercentage((figures.net / grossRealized) * 100, 2, false)} of everything realized`
@@ -933,10 +886,10 @@ function RetryLedger({
       <div className="card-kicker status-dead">the retry ledger</div>
       <h3>
         {figures.chainCount === 0 ? (
-          'No retry edge in this selected window'
+          'No retried chain in this selected window'
         ) : (
           <>
-            Retrying earned{' '}
+            The retried chains realized{' '}
             <span className={figures.net >= 0 ? 'status-live' : 'status-dead'}>
               {formatSignedNumber(figures.net)}
             </span>
@@ -946,22 +899,23 @@ function RetryLedger({
       <p>
         {figures.chainCount === 0 ? (
           <>
-            Retry edges come only from stored retry identifiers. They report what the policy did;
-            they do not guess at orders missing from every list.
+            A retry is counted only where the server stamped{' '}
+            <span className="book-inline-value">origin: Retry</span>. That is what the policy did;
+            an order missing from every list is not guessed to be one.
           </>
         ) : (
           <>
             {plural(figures.chainCount, 'chain')} needed another attempt — {figures.wonCount} of
-            them got there, {figures.deadCount} did not. Following the{' '}
-            <span className="book-inline-value">retryOf</span> edge tells you whether the policy
-            paid for the orders it burned.
+            them opened and then closed, {figures.deadCount} did not. What a retried fill cost
+            against the first attempt&rsquo;s price is no longer shown: the edge that named that
+            attempt is gone.
           </>
         )}
       </p>
       {accountAttributionUnavailable ? (
         <p className="status-warn">
-          CanceledOrders stores no account id. In account scope, canceled-only retry edges are not
-          attributed; retry edges carried by the selected closed trades remain included.
+          CanceledOrders stores no account id. In account scope, canceled-only retries are not
+          attributed; a retry carried by a selected closed trade remains included.
         </p>
       ) : null}
       {excludedUntimed > 0 ? (
@@ -980,32 +934,12 @@ function RetryLedger({
                 {formatSignedNumber(figures.wonAmount)}
               </em>
             </div>
-            {figures.worseCount > 0 ? (
-              <div className="metric-line-nested">
-                <i />
-                <div className="metric-line status-wait">
-                  <strong>{figures.worseCount}</strong>
-                  <span>of those, filled worse than the first try asked</span>
-                  <em className="number-negative">{formatSignedNumber(figures.worseAmount)}</em>
-                </div>
-              </div>
-            ) : null}
             <div className={`metric-line ${figures.deadCount > 0 ? 'status-dead' : 'muted'}`}>
               <strong>{figures.deadCount}</strong>
               <span>never opened — the chain just died</span>
-              <em className="muted">no cost</em>
+              <em className="muted">no trade</em>
             </div>
           </div>
-          {figures.uncomparedCount > 0 ? (
-            /* A first attempt that is not in the loaded canceled rows, or asked
-               no price at all, is left out rather than compared against a
-               price nobody sent. */
-            <p className="muted">
-              {figures.uncomparedCount} of the {figures.wonCount} closed chains could not be
-              compared: the attempt they retry is outside the loaded canceled rows, or carried no
-              price the exchange saw.
-            </p>
-          ) : null}
           <div className="card-total">
             <span className="kicker">total</span>
             <strong className={figures.net >= 0 ? 'status-live' : 'status-dead'}>

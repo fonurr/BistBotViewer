@@ -99,9 +99,9 @@ describe('the reason a filter emptied the Book', () => {
   it('names the reason filter, which narrows even with every reason ticked', () => {
     const withReasons = buildBookChains({
       activeOrders: [
-        makeActiveOrder({ id: 1, clientOrderId: 'a', chainId: 'a', reason: 'ScheduledExit' }),
+        makeActiveOrder({ id: 1, clientOrderId: 'a', chainId: 'a', origin: 'TakeProfit' }),
         // A chain the server said nothing about cannot match at all.
-        makeActiveOrder({ id: 2, clientOrderId: 'b', chainId: 'b', reason: null }),
+        makeActiveOrder({ id: 2, clientOrderId: 'b', chainId: 'b', origin: null }),
       ],
       canceledOrders: [],
       positions: [],

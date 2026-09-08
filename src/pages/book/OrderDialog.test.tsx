@@ -844,12 +844,12 @@ function canceledOrder(overrides: Partial<CanceledOrder> = {}): CanceledOrder {
     status: 'Canceled',
     explanation: null,
     reason: null,
-    retryCount: 0,
+    origin: null,
+    originData: null,
     intentType: 'limit',
     cancelAtFloor: false,
     chainId: 'buy-dead',
     parentClientOrderId: null,
-    retryOfClientOrderId: null,
     ...overrides,
   };
 }
@@ -878,11 +878,11 @@ function confirmedScheduledRemoval(order: ActiveOrder): CanceledOrder {
     orderPrice: order.orderPrice,
     timeInForce: order.timeInForce,
     status: 'CanceledByBot',
-    retryCount: order.retryCount,
+    origin: order.origin,
+    originData: order.originData,
     intentType: order.intentType,
     cancelAtFloor: order.cancelAtFloor,
     chainId: order.chainId,
     parentClientOrderId: order.parentClientOrderId,
-    retryOfClientOrderId: order.retryOfClientOrderId,
   });
 }

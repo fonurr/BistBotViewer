@@ -352,12 +352,12 @@ function order(overrides: Partial<ActiveOrder> = {}): ActiveOrder {
     timeInForce: 'Day',
     status: 'New',
     cancelSource: null,
-    retryCount: 0,
+    origin: null,
+    originData: null,
     intentType: 'limit',
     cancelAtFloor: false,
     chainId: 'chain-1',
     parentClientOrderId: null,
-    retryOfClientOrderId: null,
     ...overrides,
   };
 }
@@ -378,7 +378,8 @@ function position(overrides: Partial<Position> = {}): Position {
     averagePrice: 100,
     orderPrice: 100,
     chainId: 'chain-1',
-    retryOfClientOrderId: null,
+    origin: null,
+    originData: null,
     ...overrides,
   };
 }
@@ -407,8 +408,10 @@ function trade(overrides: Partial<ClosedTrade> = {}): ClosedTrade {
     openOrderPrice: 100,
     closeOrderPrice: 120,
     chainId: 'chain-1',
-    openRetryOfClientOrderId: null,
-    closeRetryOfClientOrderId: null,
+    openOrigin: null,
+    openOriginData: null,
+    closeOrigin: null,
+    closeOriginData: null,
     ...overrides,
   };
 }

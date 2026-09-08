@@ -30,8 +30,10 @@ function trade(overrides: Partial<ClosedTrade> = {}): ClosedTrade {
     openOrderPrice: 99,
     closeOrderPrice: 111,
     chainId: 'buy-1',
-    openRetryOfClientOrderId: null,
-    closeRetryOfClientOrderId: null,
+    openOrigin: null,
+    openOriginData: null,
+    closeOrigin: null,
+    closeOriginData: null,
     ...overrides,
   };
 }
@@ -305,11 +307,11 @@ describe('buildPerformanceReport', () => {
     expect(result.summary.medianHoldDurationMs.available).toBe(true);
   });
 
-  it('counts a retried chain once, from its stored retry identifier alone', () => {
+  it('counts a retried chain once, from its stored origin alone', () => {
     const result = report({
       trades: [
-        trade({ id: 1, chainId: 'chain-a', openRetryOfClientOrderId: 'buy-0' }),
-        trade({ id: 2, chainId: 'chain-a', closeRetryOfClientOrderId: 'sell-0' }),
+        trade({ id: 1, chainId: 'chain-a', openOrigin: 'Retry' }),
+        trade({ id: 2, chainId: 'chain-a', closeOrigin: 'Retry' }),
         trade({ id: 3, chainId: 'chain-b' }),
       ],
     });

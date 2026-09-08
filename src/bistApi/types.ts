@@ -186,7 +186,6 @@ export type Account = z.infer<typeof accountSchema>;
 const chainLinksSchema = z.object({
   chainId: z.string().nullable(),
   parentClientOrderId: z.string().nullable().optional(),
-  retryOfClientOrderId: z.string().nullable(),
 });
 
 /**
@@ -199,6 +198,23 @@ const chainLinksSchema = z.object({
 export const reasonDataSchema = z.record(z.string(), z.unknown()).nullable().optional();
 
 export type ReasonData = Readonly<Record<string, unknown>>;
+
+/**
+ * Where an order came from, as the server's own key: `Retry` for one the server
+ * stood back up, `TakeProfit`/`StopLoss` for its own exit sale, `User` for a
+ * person at this interface, `External` for one placed outside this server, and
+ * absent for the ordinary bot order. Read as a free string for the reason
+ * `orderStatusSchema` is one — a value this file does not recognize must cost
+ * the word on one row, never the whole table read.
+ */
+export const originSchema = z.string().nullable().optional();
+
+/**
+ * The numbers behind an `origin`: `{ count: 2 }` — automatic attempts already
+ * spent — on a retry, `{ limit: 96.04 }` on an exit sale. Same lenient record
+ * as {@link reasonDataSchema}.
+ */
+export const originDataSchema = reasonDataSchema;
 
 export const activeOrderSchema = z
   .object({
@@ -234,18 +250,22 @@ export const activeOrderSchema = z
     marketPrice: z.number().nullable().optional(),
     timeInForce: z.string(),
     status: orderStatusSchema,
-    cancelSource: z.enum(['bot', 'server', 'user']).nullable(),
+    cancelSource: z.enum(['bot', 'server', 'user', 'external']).nullable(),
     /**
-     * The server's own keys for why: why the order exists at all, and why a
-     * cancel is in flight for it. Never prose, never a number in a string.
-     * Optional because a server that predates the columns omits them, and a
-     * missing `why` must not fail the whole Book read.
+     * Why a cancel is in flight for the order, if one is — the server's own key
+     * and the numbers behind it. Never prose. Optional because a server that
+     * predates the columns omits them, and a missing `why` must not fail the
+     * whole Book read. Why the order *exists* is `origin`, below.
      */
-    reason: z.string().nullable().optional(),
-    reasonData: reasonDataSchema,
     cancelReason: z.string().nullable().optional(),
     cancelReasonData: reasonDataSchema,
-    retryCount: z.number().int(),
+    /**
+     * Where the order came from and the numbers behind that — an exit sale's
+     * target, a retry's attempt count. Absent on the ordinary bot order. The
+     * retired `reason`/`reasonData` pair folded into these.
+     */
+    origin: originSchema,
+    originData: originDataSchema,
     intentType: orderTypeSchema,
     cancelAtFloor: z.boolean(),
     scheduledTime: z.number().nullable().optional(),
@@ -283,14 +303,21 @@ export const canceledOrderSchema = z
     status: orderStatusSchema,
     explanation: z.string().nullable(),
     /**
-     * Who ended the order — `Broker`, `Bot`, `Server` or `User`. Read as a free
-     * string for the reason `orderStatusSchema` is one: a value this file does
-     * not recognize must cost the word on one row, never the whole table read.
+     * Who ended the order — `Broker`, `Bot`, `Server`, `User` or `External`.
+     * Read as a free string for the reason `orderStatusSchema` is one: a value
+     * this file does not recognize must cost the word on one row, never the
+     * whole table read.
      */
     source: z.string().nullable().optional(),
     reason: z.string().nullable(),
     reasonData: reasonDataSchema,
-    retryCount: z.number().int(),
+    /**
+     * Where the dead order came from — `Retry` (with `originData.count`),
+     * `TakeProfit`/`StopLoss`, `User`, `External`. The retry attempt count
+     * folded in here off the retired `retryCount`.
+     */
+    origin: originSchema,
+    originData: originDataSchema,
     intentType: orderTypeSchema,
     cancelAtFloor: z.boolean(),
     openPrice: storedPriceRuleSchema,
@@ -324,7 +351,9 @@ export const positionSchema = z
     marketPrice: z.number().nullable().optional(),
     closePrice: storedPriceRuleSchema,
     chainId: z.string().nullable(),
-    retryOfClientOrderId: z.string().nullable(),
+    /** Where the opening buy came from — carried from its row. */
+    origin: originSchema,
+    originData: originDataSchema,
   })
   .passthrough();
 
@@ -367,11 +396,16 @@ export const closedTradeSchema = z
     openMarketPrice: z.number().nullable().optional(),
     closeMarketPrice: z.number().nullable().optional(),
     chainId: z.string().nullable(),
-    openRetryOfClientOrderId: z.string().nullable(),
-    closeRetryOfClientOrderId: z.string().nullable(),
-    /** Why the position was closed, carried from the sell that closed it. */
-    closeReason: z.string().nullable().optional(),
-    closeReasonData: reasonDataSchema,
+    /**
+     * Where each side of the round trip came from, carried from its order. The
+     * close side is the one record of why the position was closed — `TakeProfit`
+     * / `StopLoss`, `External` for a sale made outside this server, `null` for an
+     * ordinary sale a bot asked for. The retired `closeReason` folded in here.
+     */
+    openOrigin: originSchema,
+    openOriginData: originDataSchema,
+    closeOrigin: originSchema,
+    closeOriginData: originDataSchema,
   })
   .passthrough();
 

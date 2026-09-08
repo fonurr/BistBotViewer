@@ -24,12 +24,12 @@ function active(overrides: Partial<ActiveOrder> = {}): ActiveOrder {
     timeInForce: '0',
     status: 'New',
     cancelSource: null,
-    retryCount: 0,
+    origin: null,
+    originData: null,
     intentType: 'limit',
     cancelAtFloor: false,
     chainId: 'buy-1',
     parentClientOrderId: null,
-    retryOfClientOrderId: null,
     ...overrides,
   };
 }
@@ -54,12 +54,12 @@ function canceled(overrides: Partial<CanceledOrder> = {}): CanceledOrder {
     status: 'Canceled',
     explanation: null,
     reason: null,
-    retryCount: 0,
+    origin: null,
+    originData: null,
     intentType: 'limit',
     cancelAtFloor: false,
     chainId: 'buy-1',
     parentClientOrderId: 'buy-1',
-    retryOfClientOrderId: null,
     ...overrides,
   };
 }
@@ -80,7 +80,8 @@ function position(overrides: Partial<Position> = {}): Position {
     averagePrice: 300.5,
     orderPrice: 300,
     chainId: 'buy-1',
-    retryOfClientOrderId: null,
+    origin: null,
+    originData: null,
     ...overrides,
   };
 }
@@ -109,8 +110,10 @@ function trade(overrides: Partial<ClosedTrade> = {}): ClosedTrade {
     openOrderPrice: 300,
     closeOrderPrice: 315,
     chainId: 'buy-1',
-    openRetryOfClientOrderId: null,
-    closeRetryOfClientOrderId: null,
+    openOrigin: null,
+    openOriginData: null,
+    closeOrigin: null,
+    closeOriginData: null,
     ...overrides,
   };
 }
@@ -154,7 +157,8 @@ describe('buildBookChains', () => {
           id: 2,
           chainId: 'root-buy',
           clientOpenOrderId: 'winning-buy',
-          openRetryOfClientOrderId: 'retry-buy',
+          openOrigin: 'Retry',
+          openOriginData: { count: 2 },
           openOrderTime: at('2026-08-14T00:40:06+03:00'),
           openFinalSeenTime: at('2026-08-14T13:11:30+03:00'),
           closeOrderTime: at('2026-08-17T18:00:31+03:00'),
@@ -174,7 +178,7 @@ describe('buildBookChains', () => {
     expect(overHoliday.batchDate).toBe('2026-08-17');
   });
 
-  it('groups retry attempts only by their non-null chainId and retains retry edges', () => {
+  it('groups retry attempts by their non-null chainId alone', () => {
     const root = canceled({
       id: 1,
       clientOrderId: 'root-buy',
@@ -189,7 +193,8 @@ describe('buildBookChains', () => {
       id: 2,
       clientOrderId: 'retry-buy',
       chainId: 'root-buy',
-      retryOfClientOrderId: 'root-buy',
+      origin: 'Retry',
+      originData: { count: 1 },
       status: 'Scheduled',
       matriksOrderId: null,
       orderTime: null,
@@ -198,14 +203,16 @@ describe('buildBookChains', () => {
       whenType: 'Retry',
     });
 
-    const edgeThatMustNotMerge = active({
+    // Also a retry, but rooted in its own chain: the shared `origin` must not
+    // pull it into root-buy's grouping — only `chainId` does that.
+    const separateChainRetry = active({
       id: 3,
       clientOrderId: 'separate-retry',
       chainId: 'separate-chain',
-      retryOfClientOrderId: 'root-buy',
+      origin: 'Retry',
     });
     const chains = build({
-      activeOrders: [retry, edgeThatMustNotMerge],
+      activeOrders: [retry, separateChainRetry],
       canceledOrders: [root],
     });
     const chain = chains.find(({ key }) => key === 'chain:root-buy');
@@ -221,7 +228,6 @@ describe('buildBookChains', () => {
     expect(chain?.activeRows[0]).toMatchObject({
       source: 'scheduled',
       clientOrderId: 'retry-buy',
-      retryOfClientOrderId: 'root-buy',
     });
     expect(chain?.canceledRows[0]?.clientOrderId).toBe('root-buy');
   });

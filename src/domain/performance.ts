@@ -133,7 +133,7 @@ export interface PerformanceAggregate {
   readonly averageHoldDurationMs: PerformanceMetric;
   /** The middle hold, which a handful of multi-day trades cannot drag. */
   readonly medianHoldDurationMs: PerformanceMetric;
-  /** Distinct chains in this set whose open or close leg carries a retry link. */
+  /** Distinct chains in this set whose open or close leg carries `origin: "Retry"`. */
   readonly retriedChainCount: number;
   readonly drawdown: PerformanceDrawdown;
   readonly slippage: PerformanceSlippageSummary;
@@ -633,14 +633,15 @@ function summarizeSlippage(trades: readonly PerformanceTrade[]): PerformanceSlip
 }
 
 /**
- * A retry edge is a stored identifier and nothing else. An order missing from
- * every list is not evidence of one, so it is never inferred.
+ * A retry is a stored `origin` on one of the round trip's two sides and nothing
+ * else. An order missing from every list is not evidence of one, so it is never
+ * inferred.
  */
 function countRetriedChains(trades: readonly PerformanceTrade[]): number {
   const chains = new Set<string>();
   for (const { raw } of trades) {
     if (!raw.chainId) continue;
-    if (raw.openRetryOfClientOrderId || raw.closeRetryOfClientOrderId) chains.add(raw.chainId);
+    if (raw.openOrigin === 'Retry' || raw.closeOrigin === 'Retry') chains.add(raw.chainId);
   }
   return chains.size;
 }

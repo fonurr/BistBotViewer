@@ -168,7 +168,7 @@ describe('BookGrid row vocabulary', () => {
     );
 
     expect(screen.getByText('Partly filled · cancel in flight')).toBeVisible();
-    expect(screen.getByText(/asked by a person, in the terminal/)).toBeVisible();
+    expect(screen.getByText(/asked by a person, at this interface/)).toBeVisible();
     expect(screen.getByText(/the cancel can only take the 25 that are resting/)).toBeVisible();
     for (const name of ['edit', 'cancel']) {
       const button = screen.getByRole('button', { name });

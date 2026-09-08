@@ -91,11 +91,10 @@ export function makeActiveOrder(overrides: Partial<ActiveOrder> = {}): ActiveOrd
     timeInForce: '0',
     status: 'New',
     cancelSource: null,
-    reason: null,
-    reasonData: null,
     cancelReason: null,
     cancelReasonData: null,
-    retryCount: 0,
+    origin: null,
+    originData: null,
     intentType: 'limit',
     cancelAtFloor: false,
     scheduledTime: null,
@@ -104,7 +103,6 @@ export function makeActiveOrder(overrides: Partial<ActiveOrder> = {}): ActiveOrd
     closePrice: null,
     chainId: 'chain-akbnk',
     parentClientOrderId: null,
-    retryOfClientOrderId: null,
     ...overrides,
   };
 }
@@ -133,14 +131,14 @@ export function makeCanceledOrder(overrides: Partial<CanceledOrder> = {}): Cance
     source: 'User',
     reason: null,
     reasonData: null,
-    retryCount: 0,
+    origin: null,
+    originData: null,
     intentType: 'limit',
     cancelAtFloor: false,
     openPrice: null,
     closePrice: null,
     chainId: 'chain-thyao',
     parentClientOrderId: 'client-thyao-open-000001',
-    retryOfClientOrderId: null,
     ...overrides,
   };
 }
@@ -165,7 +163,8 @@ export function makePosition(overrides: Partial<Position> = {}): Position {
     marketPrice: 300.75,
     closePrice: null,
     chainId: 'chain-thyao',
-    retryOfClientOrderId: null,
+    origin: null,
+    originData: null,
     ...overrides,
   };
 }
@@ -200,10 +199,10 @@ export function makeClosedTrade(overrides: Partial<ClosedTrade> = {}): ClosedTra
     openMarketPrice: 299.5,
     closeMarketPrice: 306.4,
     chainId: 'chain-thyao-roundtrip',
-    openRetryOfClientOrderId: null,
-    closeRetryOfClientOrderId: null,
-    closeReason: null,
-    closeReasonData: null,
+    openOrigin: null,
+    openOriginData: null,
+    closeOrigin: null,
+    closeOriginData: null,
     ...overrides,
   };
 }
