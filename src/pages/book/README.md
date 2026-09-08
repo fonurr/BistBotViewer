@@ -92,7 +92,7 @@ runs one way only: switching the scope back off leaves the toggle where the read
 by then they may be reading canceled legs on chains that traded.
 
 `BookFilters` owns the batch-range control, additive scopes, and the bot, account, symbol,
-canceled-status, origin, source, and reason controls — the batch range leads the toolbar row, then
+origin, canceled-status, source, and reason controls — the batch range leads the toolbar row, then
 the scopes, then the popover triggers in that order. The
 bot, account and symbol controls are `components/EntityFilters` and the batch range is
 `components/DateRangeFilter`, which the Bots and Performance

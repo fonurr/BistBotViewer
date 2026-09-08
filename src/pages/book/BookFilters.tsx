@@ -203,6 +203,33 @@ export function BookFilters(props: BookFiltersProps) {
           )}
           emptyNote="The list only holds symbols the loaded batches traded."
         />
+        {origins.length > 0 ? (
+          <MultiSelectFilter
+            name="origins"
+            open={open === 'origins'}
+            setOpen={setOpen}
+            heading="where the loaded orders came from"
+            help="The server's own `origin` keys: `User` for a person at this interface, `External` for one placed in a brokerage terminal, `Retry` for one the server stood back up, `TakeProfit` / `StopLoss` for its own exit sale. The ordinary bot order names none. Every key the loaded book carries, whichever bots the rest of the toolbar keeps."
+            options={origins}
+            picks={[{ label: 'none', select: new Set<string>() }]}
+            active={props.filters.originFilter}
+            onActiveChange={(active) =>
+              onChange({
+                ...filters,
+                originFilter: active,
+                origins: null,
+                noClosingOrder: false,
+              })
+            }
+            activeLabel="filter"
+            inactiveLabel="any origin"
+            selected={filters.origins}
+            onChange={(origins) => onChange({ ...filters, origins, noClosingOrder: false })}
+            one="origin"
+            many="origins"
+            note="On, the Book keeps a chain only where one of its own rows names a ticked origin, and then draws the whole chain. A chain built only of ordinary bot orders names none, so it drops out even with every origin ticked."
+          />
+        ) : null}
         {canceledStatuses.length > 0 ? (
           <MultiSelectFilter
             name="canceled-statuses"
@@ -233,33 +260,6 @@ export function BookFilters(props: BookFiltersProps) {
             one="status"
             many="statuses"
             note="On, the Book keeps a chain only where one of its own canceled orders carries a ticked status — and then draws the whole chain, canceled legs and all. A chain that never lost a leg has nothing to match, so it drops out even with every status ticked."
-          />
-        ) : null}
-        {origins.length > 0 ? (
-          <MultiSelectFilter
-            name="origins"
-            open={open === 'origins'}
-            setOpen={setOpen}
-            heading="where the loaded orders came from"
-            help="The server's own `origin` keys: `User` for a person at this interface, `External` for one placed in a brokerage terminal, `Retry` for one the server stood back up, `TakeProfit` / `StopLoss` for its own exit sale. The ordinary bot order names none. Every key the loaded book carries, whichever bots the rest of the toolbar keeps."
-            options={origins}
-            picks={[{ label: 'none', select: new Set<string>() }]}
-            active={props.filters.originFilter}
-            onActiveChange={(active) =>
-              onChange({
-                ...filters,
-                originFilter: active,
-                origins: null,
-                noClosingOrder: false,
-              })
-            }
-            activeLabel="filter"
-            inactiveLabel="any origin"
-            selected={filters.origins}
-            onChange={(origins) => onChange({ ...filters, origins, noClosingOrder: false })}
-            one="origin"
-            many="origins"
-            note="On, the Book keeps a chain only where one of its own rows names a ticked origin, and then draws the whole chain. A chain built only of ordinary bot orders names none, so it drops out even with every origin ticked."
           />
         ) : null}
         {sources.length > 0 ? (
