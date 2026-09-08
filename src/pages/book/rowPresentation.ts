@@ -21,10 +21,12 @@ export interface BookRowNote {
 
 /**
  * One clause of the qualifier line, with the ink it is said in. A `reason` is
- * what the server decided, so it carries body ink and reads as a fact of the
- * row. `muted` is what this page worked out about the row. `faint` is Matriks'
- * own words, quoted — true, but the least of the three, and drawn like the
- * seconds on a time cell so it never competes with the reason beside it.
+ * the verdict the server reached, so it carries body ink and reads as a fact of
+ * the row. `muted` is what this page worked out about the row, and the `origin`
+ * key it came in on — the server's word, but a source and not a verdict, so it
+ * sits here too. `faint` is Matriks' own words, quoted — true, but the least of
+ * the three, and drawn like the seconds on a time cell so it never competes
+ * with the reason beside it.
  */
 export type BookRowDetailTone = 'reason' | 'muted' | 'faint';
 
@@ -62,29 +64,46 @@ export function bookRowPresentation(
   if (row.source === 'position') {
     const held = heldFor(row.finalSeenTime ?? row.orderTime, now);
     return chain.hasNoClosingOrder
-      ? { label: 'Position — no closing order', role: 'dead', exposed: true }
-      : { label: 'Position', detail: parts(muted(held)), role: 'fill' };
+      ? {
+          label: 'Position — no closing order',
+          detail: parts(originPart(row.origin, row.originData)),
+          role: 'dead',
+          exposed: true,
+        }
+      : {
+          label: 'Position',
+          detail: parts(originPart(row.origin, row.originData), muted(held)),
+          role: 'fill',
+        };
   }
   if (row.source === 'closed-trade') {
     // SPEC 2: `Filled` is a leg word; the chain's own row carries the round
     // trip, so only the opening leg reads `Closed`. Why the position was closed
-    // is stored on the sell, and how long it was held on the buy — neither leg
-    // invents the other's fact.
+    // rides in on the sell's `origin`, and how long it was held on the buy —
+    // neither leg invents the other's fact.
     return row.leg === 'close'
-      ? { label: 'Filled', detail: parts(reasonPart(row.reason, row.reasonData)), role: 'done' }
-      : { label: 'Closed', detail: parts(muted(closedTradeHold(row, chain))), role: 'done' };
+      ? {
+          label: 'Filled',
+          detail: parts(originPart(row.origin, row.originData)),
+          role: 'done',
+        }
+      : {
+          label: 'Closed',
+          detail: parts(originPart(row.origin, row.originData), muted(closedTradeHold(row, chain))),
+          role: 'done',
+        };
   }
   if (row.source === 'canceled') {
-    // What says why a leg died: the server's own `reason` first, then the
-    // verbatim wire `explanation` — both when both are stored. The retry
-    // attempt is what says whether anything will try again (SPEC 2).
+    // What says why a leg died: where it came from first (`Retry · count:
+    // 2,00`), then the server's own `reason`, then the verbatim wire
+    // `explanation` — every part that is stored, joined by middle dots.
     return {
       label: displayStatus(row.raw.status),
       source: row.statusSource ?? undefined,
       detail: parts(
+        originPart(row.origin, row.originData),
         reasonPart(row.reason, row.reasonData),
         faint(row.raw.explanation?.trim() || undefined),
-        muted(retryAttempt(row.raw.origin, row.raw.originData)),
       ),
       role: row.raw.status === 'Unconfirmed' ? 'warn' : 'dead',
     };
@@ -92,9 +111,10 @@ export function bookRowPresentation(
 
   const role = activeOrderStatusRole(row.raw);
   let label = displayActiveOrderStatus(row.raw);
-  // Why the order exists leads its qualifier line, as why a leg died leads a
-  // canceled one — the reason filter ticks these keys, so the row prints them.
-  const detail: Array<BookRowDetailPart | undefined> = [reasonPart(row.reason, row.reasonData)];
+  // Where the order came from leads its qualifier line, muted, ahead of
+  // whatever the row says about itself — an exit sale names its target here
+  // (`TakeProfit`), a retry its attempt count, and the ordinary bot order none.
+  const detail: Array<BookRowDetailPart | undefined> = [originPart(row.origin, row.originData)];
   let notes: readonly BookRowNote[] | undefined;
   if (row.source === 'scheduled' && row.scheduledTime !== null) {
     label = `${label} · ${formatScheduledDistance(row.scheduledTime, now)}`;
@@ -167,18 +187,18 @@ function reasonPart(reason: string | null, data: ReasonData | null): BookRowDeta
 }
 
 /**
- * The reference's `attempt N of 3` — how many automatic retries the server has
- * already spent on this chain. It rides in on `origin: "Retry"` with the count
- * in `originData`; an attempt the server has not counted yet (no `count`) says
- * nothing, the way a zero count did before.
+ * Where the order came from, said first and muted, in the same `key · pairs`
+ * shape a reason takes — `Retry · count: 2,00`, `TakeProfit · limit:
+ * ceilingAtClosingDay`, `External`. `null` for the ordinary bot order, which
+ * names no origin. It is the server's own key, but it names a source rather
+ * than a verdict, so it sits in the muted ink beside this page's own notes.
+ * `originData` numbers take the page's Turkish figure form, `count` included.
  */
-function retryAttempt(
-  origin: string | null | undefined,
-  originData: ReasonData | null | undefined,
-): string | undefined {
-  if (origin !== 'Retry') return undefined;
-  const count = originData?.count;
-  return typeof count === 'number' && count > 0 ? `attempt ${count} of 3` : undefined;
+function originPart(
+  origin: string | null,
+  originData: ReasonData | null,
+): BookRowDetailPart | undefined {
+  return origin === null ? undefined : { text: reasonPhrase(origin, originData), tone: 'muted' };
 }
 
 function muted(text: string | undefined): BookRowDetailPart | undefined {

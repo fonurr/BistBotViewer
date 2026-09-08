@@ -68,10 +68,12 @@ stand behind: a scheduled row (nothing decided yet), a symbol its price producer
 does not track, an order placed outside this server, and every row written before the field
 existed. Nothing older is substituted for it. The
 status cell states its qualifier **inline** in muted ink after a middle dot — `New · resting 22m
-· 40 of 150 filled`, `Position · held 3d 2h`, `By user · canceled in the MatriksIQ terminal`. On a
-canceled row that qualifier is the server's own `reason` first, then the verbatim wire
-`explanation`, then the retry attempt (`attempt 2 of 3`, off `origin: "Retry"` and its
-`originData.count`) — every part that is stored, joined by middle dots. The
+· 40 of 150 filled`, `Position · held 3d 2h`, `By user · canceled in the MatriksIQ terminal`.
+Where the server named an `origin` — `Retry`, `TakeProfit`, `StopLoss`, `User`, `External` — that
+leads the line, muted, in the same `key · pairs` shape a reason takes (`Retry · count: 2,00`,
+`TakeProfit · limit: ceilingAtClosingDay`); the ordinary bot order names none and opens with
+whatever the row says about itself. On a canceled row the server's own `reason` and then the
+verbatim wire `explanation` follow it — every part that is stored, joined by middle dots. The
 `x of y filled` clause is drawn **only for a genuine partial fill** (some filled, not all): a
 resting order with nothing filled says as much by resting, and a filled one is not waiting. A
 resting time is read off `orderTime`, the exchange's own registration stamp, never off the final-seen
@@ -147,8 +149,8 @@ The **reason filter** is the same control over a wider field. `reason` is the se
 why — why one ended (`BuyGuard`, `Expired`) on a canceled leg, why a cancel is in flight for a live
 order, and why an exit sale exists (`TakeProfit`, `StopLoss`) on a live order or the sell that
 closed a round trip. The last is read off `origin`, which is where the server moved that answer;
-an automatic retry also rides in on `origin` but is **counted, not filtered** — the Book prints its
-attempt, it does not tick it. `reason` is never prose, so it is ticked and printed verbatim,
+an automatic retry also rides in on `origin` but is **printed, not filtered** — the Book states its
+origin key in the qualifier line, it does not tick it. `reason` is never prose, so it is ticked and printed verbatim,
 exactly as it arrives; a position row is given none, because nothing states why a holding exists
 beyond the buy that opened it. Unlike the status filter
 above it reads **every** row, not only the canceled ones: a chain qualifies where any of its rows —
@@ -160,11 +162,13 @@ the Book even with every reason ticked, and a queued basket — which owns no or
 it. Off pins the selection back to every reason. Where no loaded row carries one, the control is not
 drawn.
 
-Every row that carries a reason **prints it**, in the status cell's own qualifier line: leading on a
-canceled leg, before the verbatim wire `explanation`, and leading likewise on a live or scheduled
-order, before whatever that row says about itself. A cancel in flight names who asked and then why,
-and the sell that closed a round trip carries why on the `Filled` leg — never on the `Closed` one,
-which carries the hold instead. The filter ticks the words the rows print. `reasonData` — the
+Every row that carries a reason **prints it**, in the status cell's own qualifier line: on a
+canceled leg the server's own `reason` leads it in body ink, before the verbatim wire
+`explanation` and after the muted `origin` if the row names one. A cancel in flight names who
+asked and then why. An exit sale's target is now the row's `origin` rather than a `reason`, so it
+prints muted with every other origin — on a live or scheduled order and on the closed round
+trip's `Filled` leg, never on the `Closed` one, which carries the hold instead. The filter ticks
+whichever word the row shows. `reasonData` — the
 numbers behind the three reasons that have any — hangs off the reason on the same middle dot,
 `BuyGuard · upperLimit: 119,34`, with the server's key unchanged, a colon joining a key to its value
 and a comma between pairs, since the dots are already spent. The figure takes the page's own Turkish
@@ -198,7 +202,9 @@ where no loaded row names one.
 That line carries **three inks, loudest first** (`BookRowDetailTone`, drawn by `RowDetail` for both
 the grid and the chain dialog). What the server decided — the reason and its numbers — is a fact of
 the row and stays in body ink. What this page worked out about the row — `resting 22m`, `no exchange
-id`, who asked for a cancel, the retry attempt — is muted. Matriks' own words, quoted verbatim in
+id`, who asked for a cancel — is muted, and so is the `origin` key the order came in on: the
+server's word, but a source and not a verdict, so it sits beside this page's own notes rather than
+in the reason's ink. Matriks' own words, quoted verbatim in
 `explanation`, ride behind at the same half strength as the seconds on a time cell, so a reason is
 never read past to reach an explanation.
 Queued baskets draw as the reference does: a tinted header line naming the request, its next

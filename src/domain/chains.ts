@@ -73,6 +73,12 @@ interface BookChainRowBase {
    */
   readonly origin: string | null;
   /**
+   * The numbers behind that origin, for the origins that carry any — a retry's
+   * `count`, an exit sale's target. `null` where the origin has none or is
+   * itself absent.
+   */
+  readonly originData: ReasonData | null;
+  /**
    * Who put the row in the status it is in — `Broker`, `Bot`, `Server` or
    * `User`. The contract calls this field `source`; here that name is already
    * the row's own origin table, so the two are kept apart by name. Only a
@@ -480,6 +486,7 @@ function normalizeActiveOrder(order: ActiveOrder): BookActiveOrderRow {
     reason: why.reason,
     reasonData: why.reasonData,
     origin: reasonKey(order.origin),
+    originData: order.originData ?? null,
     statusSource: null,
     cancelReason: reasonKey(order.cancelReason),
     cancelReasonData: order.cancelReasonData ?? null,
@@ -517,6 +524,7 @@ function normalizeCanceledOrder(order: CanceledOrder): BookCanceledOrderRow {
     reason: reasonKey(order.reason),
     reasonData: order.reasonData ?? null,
     origin: reasonKey(order.origin),
+    originData: order.originData ?? null,
     statusSource: reasonKey(order.source),
   };
 }
@@ -555,6 +563,7 @@ function normalizePosition(position: Position): BookPositionRow {
     reason: null,
     reasonData: null,
     origin: reasonKey(position.origin),
+    originData: position.originData ?? null,
     statusSource: null,
   };
 }
@@ -598,6 +607,7 @@ function normalizeClosedTrade(trade: ClosedTrade): [BookClosedTradeRow, BookClos
       reason: null,
       reasonData: null,
       origin: reasonKey(trade.openOrigin),
+      originData: trade.openOriginData ?? null,
       statusSource: null,
     },
     {
@@ -618,6 +628,7 @@ function normalizeClosedTrade(trade: ClosedTrade): [BookClosedTradeRow, BookClos
       // exit sale names its target here, an ordinary bot sell says nothing.
       ...originReason(trade.closeOrigin, trade.closeOriginData),
       origin: reasonKey(trade.closeOrigin),
+      originData: trade.closeOriginData ?? null,
       statusSource: null,
     },
   ];

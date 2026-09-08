@@ -48,7 +48,7 @@ describe('bookRowPresentation canceled detail', () => {
     expect(canceledRow({ reason: null, explanation: null }).detail).toBeUndefined();
   });
 
-  it('keeps the retry attempt last', () => {
+  it('leads the line with the origin it came in on, before the reason', () => {
     expect(
       text(
         canceledRow({
@@ -58,10 +58,10 @@ describe('bookRowPresentation canceled detail', () => {
           originData: { count: 2 },
         }),
       ),
-    ).toBe('unconfirmed · İptal edildi · attempt 2 of 3');
+    ).toBe('Retry · count: 2,00 · unconfirmed · İptal edildi');
   });
 
-  it('says the server verdict in body ink and the quoted wire text behind it', () => {
+  it('says the origin muted, then the server verdict in body ink, then the quoted wire text', () => {
     expect(
       inked(
         canceledRow({
@@ -71,7 +71,7 @@ describe('bookRowPresentation canceled detail', () => {
           originData: { count: 1 },
         }),
       ),
-    ).toEqual(['reason:Expired', 'faint:Süresi doldu', 'muted:attempt 1 of 3']);
+    ).toEqual(['muted:Retry · count: 1,00', 'reason:Expired', 'faint:Süresi doldu']);
   });
 });
 
@@ -86,31 +86,43 @@ function activeRow(overrides: Parameters<typeof makeActiveOrder>[0]) {
   return bookRowPresentation(row, chain!);
 }
 
-describe('bookRowPresentation reason on the rows that are not canceled', () => {
-  it('leads a live order’s qualifier line with why the exit sale exists', () => {
+describe('bookRowPresentation origin on the rows that are not canceled', () => {
+  it('leads a live order’s qualifier line with the origin it came in on, muted', () => {
     expect(text(activeRow({ origin: 'TakeProfit', matriksOrderId: null }))).toBe(
       'TakeProfit · no exchange id — not editable until it confirms',
     );
     expect(inked(activeRow({ origin: 'TakeProfit', matriksOrderId: null }))[0]).toBe(
-      'reason:TakeProfit',
+      'muted:TakeProfit',
     );
   });
 
-  it('says nothing where the order carries no why in its origin', () => {
+  it('says nothing where the order names no origin', () => {
     expect(
       activeRow({ origin: null, status: 'Scheduled', scheduledTime: null }).detail,
     ).toBeUndefined();
   });
 
-  it('says nothing on the qualifier line for a retry origin — the Book counts it, not filters it', () => {
+  it('prints a retry origin on the qualifier line, muted, in the reason’s key · pairs shape', () => {
     expect(
-      activeRow({
-        origin: 'Retry',
-        originData: { count: 1 },
-        status: 'Scheduled',
-        scheduledTime: null,
-      }).detail,
-    ).toBeUndefined();
+      text(
+        activeRow({
+          origin: 'Retry',
+          originData: { count: 1 },
+          status: 'Scheduled',
+          scheduledTime: null,
+        }),
+      ),
+    ).toBe('Retry · count: 1,00');
+    expect(
+      inked(
+        activeRow({
+          origin: 'Retry',
+          originData: { count: 1 },
+          status: 'Scheduled',
+          scheduledTime: null,
+        }),
+      ),
+    ).toEqual(['muted:Retry · count: 1,00']);
   });
 
   it('names why a cancel is in flight beside who asked for it', () => {
