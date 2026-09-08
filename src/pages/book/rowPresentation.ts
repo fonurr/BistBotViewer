@@ -38,11 +38,11 @@ export interface BookRowDetailPart {
 export interface BookRowPresentation {
   label: string;
   /**
-   * Where the order came from — the server's `origin` key and the numbers
-   * behind it, in a reason's `key · pairs` shape (`Retry · count: 2,00`,
-   * `TakeProfit · limit: ceilingAtClosingDay`). It leads the whole status
-   * cell, muted, ahead of the verdict word itself. `undefined` for the
-   * ordinary bot order, which names no origin.
+   * Where the order came from — the server's `origin` key and the data behind
+   * it, in a reason's `key · pairs` shape (`Retry · count: 0`, `TakeProfit ·
+   * limit: ceilingAtClosingDay`), each value verbatim as the server sent it.
+   * It leads the whole status cell, muted, ahead of the verdict word itself.
+   * `undefined` for the ordinary bot order, which names no origin.
    */
   origin?: string;
   /**
@@ -70,8 +70,8 @@ export function bookRowPresentation(
   opener = false,
 ): BookRowPresentation {
   // Where the order came from leads the whole cell, ahead of the verdict word
-  // — `Retry · count: 2,00 · Filled`, `TakeProfit · limit: … · New` — so it is
-  // its own field on the presentation rather than the first qualifier clause.
+  // — `Retry · count: 0 · Filled`, `TakeProfit · limit: … · New` — so it is its
+  // own field on the presentation rather than the first qualifier clause.
   const origin = originText(row.origin, row.originData);
 
   if (row.source === 'position') {
@@ -186,10 +186,11 @@ function reasonPart(reason: string | null, data: ReasonData | null): BookRowDeta
 
 /**
  * Where the order came from, as one phrase in a reason's `key · pairs` shape —
- * `Retry · count: 2,00`, `TakeProfit · limit: ceilingAtClosingDay`, `External`.
+ * `Retry · count: 0`, `TakeProfit · limit: ceilingAtClosingDay`, `External`.
  * `undefined` for the ordinary bot order, which names no origin. `RowVerdict`
  * draws it muted and ahead of the verdict word, so it leads the whole cell.
- * `originData` numbers take the page's Turkish figure form, `count` included.
+ * `reasonPhrase` prints every `originData` value verbatim, not through the
+ * page's figure form — these are raw server fields, not figures the page owns.
  */
 function originText(origin: string | null, originData: ReasonData | null): string | undefined {
   return origin === null ? undefined : reasonPhrase(origin, originData);

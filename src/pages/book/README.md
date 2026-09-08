@@ -70,7 +70,7 @@ existed. Nothing older is substituted for it. The
 status cell states its qualifier **inline** in muted ink after a middle dot — `New · resting 22m
 · 40 of 150 filled`, `Position · held 3d 2h`, `By user · canceled in the MatriksIQ terminal`.
 Where the server named an `origin` — `Retry`, `TakeProfit`, `StopLoss`, `User`, `External` — that
-leads the **whole cell**, muted, ahead of the verdict word itself (`Retry · count: 2,00 · Filled`,
+leads the **whole cell**, muted, ahead of the verdict word itself (`Retry · count: 0 · Filled`,
 `TakeProfit · limit: ceilingAtClosingDay · New`), in the same `key · pairs` shape a reason takes;
 `RowVerdict` draws it as its own field, not the first qualifier clause, and the ordinary bot order
 names none so its cell opens on the verdict. (The chain dialog's leg rows keep the verdict in a
@@ -172,12 +172,12 @@ verbatim wire `explanation`. A cancel in flight names who asked and then why. An
 target is the row's `origin` rather than a `reason`, so it prints where every origin does — muted
 and ahead of the verdict word — on a live or scheduled order and on the closed round trip's
 `Filled` leg, never on the `Closed` one, which carries the hold instead. The filter ticks
-whichever word the row shows. `reasonData` — the
-numbers behind the three reasons that have any — hangs off the reason on the same middle dot,
-`BuyGuard · upperLimit: 119,34`, with the server's key unchanged, a colon joining a key to its value
-and a comma between pairs, since the dots are already spent. The figure takes the page's own Turkish
-form; a value that names the default it came from (`lowerLimit: floor`) prints verbatim, because a
-default's number says nothing without its name, and a value of a shape the contract does not
+whichever word the row shows. `reasonData` (and `originData`) — the data behind the key, for the
+keys that carry any — hangs off it on the same middle dot, `BuyGuard · upperLimit: 119.34`, with a
+colon joining a key to its value and a comma between pairs, since the dots are already spent. Key
+**and value both print exactly as the server sent them** — the number is not run through the
+page's Turkish figure form, because these are raw server fields (a retry `count`, a default's name
+like `lowerLimit: floor`), not figures the page owns. A value of a shape the contract does not
 describe is left out rather than guessed at.
 
 **`source` sits beside the status, not in that line at all** — `By user by User`, joined with "by"

@@ -66,9 +66,9 @@ describe('bookRowPresentation canceled detail', () => {
       origin: 'Retry',
       originData: { count: 2 },
     });
-    expect(row.origin).toBe('Retry · count: 2,00');
+    expect(row.origin).toBe('Retry · count: 2');
     expect(cell(row)).toBe(
-      'Retry · count: 2,00 · Canceled by Server · PositionExtended · İptal edildi',
+      'Retry · count: 2 · Canceled by Server · PositionExtended · İptal edildi',
     );
   });
 
@@ -79,7 +79,7 @@ describe('bookRowPresentation canceled detail', () => {
       origin: 'Retry',
       originData: { count: 1 },
     });
-    expect(row.origin).toBe('Retry · count: 1,00');
+    expect(row.origin).toBe('Retry · count: 1');
     expect(inked(row)).toEqual(['reason:Expired', 'faint:Süresi doldu']);
   });
 });
@@ -115,7 +115,7 @@ describe('bookRowPresentation origin on the rows that are not canceled', () => {
       status: 'Scheduled',
       scheduledTime: null,
     });
-    expect(row.origin).toBe('Retry · count: 1,00');
+    expect(row.origin).toBe('Retry · count: 1');
     expect(row.detail).toBeUndefined();
   });
 
@@ -141,12 +141,12 @@ describe('bookRowPresentation origin on the rows that are not canceled', () => {
 });
 
 describe('bookRowPresentation reasonData', () => {
-  it('writes the numbers behind a reason beside it, in Turkish figures', () => {
+  it('writes the numbers behind a reason beside it, exactly as the server sent them', () => {
     expect(
       text(
         canceledRow({ reason: 'BuyGuard', reasonData: { upperLimit: 119.34 }, explanation: null }),
       ),
-    ).toBe('BuyGuard · upperLimit: 119,34');
+    ).toBe('BuyGuard · upperLimit: 119.34');
   });
 
   it('prints the name of a default rather than a number it does not have', () => {
@@ -164,7 +164,7 @@ describe('bookRowPresentation reasonData', () => {
   it('keeps the numbers in the reason’s own ink, as one phrase', () => {
     expect(
       inked(canceledRow({ reason: 'BuyGuard', reasonData: { upperLimit: 119.34 } })),
-    ).toContain('reason:BuyGuard · upperLimit: 119,34');
+    ).toContain('reason:BuyGuard · upperLimit: 119.34');
   });
 
   it('leaves out a value of a shape the contract does not describe', () => {
@@ -176,7 +176,7 @@ describe('bookRowPresentation reasonData', () => {
           explanation: null,
         }),
       ),
-    ).toBe('TakeProfit · limit: 96,04');
+    ).toBe('TakeProfit · limit: 96.04');
   });
 
   it('separates several pairs with a comma, since the dots are already spent', () => {
@@ -188,7 +188,7 @@ describe('bookRowPresentation reasonData', () => {
           explanation: null,
         }),
       ),
-    ).toBe('BuyGuard · upperLimit: 119,34, lowerLimit: floor');
+    ).toBe('BuyGuard · upperLimit: 119.34, lowerLimit: floor');
   });
 
   it('carries the numbers behind a cancel in flight too', () => {
@@ -200,7 +200,7 @@ describe('bookRowPresentation reasonData', () => {
           cancelReasonData: { limit: 96.04 },
         }),
       ),
-    ).toBe('asked by the server · StopLoss · limit: 96,04');
+    ).toBe('asked by the server · StopLoss · limit: 96.04');
   });
 });
 
