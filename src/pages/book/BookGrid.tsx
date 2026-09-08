@@ -952,7 +952,6 @@ function ScopeHeading({
       {summary.aggregate === null ? null : (
         <span className={summary.tone}>{summary.aggregate}</span>
       )}
-      {summary.note ? <span className="muted">· {summary.note}</span> : null}
       <i />
     </header>
   );
@@ -969,7 +968,7 @@ export function scopeGroupSummary(
   pnlState: FilledPnlState,
   prices: ReadonlyMap<string, ResolvedPrice>,
   pricesTrustworthy: boolean,
-): { aggregate: string | null; note?: string; tone: string } {
+): { aggregate: string | null; tone: string } {
   if (scope === 'positions') {
     // Ids are only unique within their own source table, so an exposure is
     // matched on both its source and its id.
@@ -1010,9 +1009,6 @@ export function scopeGroupSummary(
     );
     return {
       aggregate: formatSignedNumber(realized),
-      // A trades chain draws every order it ever had, and the settled ones sit
-      // in --st-done; the heading says so once rather than per row.
-      note: 'every order in the chain, gray where it filled',
       tone: realized >= 0 ? 'number-positive' : 'number-negative',
     };
   }
