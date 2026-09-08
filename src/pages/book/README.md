@@ -23,9 +23,14 @@ order belongs to. A session keeps what is written for it until ten minutes past 
 to the next trading day. `domain/calendar.ts` owns that rule and reads it against the
 `GetHolidays` calendar; without one it still rolls off a weekend and off the close, since an
 absent holiday row cannot prove a weekday was open. A row whose own day is not the batch date
-then states its date beside the clock, which is what `formatRowTime` already does. Ord time and
-the final stamp carry their seconds: the minute is what a reader scans, so `formatRowTimeParts` hands
-the seconds back separately and the cell draws them — their colon with them — at half opacity.
+then states its date beside the clock, which is what `formatRowTime` already does. The row carries
+four time columns, read left to right as the order's life: `created` and `sent` are this server's
+own `createdTime`/`sentTime`, `order` is the exchange's `orderTime` (the same word the price
+column carries, never confusable — one is a price, one a clock), and `final` is `finalSeenTime`.
+A **scheduled row** has reached none of them: its `scheduledTime` stands in the `sent` column, amber
+like the rest of its wait, and `order` stays empty until the exchange registers it. All four carry
+their seconds: the minute is what a reader scans, so `formatRowTimeParts` hands the seconds back
+separately and the cell draws them — their colon with them — at half opacity.
 
 A batch heading is the control that opens its batch: the whole line is a button with a chevron
 and `aria-expanded`, and the column band and every bot under it are drawn only while it is open.
@@ -47,9 +52,9 @@ empty** when its size is the buy's whole size — an `auto` sell, or one whose q
 chain's opening buy; only a partial sell writes a number there. **No id is printed in the grid.**
 Both the chain id and every order's client-order id are read in the chain dialog, opened from the
 symbol, and there they are given in full rather than abbreviated to a tail. The
-**The asked price is gray and the fill is not**: `order` is only the setting a row was sent
-with, while `fill` is the figure the `slip` and `p&l` beside it are both read off, so the fill
-column keeps the row's ink and weight and the order column steps back into muted (a market
+**The asked price is gray and the fill is not**: the `order` price column is only the setting a
+row was sent with, while `fill` is the figure the `slip` and `p&l` beside it are both read off, so
+the fill column keeps the row's ink and weight and the order column steps back into muted (a market
 order's captured price keeps its italic over that). Between them, `market` is the server's
 `marketPrice` — what the stock was trading at in the instant the order was decided, the number
 `order` was chosen against. It is an **observation**, not an intent and not a fill, so it is drawn

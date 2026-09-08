@@ -24,7 +24,7 @@ test.describe('The Book safety smoke', () => {
     await expect(page.getByRole('heading', { name: 'The Book' })).toBeVisible();
 
     const headers = page.getByRole('columnheader');
-    await expect(headers).toHaveCount(14);
+    await expect(headers).toHaveCount(16);
     await expect(headers).toHaveText([
       '',
       'symbol',
@@ -36,7 +36,9 @@ test.describe('The Book safety smoke', () => {
       'slip',
       'p&l',
       'today',
-      'ord time',
+      'created',
+      'sent',
+      'order',
       'final',
       'status',
       'act',
@@ -60,8 +62,8 @@ test.describe('The Book safety smoke', () => {
     expect(layout).toMatchObject({
       columnDisplay: 'grid',
       dataDisplay: 'grid',
-      htmlMinWidth: '1250px',
-      rowCellCount: 14,
+      htmlMinWidth: '1440px',
+      rowCellCount: 16,
       viewportWidth: 900,
     });
     expect(layout.columnTemplate).toBe(layout.dataTemplate);

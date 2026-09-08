@@ -127,6 +127,6 @@ test.describe('The Book at a year of batches', () => {
     });
 
     expect(templates.band).toBe(templates.row);
-    expect(templates.cells).toBe(14);
+    expect(templates.cells).toBe(16);
   });
 });

@@ -41,6 +41,11 @@ interface BookChainRowBase {
    */
   readonly marketPrice: number | null;
   readonly orderTime: number | null;
+  /** When the order was stated to this server, and when this server first put it
+   * on the wire. Both `null` for an order placed outside this server, and on
+   * rows from a server that predates the fields. */
+  readonly createdTime: number | null;
+  readonly sentTime: number | null;
   readonly finalSeenTime: number | null;
   readonly scheduledTime: number | null;
   readonly status: BookRowStatus;
@@ -454,6 +459,8 @@ function normalizeActiveOrder(order: ActiveOrder): BookActiveOrderRow {
     averagePrice: order.filledQuantity > 0 ? order.averagePrice : null,
     marketPrice: order.marketPrice ?? null,
     orderTime: order.orderTime,
+    createdTime: order.createdTime ?? null,
+    sentTime: order.sentTime,
     finalSeenTime: null,
     scheduledTime: order.scheduledTime ?? null,
     status: order.status,
@@ -489,6 +496,8 @@ function normalizeCanceledOrder(order: CanceledOrder): BookCanceledOrderRow {
     averagePrice: null,
     marketPrice: order.marketPrice ?? null,
     orderTime: order.orderTime,
+    createdTime: order.createdTime ?? null,
+    sentTime: order.sentTime,
     finalSeenTime: order.finalSeenTime,
     scheduledTime: null,
     status: order.status,
@@ -525,6 +534,8 @@ function normalizePosition(position: Position): BookPositionRow {
     averagePrice: position.averagePrice,
     marketPrice: position.marketPrice ?? null,
     orderTime: position.orderTime,
+    createdTime: position.createdTime ?? null,
+    sentTime: position.sentTime ?? null,
     finalSeenTime: position.finalSeenTime,
     scheduledTime: null,
     status: 'Position',
@@ -567,6 +578,8 @@ function normalizeClosedTrade(trade: ClosedTrade): [BookClosedTradeRow, BookClos
       averagePrice: trade.averageOpenPrice,
       marketPrice: trade.openMarketPrice ?? null,
       orderTime: trade.openOrderTime,
+      createdTime: trade.openCreatedTime ?? null,
+      sentTime: trade.openSentTime ?? null,
       finalSeenTime: trade.openFinalSeenTime,
       status: 'Closed',
       // The opening buy's own reason is not carried on a round trip; only the
@@ -586,6 +599,8 @@ function normalizeClosedTrade(trade: ClosedTrade): [BookClosedTradeRow, BookClos
       averagePrice: trade.averageClosePrice,
       marketPrice: trade.closeMarketPrice ?? null,
       orderTime: trade.closeOrderTime,
+      createdTime: trade.closeCreatedTime ?? null,
+      sentTime: trade.closeSentTime ?? null,
       finalSeenTime: trade.closeFinalSeenTime,
       status: 'Closed',
       reason: reasonKey(trade.closeReason),

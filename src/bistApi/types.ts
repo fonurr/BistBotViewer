@@ -209,6 +209,13 @@ export const activeOrderSchema = z
     matriksOrderId2: z.string().nullable(),
     symbol: z.string(),
     orderTime: z.number().nullable(),
+    /**
+     * When the order was stated to this server (`createdTime`) and when this
+     * server first put it on the wire (`sentTime`). Both `null` for an order
+     * placed outside this server; `createdTime` is optional so a fixture or an
+     * older row without it does not fail the read.
+     */
+    createdTime: z.number().nullable().optional(),
     sentTime: z.number().nullable(),
     orderQuantity: z.number().int().nullable(),
     filledQuantity: z.number().int(),
@@ -260,6 +267,9 @@ export const canceledOrderSchema = z
     matriksOrderId2: z.string().nullable(),
     symbol: z.string(),
     orderTime: z.number().nullable(),
+    /** When the dead order was stated to this server; optional and `null` for the
+     * same reasons as on an active order. */
+    createdTime: z.number().nullable().optional(),
     sentTime: z.number().nullable(),
     finalSeenTime: z.number().nullable(),
     orderQuantity: z.number().int(),
@@ -301,6 +311,10 @@ export const positionSchema = z
     positionId: z.string().nullable(),
     symbol: z.string(),
     orderTime: z.number().nullable(),
+    /** The opening buy's own `createdTime`/`sentTime`, carried on because this row
+     * is all that is left of it. Optional and `null` as on an active order. */
+    createdTime: z.number().nullable().optional(),
+    sentTime: z.number().nullable().optional(),
     finalSeenTime: z.number().nullable(),
     orderQuantity: z.number().int(),
     quantity: z.number().int(),
@@ -331,8 +345,14 @@ export const closedTradeSchema = z
     positionId: z.string().nullable(),
     symbol: z.string(),
     openOrderTime: z.number().nullable(),
+    /** Each side's own `createdTime`/`sentTime`, since this row is the last carrier
+     * of both orders. Optional and `null` as on an active order. */
+    openCreatedTime: z.number().nullable().optional(),
+    openSentTime: z.number().nullable().optional(),
     openFinalSeenTime: z.number().nullable(),
     closeOrderTime: z.number().nullable(),
+    closeCreatedTime: z.number().nullable().optional(),
+    closeSentTime: z.number().nullable().optional(),
     closeFinalSeenTime: z.number().nullable(),
     quantity: z.number().int(),
     averageOpenPrice: z.number(),
