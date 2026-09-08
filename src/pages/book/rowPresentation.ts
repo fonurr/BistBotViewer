@@ -21,12 +21,12 @@ export interface BookRowNote {
 
 /**
  * One clause of the qualifier line, with the ink it is said in. A `reason` is
- * the verdict the server reached, so it carries body ink and reads as a fact of
- * the row. `muted` is what this page worked out about the row, and the `origin`
- * key it came in on — the server's word, but a source and not a verdict, so it
- * sits here too. `faint` is Matriks' own words, quoted — true, but the least of
- * the three, and drawn like the seconds on a time cell so it never competes
- * with the reason beside it.
+ * what the server decided, so it carries body ink and reads as a fact of the
+ * row. `muted` is what this page worked out about the row. `faint` is Matriks'
+ * own words, quoted — true, but the least of the three, and drawn like the
+ * seconds on a time cell so it never competes with the reason beside it. The
+ * `origin` the order came in on leads the cell ahead of all three; it is a
+ * field of its own on the presentation, not a clause here.
  */
 export type BookRowDetailTone = 'reason' | 'muted' | 'faint';
 
@@ -37,6 +37,14 @@ export interface BookRowDetailPart {
 
 export interface BookRowPresentation {
   label: string;
+  /**
+   * Where the order came from — the server's `origin` key and the numbers
+   * behind it, in a reason's `key · pairs` shape (`Retry · count: 2,00`,
+   * `TakeProfit · limit: ceilingAtClosingDay`). It leads the whole status
+   * cell, muted, ahead of the verdict word itself. `undefined` for the
+   * ordinary bot order, which names no origin.
+   */
+  origin?: string;
   /**
    * Who put the row in that status, said right beside the word and in its ink,
    * because it is part of the same verdict rather than a qualifier of it. Only
@@ -61,20 +69,16 @@ export function bookRowPresentation(
   now = Date.now(),
   opener = false,
 ): BookRowPresentation {
+  // Where the order came from leads the whole cell, ahead of the verdict word
+  // — `Retry · count: 2,00 · Filled`, `TakeProfit · limit: … · New` — so it is
+  // its own field on the presentation rather than the first qualifier clause.
+  const origin = originText(row.origin, row.originData);
+
   if (row.source === 'position') {
     const held = heldFor(row.finalSeenTime ?? row.orderTime, now);
     return chain.hasNoClosingOrder
-      ? {
-          label: 'Position — no closing order',
-          detail: parts(originPart(row.origin, row.originData)),
-          role: 'dead',
-          exposed: true,
-        }
-      : {
-          label: 'Position',
-          detail: parts(originPart(row.origin, row.originData), muted(held)),
-          role: 'fill',
-        };
+      ? { label: 'Position — no closing order', origin, role: 'dead', exposed: true }
+      : { label: 'Position', origin, detail: parts(muted(held)), role: 'fill' };
   }
   if (row.source === 'closed-trade') {
     // SPEC 2: `Filled` is a leg word; the chain's own row carries the round
@@ -82,26 +86,23 @@ export function bookRowPresentation(
     // rides in on the sell's `origin`, and how long it was held on the buy —
     // neither leg invents the other's fact.
     return row.leg === 'close'
-      ? {
-          label: 'Filled',
-          detail: parts(originPart(row.origin, row.originData)),
-          role: 'done',
-        }
+      ? { label: 'Filled', origin, role: 'done' }
       : {
           label: 'Closed',
-          detail: parts(originPart(row.origin, row.originData), muted(closedTradeHold(row, chain))),
+          origin,
+          detail: parts(muted(closedTradeHold(row, chain))),
           role: 'done',
         };
   }
   if (row.source === 'canceled') {
-    // What says why a leg died: where it came from first (`Retry · count:
-    // 2,00`), then the server's own `reason`, then the verbatim wire
-    // `explanation` — every part that is stored, joined by middle dots.
+    // What says why a leg died, after the origin that leads the cell: the
+    // server's own `reason` first, then the verbatim wire `explanation` — every
+    // part that is stored, joined by middle dots.
     return {
       label: displayStatus(row.raw.status),
+      origin,
       source: row.statusSource ?? undefined,
       detail: parts(
-        originPart(row.origin, row.originData),
         reasonPart(row.reason, row.reasonData),
         faint(row.raw.explanation?.trim() || undefined),
       ),
@@ -111,10 +112,7 @@ export function bookRowPresentation(
 
   const role = activeOrderStatusRole(row.raw);
   let label = displayActiveOrderStatus(row.raw);
-  // Where the order came from leads its qualifier line, muted, ahead of
-  // whatever the row says about itself — an exit sale names its target here
-  // (`TakeProfit`), a retry its attempt count, and the ordinary bot order none.
-  const detail: Array<BookRowDetailPart | undefined> = [originPart(row.origin, row.originData)];
+  const detail: Array<BookRowDetailPart | undefined> = [];
   let notes: readonly BookRowNote[] | undefined;
   if (row.source === 'scheduled' && row.scheduledTime !== null) {
     label = `${label} · ${formatScheduledDistance(row.scheduledTime, now)}`;
@@ -171,7 +169,7 @@ export function bookRowPresentation(
       detail.push(muted(`${formatQuantity(filled)} of ${formatQuantity(row.quantity)} filled`));
     }
   }
-  return { label, detail: parts(...detail), notes, role };
+  return { label, origin, detail: parts(...detail), notes, role };
 }
 
 /** The clauses that are actually there, or nothing at all where none is. */
@@ -187,18 +185,14 @@ function reasonPart(reason: string | null, data: ReasonData | null): BookRowDeta
 }
 
 /**
- * Where the order came from, said first and muted, in the same `key · pairs`
- * shape a reason takes — `Retry · count: 2,00`, `TakeProfit · limit:
- * ceilingAtClosingDay`, `External`. `null` for the ordinary bot order, which
- * names no origin. It is the server's own key, but it names a source rather
- * than a verdict, so it sits in the muted ink beside this page's own notes.
+ * Where the order came from, as one phrase in a reason's `key · pairs` shape —
+ * `Retry · count: 2,00`, `TakeProfit · limit: ceilingAtClosingDay`, `External`.
+ * `undefined` for the ordinary bot order, which names no origin. `RowVerdict`
+ * draws it muted and ahead of the verdict word, so it leads the whole cell.
  * `originData` numbers take the page's Turkish figure form, `count` included.
  */
-function originPart(
-  origin: string | null,
-  originData: ReasonData | null,
-): BookRowDetailPart | undefined {
-  return origin === null ? undefined : { text: reasonPhrase(origin, originData), tone: 'muted' };
+function originText(origin: string | null, originData: ReasonData | null): string | undefined {
+  return origin === null ? undefined : reasonPhrase(origin, originData);
 }
 
 function muted(text: string | undefined): BookRowDetailPart | undefined {

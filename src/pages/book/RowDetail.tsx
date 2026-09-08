@@ -34,11 +34,27 @@ export function RowDetail({ detail, lead = true }: RowDetailProps) {
  * The verdict itself: the status word and, joined to it with "by" and in the
  * same ink, who put the row in it. `source` is not a qualifier of the status
  * — it is the other half of the same sentence — so it never drops to the
- * muted ink the clauses after it use.
+ * muted ink the clauses after it use. Where the server named an `origin`, it
+ * leads ahead of the verdict word, muted — a source, not a verdict — with a
+ * middle dot between it and the word. `omitOrigin` is for the one caller whose
+ * layout puts the verdict in a column too narrow to carry it (the chain
+ * dialog's leg rows), where the origin leads the note line instead.
  */
-export function RowVerdict({ presentation }: { presentation: BookRowPresentation }) {
+export function RowVerdict({
+  presentation,
+  omitOrigin = false,
+}: {
+  presentation: BookRowPresentation;
+  omitOrigin?: boolean;
+}) {
   return (
     <>
+      {presentation.origin === undefined || omitOrigin ? null : (
+        <>
+          <span className="book-status-muted">{presentation.origin}</span>
+          {' · '}
+        </>
+      )}
       {presentation.label}
       {presentation.source === undefined ? null : ` by ${presentation.source}`}
     </>

@@ -606,13 +606,19 @@ function ChainView({
           return (
             <div className={`chain-dialog-row ${statusClass(presentation.role)}`} key={row.key}>
               <span className="chain-dialog-status">
-                <RowVerdict presentation={presentation} />
+                <RowVerdict presentation={presentation} omitOrigin />
               </span>
               <span className="chain-dialog-terms">{legTerms(row)}</span>
               <span className="chain-dialog-id">{row.clientOrderId ?? 'no client id'}</span>
-              {presentation.detail ? (
+              {presentation.origin !== undefined || presentation.detail ? (
                 <span className="chain-dialog-note">
-                  <RowDetail detail={presentation.detail} lead={false} />
+                  {presentation.origin === undefined ? null : (
+                    <span className="book-status-muted">{presentation.origin}</span>
+                  )}
+                  <RowDetail
+                    detail={presentation.detail}
+                    lead={presentation.origin !== undefined}
+                  />
                 </span>
               ) : null}
               <span className="chain-dialog-actions">

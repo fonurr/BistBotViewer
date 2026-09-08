@@ -19,6 +19,15 @@ function inked(presentation: BookRowPresentation): string[] {
   return (presentation.detail ?? []).map((part) => `${part.tone}:${part.text}`);
 }
 
+/** The whole status cell, origin first, for the assertions about that order. */
+function cell(presentation: BookRowPresentation): string {
+  const verdict =
+    presentation.label + (presentation.source ? ` by ${presentation.source}` : '');
+  const head = presentation.origin ? `${presentation.origin} · ${verdict}` : verdict;
+  const tail = text(presentation);
+  return tail ? `${head} · ${tail}` : head;
+}
+
 function canceledRow(overrides: Parameters<typeof makeCanceledOrder>[0]) {
   const [chain] = buildBookChains({
     activeOrders: [],
@@ -48,30 +57,30 @@ describe('bookRowPresentation canceled detail', () => {
     expect(canceledRow({ reason: null, explanation: null }).detail).toBeUndefined();
   });
 
-  it('leads the line with the origin it came in on, before the reason', () => {
-    expect(
-      text(
-        canceledRow({
-          reason: 'unconfirmed',
-          explanation: 'İptal edildi',
-          origin: 'Retry',
-          originData: { count: 2 },
-        }),
-      ),
-    ).toBe('Retry · count: 2,00 · unconfirmed · İptal edildi');
+  it('leads the whole cell with the origin, ahead of the verdict word and the reason', () => {
+    const row = canceledRow({
+      status: 'Canceled',
+      source: 'Server',
+      reason: 'PositionExtended',
+      explanation: 'İptal edildi',
+      origin: 'Retry',
+      originData: { count: 2 },
+    });
+    expect(row.origin).toBe('Retry · count: 2,00');
+    expect(cell(row)).toBe(
+      'Retry · count: 2,00 · Canceled by Server · PositionExtended · İptal edildi',
+    );
   });
 
-  it('says the origin muted, then the server verdict in body ink, then the quoted wire text', () => {
-    expect(
-      inked(
-        canceledRow({
-          reason: 'Expired',
-          explanation: 'Süresi doldu',
-          origin: 'Retry',
-          originData: { count: 1 },
-        }),
-      ),
-    ).toEqual(['muted:Retry · count: 1,00', 'reason:Expired', 'faint:Süresi doldu']);
+  it('keeps the origin its own muted field, not the first clause of the detail line', () => {
+    const row = canceledRow({
+      reason: 'Expired',
+      explanation: 'Süresi doldu',
+      origin: 'Retry',
+      originData: { count: 1 },
+    });
+    expect(row.origin).toBe('Retry · count: 1,00');
+    expect(inked(row)).toEqual(['reason:Expired', 'faint:Süresi doldu']);
   });
 });
 
@@ -87,42 +96,27 @@ function activeRow(overrides: Parameters<typeof makeActiveOrder>[0]) {
 }
 
 describe('bookRowPresentation origin on the rows that are not canceled', () => {
-  it('leads a live order’s qualifier line with the origin it came in on, muted', () => {
-    expect(text(activeRow({ origin: 'TakeProfit', matriksOrderId: null }))).toBe(
-      'TakeProfit · no exchange id — not editable until it confirms',
-    );
-    expect(inked(activeRow({ origin: 'TakeProfit', matriksOrderId: null }))[0]).toBe(
-      'muted:TakeProfit',
-    );
+  it('leads a live order’s cell with the origin, ahead of the verdict and its own note', () => {
+    const row = activeRow({ origin: 'TakeProfit', matriksOrderId: null });
+    expect(row.origin).toBe('TakeProfit');
+    expect(cell(row)).toBe('TakeProfit · New · no exchange id — not editable until it confirms');
   });
 
   it('says nothing where the order names no origin', () => {
-    expect(
-      activeRow({ origin: null, status: 'Scheduled', scheduledTime: null }).detail,
-    ).toBeUndefined();
+    const row = activeRow({ origin: null, status: 'Scheduled', scheduledTime: null });
+    expect(row.origin).toBeUndefined();
+    expect(row.detail).toBeUndefined();
   });
 
-  it('prints a retry origin on the qualifier line, muted, in the reason’s key · pairs shape', () => {
-    expect(
-      text(
-        activeRow({
-          origin: 'Retry',
-          originData: { count: 1 },
-          status: 'Scheduled',
-          scheduledTime: null,
-        }),
-      ),
-    ).toBe('Retry · count: 1,00');
-    expect(
-      inked(
-        activeRow({
-          origin: 'Retry',
-          originData: { count: 1 },
-          status: 'Scheduled',
-          scheduledTime: null,
-        }),
-      ),
-    ).toEqual(['muted:Retry · count: 1,00']);
+  it('carries a retry origin as its own muted field, in the reason’s key · pairs shape', () => {
+    const row = activeRow({
+      origin: 'Retry',
+      originData: { count: 1 },
+      status: 'Scheduled',
+      scheduledTime: null,
+    });
+    expect(row.origin).toBe('Retry · count: 1,00');
+    expect(row.detail).toBeUndefined();
   });
 
   it('names why a cancel is in flight beside who asked for it', () => {
@@ -140,8 +134,9 @@ describe('bookRowPresentation origin on the rows that are not canceled', () => {
     });
     const legs = chain!.tradeRows.map((row) => bookRowPresentation(row, chain!));
 
-    expect(text(legs.find((leg) => leg.label === 'Filled')!)).toBe('StopLoss');
-    expect(text(legs.find((leg) => leg.label === 'Closed')!)).not.toContain('StopLoss');
+    expect(legs.find((leg) => leg.label === 'Filled')!.origin).toBe('StopLoss');
+    expect(cell(legs.find((leg) => leg.label === 'Filled')!)).toBe('StopLoss · Filled');
+    expect(cell(legs.find((leg) => leg.label === 'Closed')!)).not.toContain('StopLoss');
   });
 });
 
