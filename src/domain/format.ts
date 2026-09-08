@@ -108,23 +108,45 @@ export function formatTime(timestamp: number): string {
 }
 
 /**
+ * How many whole calendar days `dateKey` sits after `batchDate` (negative if
+ * before). `null` when either side is not a plain `YYYY-MM-DD` key.
+ */
+function dayOffsetFromBatch(dateKey: string, batchDate: string): number | null {
+  const iso = /^\d{4}-\d{2}-\d{2}$/;
+  if (!iso.test(dateKey) || !iso.test(batchDate)) return null;
+  const a = Date.parse(`${dateKey}T00:00:00Z`);
+  const b = Date.parse(`${batchDate}T00:00:00Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return Math.round((a - b) / 86_400_000);
+}
+
+/**
  * A row time is read as a minute and settled by its seconds: two orders in the
  * same minute are only told apart by them. So the two are returned separately —
  * the caller that can draw the seconds quieter does, and one that cannot (plain
- * text) joins them or drops them.
+ * text) joins them or drops them. When the row's day is not the batch's, the
+ * signed day distance (`+1`, `−3`) rides behind the seconds like an exponent.
  */
 export function formatRowTimeParts(
   timestamp: number | null,
   batchDate: string,
-): { minute: string; seconds: string } | null {
+): { minute: string; seconds: string; dayOffset: string | null } | null {
   if (timestamp === null) return null;
   const parts = dateParts(timestamp);
-  const day = toIstanbulDateKey(timestamp) === batchDate ? '' : `${parts.day}.${parts.month} `;
-  return { minute: `${day}${parts.hour}:${parts.minute}`, seconds: `:${parts.second}` };
+  const offset = dayOffsetFromBatch(toIstanbulDateKey(timestamp), batchDate);
+  const dayOffset =
+    offset === null || offset === 0
+      ? null
+      : offset > 0
+        ? `+${offset}`
+        : `−${Math.abs(offset)}`;
+  return { minute: `${parts.hour}:${parts.minute}`, seconds: `:${parts.second}`, dayOffset };
 }
 
 export function formatRowTime(timestamp: number | null, batchDate: string): string | null {
-  return formatRowTimeParts(timestamp, batchDate)?.minute ?? null;
+  const parts = formatRowTimeParts(timestamp, batchDate);
+  if (parts === null) return null;
+  return parts.dayOffset === null ? parts.minute : `${parts.minute} (${parts.dayOffset})`;
 }
 
 export function formatRelativeAge(timestamp: number | null, now = Date.now()): string {

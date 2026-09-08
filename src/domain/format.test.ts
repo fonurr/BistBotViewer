@@ -19,12 +19,13 @@ describe('Turkish presentation formatting', () => {
     expect(formatPercentage(1.9)).toBe('+1,90%');
   });
 
-  it('formats dates and suppresses the batch day in row times', () => {
+  it('formats dates and shows the signed day distance from the batch in row times', () => {
     const timestamp = Date.parse('2026-08-15T06:41:00Z');
     expect(toIstanbulDateKey(timestamp)).toBe('2026-08-15');
     expect(formatDate(timestamp)).toBe('15.08.26');
     expect(formatRowTime(timestamp, '2026-08-15')).toBe('09:41');
-    expect(formatRowTime(timestamp, '2026-08-14')).toBe('15.08 09:41');
+    expect(formatRowTime(timestamp, '2026-08-14')).toBe('09:41 (+1)');
+    expect(formatRowTime(timestamp, '2026-08-18')).toBe('09:41 (−3)');
   });
 
   it('hands the seconds back apart from the minute, colon included', () => {
@@ -32,10 +33,17 @@ describe('Turkish presentation formatting', () => {
     expect(formatRowTimeParts(timestamp, '2026-08-15')).toEqual({
       minute: '09:41',
       seconds: ':07',
+      dayOffset: null,
     });
     expect(formatRowTimeParts(timestamp, '2026-08-14')).toEqual({
-      minute: '15.08 09:41',
+      minute: '09:41',
       seconds: ':07',
+      dayOffset: '+1',
+    });
+    expect(formatRowTimeParts(timestamp, '2026-08-18')).toEqual({
+      minute: '09:41',
+      seconds: ':07',
+      dayOffset: '−3',
     });
     expect(formatRowTimeParts(null, '2026-08-15')).toBeNull();
   });
