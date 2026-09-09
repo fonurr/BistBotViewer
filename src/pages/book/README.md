@@ -113,7 +113,7 @@ decides what it counts.
   all-or-nothing rule unrealized P&L follows.
 
 The grid reads in **four bands**, split by a hairline: what the order asked for and what it got
-(`symbol` through `slip`), the two views of P&L (`p&l`, `today`), the clocks (`created` through
+(`symbol` through `fill`), the two views of P&L (`p&l`, `today`), the clocks (`created` through
 `final`), and the verdict (`status`, `act`). Each hairline is a **column of its own** —
 `.book-divider`, one 1px rule in a 5px column — and not a border on the cell beside it, because
 the row centers its cells and a border would stand only as tall as that one cell's text. Standing
@@ -121,9 +121,10 @@ the full height of a row instead, consecutive rows draw one unbroken rule that b
 where the chains, the scope headings and the batches already break, so the split follows the
 grouping on the page rather than cutting a second grid across it. The dividers are
 `aria-hidden`, like the status spine: a reader crossing one would only hear an empty cell between
-two it does need, so the grid still exposes eighteen column headers. Every BIST ticker is five
+two it does need, so the grid still exposes seventeen column headers. Every BIST ticker is five
 letters, so `--book-symbol-col` is sized for one and no wider; what that frees goes to `status`,
-which is the grid's only `1fr`.
+which is the grid's only flexible track — `minmax(0, 1fr)`, so a long status wraps inside its
+cell rather than widening the column past the header band and pushing the two grids out of step.
 
 Row vocabulary follows the visual reference: an opener carries its symbol alone and a leg carries
 nothing in that column — the opener above already said the symbol and the hairline says where the
@@ -132,19 +133,23 @@ empty** when its size is the buy's whole size — an `auto` sell, or one whose q
 chain's opening buy; only a partial sell writes a number there. **No id is printed in the grid.**
 Both the chain id and every order's client-order id are read in the chain dialog, opened from the
 symbol, and there they are given in full rather than abbreviated to a tail. The
-**The asked price is gray and the fill is not**: the `order` price column is only the setting a
-row was sent with, while `fill` is the figure the `slip` and `p&l` beside it are both read off, so
-the fill column keeps the row's ink and weight and the order column steps back into muted (a market
-order's captured price keeps its italic over that). Between them, `market` is the server's
-`marketPrice` — what the stock was trading at in the instant the order was decided, the number
-`order` was chosen against. It is an **observation**, not an intent and not a fill, so it is drawn
-in the order column's muted ink rather than the fill's; it is written once at the order's birth and
-never revised (an edit leaves it alone), and it is carried unchanged onto whatever the order
-becomes, which is why a position and a closed leg show one too — a round trip splits it per side
-(`openMarketPrice`/`closeMarketPrice`). The cell stays **empty** wherever the server had no price to
-stand behind: a scheduled row (nothing decided yet), a symbol its price producer was down for or
-does not track, an order placed outside this server, and every row written before the field
-existed. Nothing older is substituted for it. The
+**The two reference-price columns are a faint gloss and the fill is not**: `@created/slip` is
+`orderPrice` (the setting the row was created with, a market order's captured price still in
+italic) and `@sent/slip` is `marketPrice` (the tape the order was decided against), while `fill`
+is the figure the `p&l` beside it is read off — so the fill column keeps the row's ink and weight
+and both reference columns step back to muted ink held at `opacity: 0.25`. Each reference column
+carries **its own slip** beside the price, a size down in parentheses like the `p&l` percentage:
+`@created/slip` shows `(averagePrice − orderPrice) / orderPrice` (empty for a market order, whose
+captured price was never sent) and `@sent/slip` shows `(averagePrice − marketPrice) / marketPrice`
+— **drawn for a market order too**, since that is the one slippage a market order really has. The
+sign is the direction the price moved, never whether it helped; neither is ever inked. `marketPrice`
+is an **observation**, not an intent and not a fill; it is written once at the order's birth and
+never revised (an edit leaves it alone), and carried unchanged onto whatever the order becomes,
+which is why a position and a closed leg show one too — a round trip splits it per side
+(`openMarketPrice`/`closeMarketPrice`). The `@sent/slip` cell stays **empty** wherever the server
+had no price to stand behind: a scheduled row (nothing decided yet), a symbol its price producer
+was down for or does not track, an order placed outside this server, and every row written before
+the field existed. Nothing older is substituted for it. The
 status cell states its qualifier **inline** in muted ink after a middle dot — `New · resting 22m
 · 40 of 150 filled`, `Position · held 3d 2h`, `By user · canceled in the MatriksIQ terminal`.
 Where the server named an `origin` — `Retry`, `TakeProfit`, `StopLoss`, `User`, `External` — that

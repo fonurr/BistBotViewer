@@ -173,7 +173,12 @@ describe('BookGrid row vocabulary', () => {
       {},
       {
         activeOrders: [
-          makeActiveOrder({ id: 2, chainId: 'b', createdTime: created, sentTime: created + 45_000 }),
+          makeActiveOrder({
+            id: 2,
+            chainId: 'b',
+            createdTime: created,
+            sentTime: created + 45_000,
+          }),
         ],
         canceledOrders: [],
         positions: [],
@@ -303,9 +308,10 @@ describe('BookGrid row vocabulary', () => {
     const headings = [...document.querySelectorAll('.book-columns [role="columnheader"]')].map(
       (cell) => cell.textContent,
     );
-    expect(headings.slice(4, 7)).toEqual(['order', 'market', 'fill']);
+    expect(headings.slice(4, 7)).toEqual(['@created/slip', '@sent/slip', 'fill']);
 
     const market = document.querySelector('.book-row .book-market-price')!;
+    // An unfilled buy has no fill to measure against, so the cell is the tape price alone.
     expect(market.textContent).toBe('68,10');
     // An observation, drawn like the asked price beside it and never like the fill.
     expect(market).not.toHaveClass('book-fill-price');
@@ -344,7 +350,8 @@ describe('BookGrid row vocabulary', () => {
     const markets = [...document.querySelectorAll('.book-row .book-market-price')].map(
       (cell) => cell.textContent,
     );
-    expect(markets).toEqual(['299,50', '306,40']);
+    // Each side carries the fill's slip from its own tape price, in parentheses.
+    expect(markets).toEqual(['299,50 (+0,17%)', '306,40 (−0,13%)']);
   });
 
   it('carries both facts on a cancel in flight and disables its actions with a reason', () => {

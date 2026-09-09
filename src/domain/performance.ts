@@ -15,6 +15,7 @@ export type PerformanceUnavailableReason =
   | 'true-fill-times-not-provided'
   | 'order-type-not-stored-on-closed-trades'
   | 'close-order-price-not-stored'
+  | 'market-price-not-stored'
   | 'final-seen-times-incomplete'
   | 'portfolio-balance-history-not-provided'
   | 'holiday-calendar-coverage-unavailable'
@@ -59,17 +60,22 @@ export interface PerformanceTrade {
   readonly grossPnl: number;
   readonly grossReturnPercent: PerformanceMetric;
   /**
-   * `(averageOpenPrice - openOrderPrice) / openOrderPrice`, signed by the
-   * direction the price moved (API.md, Slippage & unrealized P&L). The opening
-   * buy always carries an order price, so this is available for every trade.
+   * Slippage read two ways per leg, both `(averagePrice - reference) / reference`
+   * and both signed by the direction the price moved, never by whether it helped
+   * (API.md, Slippage & unrealized P&L):
+   *
+   * - `*Created` is against the leg's own **order price** - what it was created
+   *   with. The opening buy always carries one; the closing sell's is `null` for
+   *   a priceless market sell or a manual close, and that leg then yields nothing.
+   * - `*Sent` is against the **market price** the leg was decided against - the
+   *   tape when the order went out. It carries no order-type guard (the fill
+   *   against the tape is the real slippage of a market order) and is unavailable
+   *   only where the server stored no market price for that side.
    */
-  readonly entrySlippagePercent: PerformanceMetric;
-  /**
-   * The same for the closing sell, and unavailable exactly where
-   * `closeOrderPrice` is `null` - a priceless market sell or a manual close from
-   * the terminal. Never a zero.
-   */
-  readonly exitSlippagePercent: PerformanceMetric;
+  readonly entryCreatedSlippagePercent: PerformanceMetric;
+  readonly entrySentSlippagePercent: PerformanceMetric;
+  readonly exitCreatedSlippagePercent: PerformanceMetric;
+  readonly exitSentSlippagePercent: PerformanceMetric;
   /**
    * Close final-seen minus open final-seen. Both stamps come from this
    * server's own clock, so the difference is a hold duration; it is never a
@@ -95,13 +101,23 @@ export interface PerformanceDay {
 }
 
 export interface PerformanceSlippageSummary {
-  readonly entry: PerformanceMetric;
-  readonly exit: PerformanceMetric;
-  /** Both legs averaged. It mixes buy and sell directions, so it sits near zero. */
-  readonly combined: PerformanceMetric;
-  readonly entryOrderPricePresentCount: number;
-  readonly exitOrderPricePresentCount: number;
-  readonly exitOrderPriceMissingCount: number;
+  /** The four cells of the leg × reference grid the section draws. */
+  readonly entryCreated: PerformanceMetric;
+  readonly entrySent: PerformanceMetric;
+  readonly exitCreated: PerformanceMetric;
+  readonly exitSent: PerformanceMetric;
+  /**
+   * Both legs pooled, against the order price (`created`) and against the market
+   * price (`sent`). Each mixes buy and sell directions, so it sits near zero.
+   */
+  readonly created: PerformanceMetric;
+  readonly sent: PerformanceMetric;
+  readonly entryCreatedCount: number;
+  readonly entrySentCount: number;
+  readonly exitCreatedCount: number;
+  readonly exitSentCount: number;
+  /** `trades.length * 2` - the legs a full grid would have measured. */
+  readonly legCount: number;
 }
 
 export interface PerformanceDrawdown {
@@ -428,8 +444,10 @@ function normalizePerformanceTrade(trade: ClosedTrade, businessDate: string): Pe
     costBasis,
     grossPnl,
     grossReturnPercent,
-    entrySlippagePercent: slipMetric(trade.openOrderPrice, trade.averageOpenPrice, 'entry'),
-    exitSlippagePercent: slipMetric(trade.closeOrderPrice, trade.averageClosePrice, 'exit'),
+    entryCreatedSlippagePercent: slipMetric(trade.openOrderPrice, trade.averageOpenPrice, 'entry'),
+    entrySentSlippagePercent: marketSlipMetric(trade.openMarketPrice, trade.averageOpenPrice),
+    exitCreatedSlippagePercent: slipMetric(trade.closeOrderPrice, trade.averageClosePrice, 'exit'),
+    exitSentSlippagePercent: marketSlipMetric(trade.closeMarketPrice, trade.averageClosePrice),
     holdDurationMs: holdMetric(trade.openFinalSeenTime, trade.closeFinalSeenTime),
   };
 }
@@ -454,6 +472,29 @@ function slipMetric(
   }
   if (!Number.isFinite(averagePrice)) return unavailableMetric('invalid-cost-basis', 0, 1);
   return availableMetric(((averagePrice - orderPrice) / orderPrice) * 100, 1);
+}
+
+/**
+ * The same figure against the market price the leg was decided against. No
+ * order-type guard - the fill against the decision-time tape is the real
+ * slippage of a market order - so the only thing that withholds it is the
+ * server having stored no market price for that side (a sale made outside this
+ * server, or a row written before the field existed).
+ */
+function marketSlipMetric(
+  marketPrice: number | null | undefined,
+  averagePrice: number,
+): PerformanceMetric {
+  if (
+    marketPrice === null ||
+    marketPrice === undefined ||
+    !Number.isFinite(marketPrice) ||
+    marketPrice <= 0
+  ) {
+    return unavailableMetric('market-price-not-stored', 0, 1);
+  }
+  if (!Number.isFinite(averagePrice)) return unavailableMetric('invalid-cost-basis', 0, 1);
+  return availableMetric(((averagePrice - marketPrice) / marketPrice) * 100, 1);
 }
 
 function holdMetric(
@@ -615,20 +656,28 @@ function calculateDrawdown(
 }
 
 function summarizeSlippage(trades: readonly PerformanceTrade[]): PerformanceSlippageSummary {
-  const entrySlips = availableValues(trades.map((trade) => trade.entrySlippagePercent));
-  const exitSlips = availableValues(trades.map((trade) => trade.exitSlippagePercent));
+  const entryCreated = availableValues(trades.map((trade) => trade.entryCreatedSlippagePercent));
+  const entrySent = availableValues(trades.map((trade) => trade.entrySentSlippagePercent));
+  const exitCreated = availableValues(trades.map((trade) => trade.exitCreatedSlippagePercent));
+  const exitSent = availableValues(trades.map((trade) => trade.exitSentSlippagePercent));
+  const legCount = trades.length * 2;
 
   return {
-    entry: meanMetric(entrySlips, trades.length, 'invalid-cost-basis'),
-    exit: meanMetric(exitSlips, trades.length, 'close-order-price-not-stored'),
-    combined: meanMetric(
-      [...entrySlips, ...exitSlips],
-      trades.length * 2,
+    entryCreated: meanMetric(entryCreated, trades.length, 'invalid-cost-basis'),
+    entrySent: meanMetric(entrySent, trades.length, 'market-price-not-stored'),
+    exitCreated: meanMetric(exitCreated, trades.length, 'close-order-price-not-stored'),
+    exitSent: meanMetric(exitSent, trades.length, 'market-price-not-stored'),
+    created: meanMetric(
+      [...entryCreated, ...exitCreated],
+      legCount,
       'close-order-price-not-stored',
     ),
-    entryOrderPricePresentCount: entrySlips.length,
-    exitOrderPricePresentCount: exitSlips.length,
-    exitOrderPriceMissingCount: trades.length - exitSlips.length,
+    sent: meanMetric([...entrySent, ...exitSent], legCount, 'market-price-not-stored'),
+    entryCreatedCount: entryCreated.length,
+    entrySentCount: entrySent.length,
+    exitCreatedCount: exitCreated.length,
+    exitSentCount: exitSent.length,
+    legCount,
   };
 }
 

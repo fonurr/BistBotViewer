@@ -184,6 +184,28 @@ export function slippagePercentage(options: {
   return ((options.averagePrice - options.orderPrice) / options.orderPrice) * 100;
 }
 
+/**
+ * Slippage of the fill against the market price the order was decided against -
+ * the tape at the instant `orderPrice` was chosen. Unlike `slippagePercentage`
+ * this carries no order-type guard: the fill against the decision-time tape is
+ * the real slippage of a market order, not a captured intent that never went
+ * out. Signed by the direction the price moved, never by whether it helped.
+ * Null when there was no market price to stand against.
+ */
+export function marketSlippagePercentage(options: {
+  marketPrice: number | null;
+  averagePrice: number;
+}): number | null {
+  if (
+    options.marketPrice === null ||
+    !Number.isFinite(options.marketPrice) ||
+    options.marketPrice <= 0
+  ) {
+    return null;
+  }
+  return ((options.averagePrice - options.marketPrice) / options.marketPrice) * 100;
+}
+
 export function reservedBuyCost(quantity: number, price: number, type: OrderType): number {
   return quantity * price * (type === 'market' ? 1.1 : 1);
 }

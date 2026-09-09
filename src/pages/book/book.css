@@ -449,24 +449,31 @@
   text-align: right;
 }
 
-.book-slip {
-  color: var(--color-text);
-  font-size: var(--font-small);
-}
-
-.book-row-opener .book-slip {
-  font-size: var(--font-leg);
-}
-
 /*
- * The asked price is a setting, the fill is a result: the column that says
- * what the order got carries the row's ink and weight, and the one that says
- * what it asked for steps back into muted. `captured-value` still adds its
- * italic over this for a market order's price.
+ * The two reference-price columns are a faint background gloss: the fill is the
+ * figure the row acts on, and `@created` / `@sent` only say what it is measured
+ * against. Muted ink, then held at a quarter opacity so they never compete with
+ * the fill. `captured-value` still adds its italic over this for a market
+ * order's price. The slip beside each price is a size down, like the p&l
+ * percentage.
  */
 .book-order-price,
 .book-market-price {
   color: var(--mut);
+  opacity: 0.25;
+  /*
+   * A background reference, not a headline: it never widens its own track past
+   * the grid definition, so the header and data rows keep one `1fr` and stay
+   * aligned. An extreme percentage spills left rather than pushing the grid.
+   */
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.book-order-price small,
+.book-market-price small {
+  font-size: var(--font-small);
+  font-weight: 400;
 }
 
 .book-fill-price {

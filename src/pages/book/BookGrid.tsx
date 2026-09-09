@@ -24,6 +24,7 @@ import { bookBudget, budgetShare } from '../../domain/budget';
 import {
   deriveFilledPnlState,
   type FilledPnlState,
+  marketSlippagePercentage,
   pnlPercentage,
   realizedPnl,
   slippagePercentage,
@@ -80,10 +81,9 @@ const columns: readonly BookColumn[] = [
   { label: 'symbol' },
   { label: 'qty' },
   { label: 'side / type' },
-  { label: 'order', alignRight: true },
-  { label: 'market', alignRight: true },
+  { label: '@created/slip', alignRight: true },
+  { label: '@sent/slip', alignRight: true },
   { label: 'fill', alignRight: true },
-  { label: 'slip', alignRight: true },
   DIVIDER,
   { label: 'p&l', alignRight: true },
   { label: 'today', alignRight: true },
@@ -486,6 +486,13 @@ const BookRow = memo(function BookRow({
           averagePrice: row.averagePrice,
           type: displayType,
         });
+  const marketSlip =
+    row.averagePrice === null
+      ? null
+      : marketSlippagePercentage({
+          marketPrice: row.marketPrice,
+          averagePrice: row.averagePrice,
+        });
   const status = bookRowPresentation(row, chain, now, opener);
   const actionButtons = orderActionsForRow(row, chain);
   const capturedPrice = displayType === 'market' && row.orderPrice !== null;
@@ -544,32 +551,33 @@ const BookRow = memo(function BookRow({
         {displayType ? ` ${displayType}` : ''}
       </div>
       {/*
-       * What an order asked for is gray and what it got is in body ink: the
-       * asked price is only the setting a row was sent with, and once it fills
-       * the fill is the figure the slip and the p&l beside it are both read
-       * off. A market order's captured price keeps its italic on top of that.
+       * Both reference-price columns step right back — a faint background gloss
+       * on what the fill is measured against. `@created/slip` is the price the
+       * order was created with; `@sent/slip` is the tape it was decided against.
+       * Each carries the fill's slip from its own reference in a smaller size
+       * beside it, the way the p&l column carries its percentage. A market
+       * order's captured price keeps its italic on top of the muting.
        */}
       <div
         role="cell"
         className={`align-right book-order-price${capturedPrice ? ' captured-value' : ''}`}
       >
         {row.orderPrice === null ? '' : formatNumber(row.orderPrice)}
+        {slip === null ? null : <small> ({formatSlip(slip)})</small>}
       </div>
       {/*
-       * The market the order was decided against: an observation of the tape
-       * at the instant the server chose `orderPrice`, never an intent and never
-       * a fill, so it is drawn like the asked price beside it rather than like
-       * the fill. It is written once and never revised, and stays empty
-       * wherever the server had no price to stand behind.
+       * `@sent/slip`: the market the order was decided against, an observation
+       * of the tape at the instant the server chose `orderPrice`. Its slip is
+       * the fill against that tape — shown for a market order too, since that is
+       * the one slippage figure a market order really has. Empty wherever the
+       * server had no price to stand behind.
        */}
       <div role="cell" className="align-right book-market-price">
         {row.marketPrice === null ? '' : formatNumber(row.marketPrice)}
+        {marketSlip === null ? null : <small> ({formatSlip(marketSlip)})</small>}
       </div>
       <div role="cell" className="align-right book-fill-price">
         {row.averagePrice === null ? '' : formatNumber(row.averagePrice)}
-      </div>
-      <div role="cell" className="align-right book-slip">
-        {slip === null ? '' : formatSlip(slip)}
       </div>
       <ColumnDivider />
       <div role="cell" className={`align-right book-pnl ${pnlClass(pnl, pnlTrusted)}`}>

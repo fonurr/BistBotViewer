@@ -27,6 +27,7 @@ import {
 import {
   committedAmount,
   deriveFilledPnlState,
+  marketSlippagePercentage,
   pnlPercentage,
   realizedPnl,
   slippagePercentage,
@@ -818,18 +819,24 @@ function summarize(
     if (marketPrice === null || marketPrice === undefined) hasEveryPrice = false;
     else unrealized += unrealizedPnl(exposure, marketPrice);
   }
-  const slips = chains
+  const filledRows = chains
     .flatMap((chain) => chain.rows)
-    .flatMap((row) =>
-      row.averagePrice === null
-        ? []
-        : [
-            slippagePercentage({
-              orderPrice: row.orderPrice,
-              averagePrice: row.averagePrice,
-              type: row.orderType,
-            }),
-          ],
+    .filter((row) => row.averagePrice !== null);
+  const createdSlips = filledRows
+    .map((row) =>
+      slippagePercentage({
+        orderPrice: row.orderPrice,
+        averagePrice: row.averagePrice as number,
+        type: row.orderType,
+      }),
+    )
+    .filter((value): value is number => value !== null);
+  const sentSlips = filledRows
+    .map((row) =>
+      marketSlippagePercentage({
+        marketPrice: row.marketPrice,
+        averagePrice: row.averagePrice as number,
+      }),
     )
     .filter((value): value is number => value !== null);
   const visibleBots = new Set(chains.map((chain) => chain.botId));
@@ -858,7 +865,12 @@ function summarize(
     totalPercentage: hasEveryPrice ? pnlPercentage(realized + unrealized, costBasis) : null,
     committed,
     committedCompleteOnly,
-    avgSlip: slips.length ? slips.reduce((sum, value) => sum + value, 0) / slips.length : null,
+    avgSlipCreated: createdSlips.length
+      ? createdSlips.reduce((sum, value) => sum + value, 0) / createdSlips.length
+      : null,
+    avgSlipSent: sentSlips.length
+      ? sentSlips.reduce((sum, value) => sum + value, 0) / sentSlips.length
+      : null,
   };
 }
 
@@ -927,9 +939,16 @@ function StatStrip({
         unavailable={summary.committed === null}
       />
       <Stat
-        label="avg slip"
-        value={summary.avgSlip === null ? 'not available' : formatSlip(summary.avgSlip)}
-        unavailable={summary.avgSlip === null}
+        label="slip @created"
+        value={
+          summary.avgSlipCreated === null ? 'not available' : formatSlip(summary.avgSlipCreated)
+        }
+        unavailable={summary.avgSlipCreated === null}
+      />
+      <Stat
+        label="slip @sent"
+        value={summary.avgSlipSent === null ? 'not available' : formatSlip(summary.avgSlipSent)}
+        unavailable={summary.avgSlipSent === null}
       />
     </div>
   );
@@ -1076,11 +1095,10 @@ function PendingBaskets({
                   <div className="align-right">
                     {stock.price === undefined ? '' : formatNumber(stock.price)}
                   </div>
-                  {/* market, fill, slip, p&l, today, created, sent, order, final:
+                  {/* @sent/slip, fill, p&l, today, created, sent, order, final:
                       a queued stock has none of them yet, and each keeps its own
                       cell — and the bands between them their divider — so the row
                       stays on the Book's column grid. */}
-                  <div />
                   <div />
                   <div />
                   <ColumnDivider />

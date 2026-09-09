@@ -66,7 +66,6 @@ import {
   pnlPercentage,
   realizedPnl,
   reservedBuyCost,
-  slippagePercentage,
   unrealizedPnl,
 } from '../../domain/orders';
 import { resolveSchedule } from '../../domain/schedule';
@@ -726,14 +725,6 @@ function ChainOpener({
 }) {
   const actions = orderActionsForRow(row, chain);
   const presentation = bookRowPresentation(row, chain, Date.now(), true);
-  const slip =
-    row.averagePrice === null
-      ? null
-      : slippagePercentage({
-          orderPrice: row.orderPrice,
-          averagePrice: row.averagePrice,
-          type: row.orderType,
-        });
   const stats: Array<{ label: string; value: string; muted?: boolean }> = [
     { label: 'qty', value: row.quantity === null ? 'auto' : formatQuantity(row.quantity) },
     {
@@ -750,7 +741,6 @@ function ChainOpener({
   } else {
     stats.push({ label: 'avg fill', value: formatNumber(row.averagePrice) });
   }
-  if (slip !== null) stats.push({ label: 'slip', value: formatPercentage(slip) });
   return (
     <div className={`chain-dialog-opener ${statusClass(presentation.role)}`}>
       <div className="chain-dialog-opener-head">

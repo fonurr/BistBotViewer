@@ -503,7 +503,8 @@ function budgetScopeCopy(botCount: number, botScoped: boolean, accountScoped: bo
 }
 
 function PerformanceStrip({ summary }: { summary: PerformanceAggregate }) {
-  const slip = summary.slippage.combined;
+  const slipCreated = summary.slippage.created;
+  const slipSent = summary.slippage.sent;
   const metrics: Array<{
     label: string;
     value: string;
@@ -577,11 +578,18 @@ function PerformanceStrip({ summary }: { summary: PerformanceAggregate }) {
     {
       // SPEC 4: slip is never inked. Whether a move helped depends on the side,
       // so the reader supplies that judgement.
-      label: 'slip',
-      value: slip.available ? formatSlip(slip.value) : 'not available',
-      sub: 'order vs fill, signed',
-      tone: slip.available ? undefined : 'status-warn',
-      subTone: slip.available ? 'muted' : 'status-warn',
+      label: 'slip @created',
+      value: slipCreated.available ? formatSlip(slipCreated.value) : 'not available',
+      sub: 'order price vs fill, signed',
+      tone: slipCreated.available ? undefined : 'status-warn',
+      subTone: slipCreated.available ? 'muted' : 'status-warn',
+    },
+    {
+      label: 'slip @sent',
+      value: slipSent.available ? formatSlip(slipSent.value) : 'not available',
+      sub: 'market price vs fill, signed',
+      tone: slipSent.available ? undefined : 'status-warn',
+      subTone: slipSent.available ? 'muted' : 'status-warn',
     },
   ];
   return (
@@ -726,7 +734,8 @@ function RollupTable({
             <th>avg loss</th>
             <th>per trip</th>
             <th>avg hold</th>
-            <th>slip</th>
+            <th>slip @cr</th>
+            <th>slip @sent</th>
             <th>retried</th>
           </tr>
         </thead>
@@ -746,7 +755,8 @@ function RollupTable({
               <MetricCell metric={row.averageLossPnl} money />
               <MetricCell metric={row.averageTradePnl} money />
               <HoldCell metric={row.averageHoldDurationMs} />
-              <SlipCell metric={row.slippage.combined} />
+              <SlipCell metric={row.slippage.created} />
+              <SlipCell metric={row.slippage.sent} />
               <td className="muted">{row.retriedChainCount}</td>
             </tr>
           ))}
@@ -756,7 +766,7 @@ function RollupTable({
           {silentBots.map((bot) => (
             <tr key={bot.id}>
               <td className="status-wait">{bot.id}</td>
-              <td className="status-wait table-note" colSpan={9}>
+              <td className="status-wait table-note" colSpan={10}>
                 {bot.reason}
               </td>
             </tr>
@@ -955,49 +965,68 @@ function RetryLedger({
 }
 
 function SlippageSection({ report }: { report: PerformanceReport }) {
-  const { entry, exit, exitOrderPriceMissingCount } = report.summary.slippage;
-  const legs: Array<{ label: string; metric: PerformanceMetric; sub: string }> = [
+  const {
+    entryCreated,
+    entrySent,
+    exitCreated,
+    exitSent,
+    entrySentCount,
+    exitSentCount,
+    legCount,
+  } = report.summary.slippage;
+  const cells: Array<{ label: string; metric: PerformanceMetric; sub: string }> = [
     {
-      label: 'entry',
-      metric: entry,
-      sub: `${plural(entry.sampleSize, 'opening fill')} · every buy carries an order price`,
+      label: 'entry @created',
+      metric: entryCreated,
+      sub: `${plural(entryCreated.sampleSize, 'opening fill')} · every buy carries an order price`,
     },
     {
-      label: 'exit',
-      metric: exit,
-      sub:
-        exitOrderPriceMissingCount > 0
-          ? `${plural(exit.sampleSize, 'closing fill')} · ${exitOrderPriceMissingCount} priced no sell`
-          : `${plural(exit.sampleSize, 'closing fill')} · every sell carries an order price`,
+      label: 'entry @sent',
+      metric: entrySent,
+      sub: `${plural(entrySent.sampleSize, 'opening fill')} priced against the tape`,
+    },
+    {
+      label: 'exit @created',
+      metric: exitCreated,
+      sub: `${plural(exitCreated.sampleSize, 'closing fill')} carried an order price`,
+    },
+    {
+      label: 'exit @sent',
+      metric: exitSent,
+      sub: `${plural(exitSent.sampleSize, 'closing fill')} priced against the tape`,
     },
   ];
+  const marketPriceMissing = legCount - entrySentCount - exitSentCount;
   return (
     <section className="performance-section">
       <SectionHeading
         title="slippage"
-        detail="order price against average fill, signed by which way the price moved"
+        detail="average fill against its order price (@created) and the tape it was decided against (@sent), signed by which way the price moved"
       />
       <div className="slippage-grid">
-        {legs.map((leg) => (
+        {cells.map((cell) => (
           <div
-            className={`slippage-metric${leg.metric.available ? '' : ' slippage-metric-unavailable'}`}
-            key={leg.label}
+            className={`slippage-metric${cell.metric.available ? '' : ' slippage-metric-unavailable'}`}
+            key={cell.label}
           >
-            <span className="kicker">{leg.label}</span>
-            {/* SPEC 4: never inked. A buy above its order price and a sell below
-                it are both positive, and which one helped depends on the side. */}
-            <strong className={leg.metric.available ? undefined : 'status-warn'}>
-              {leg.metric.available ? formatSlip(leg.metric.value) : 'not available'}
+            <span className="kicker">{cell.label}</span>
+            {/* SPEC 4: never inked. A buy above its reference and a sell below it
+                are both positive, and which one helped depends on the side. */}
+            <strong className={cell.metric.available ? undefined : 'status-warn'}>
+              {cell.metric.available ? formatSlip(cell.metric.value) : 'not available'}
             </strong>
-            <small className="muted">{leg.sub}</small>
+            <small className="muted">{cell.sub}</small>
           </div>
         ))}
       </div>
       {/* A reason is said once, by the section that owns it. */}
       <p className="slippage-reason status-warn">
-        These two do not split into limit and market: ClosedTrades stores prices but not order type,
-        so the {plural(report.summary.tradeCount, 'trade')} in this window cannot be sorted across
-        the four without inventing which prices were sent.
+        No column splits into limit and market: ClosedTrades stores prices but not order type, so
+        the {plural(report.summary.tradeCount, 'trade')} in this window cannot be sorted that way
+        without inventing which prices were sent.
+        {marketPriceMissing > 0
+          ? ` @sent also drops ${plural(marketPriceMissing, 'leg')} the server stored no market price for.`
+          : ''}
       </p>
     </section>
   );

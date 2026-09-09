@@ -254,31 +254,48 @@ describe('buildPerformanceReport', () => {
     });
   });
 
-  it('signs slippage by price direction and leaves a priceless sell out of it', () => {
+  it('reads slippage per leg against both the order price and the market price', () => {
     const result = report({
       trades: [
-        trade({ id: 1, openOrderPrice: 99, closeOrderPrice: 111 }),
-        trade({ id: 2, openOrderPrice: 101, closeOrderPrice: null }),
+        trade({
+          id: 1,
+          openOrderPrice: 99,
+          closeOrderPrice: 111,
+          openMarketPrice: 98,
+          closeMarketPrice: 112,
+        }),
+        // A priceless sell yields no @created exit slip, and a side the server
+        // stored no market price for yields no @sent slip.
+        trade({ id: 2, openOrderPrice: 101, closeOrderPrice: null, openMarketPrice: 102 }),
       ],
     });
 
-    // A buy filled above its order price is positive and a sell filled below its
-    // own is negative; neither sign says whether the move helped.
-    expect(result.trades[0]?.entrySlippagePercent.value).toBeCloseTo(1.0101, 4);
-    expect(result.trades[0]?.exitSlippagePercent.value).toBeCloseTo(-0.9009, 4);
-    expect(result.trades[1]?.entrySlippagePercent.value).toBeCloseTo(-0.9901, 4);
-    expect(result.trades[1]?.exitSlippagePercent).toMatchObject({
+    // A buy filled above its reference is positive and a sell filled below it is
+    // negative; neither sign says whether the move helped.
+    expect(result.trades[0]?.entryCreatedSlippagePercent.value).toBeCloseTo(1.0101, 4);
+    expect(result.trades[0]?.exitCreatedSlippagePercent.value).toBeCloseTo(-0.9009, 4);
+    expect(result.trades[0]?.entrySentSlippagePercent.value).toBeCloseTo(2.0408, 4);
+    expect(result.trades[0]?.exitSentSlippagePercent.value).toBeCloseTo(-1.7857, 4);
+    expect(result.trades[1]?.entryCreatedSlippagePercent.value).toBeCloseTo(-0.9901, 4);
+    expect(result.trades[1]?.exitCreatedSlippagePercent).toMatchObject({
       available: false,
-      value: null,
       reason: 'close-order-price-not-stored',
     });
+    expect(result.trades[1]?.exitSentSlippagePercent).toMatchObject({
+      available: false,
+      reason: 'market-price-not-stored',
+    });
 
-    expect(result.summary.slippage.entry.value).toBeCloseTo(0.01, 4);
-    expect(result.summary.slippage.exit.value).toBeCloseTo(-0.9009, 4);
+    expect(result.summary.slippage.entryCreated.value).toBeCloseTo(0.01, 4);
+    expect(result.summary.slippage.exitCreated.value).toBeCloseTo(-0.9009, 4);
+    expect(result.summary.slippage.created.value).toBeCloseTo(-0.2936, 4);
+    expect(result.summary.slippage.sent.value).toBeCloseTo(-0.5686, 4);
     expect(result.summary.slippage).toMatchObject({
-      entryOrderPricePresentCount: 2,
-      exitOrderPricePresentCount: 1,
-      exitOrderPriceMissingCount: 1,
+      entryCreatedCount: 2,
+      exitCreatedCount: 1,
+      entrySentCount: 2,
+      exitSentCount: 1,
+      legCount: 4,
     });
   });
 
