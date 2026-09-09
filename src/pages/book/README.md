@@ -163,6 +163,13 @@ against, and an order that **registered more than ten seconds after** its instan
 for that price at all (registering earlier is ordinary and withholds nothing). One last guard: a
 scaled bar more than **23%** from the price the row already carries is refused outright, since same
 instrument and same session means that gap is a mis-scaled bar rather than a market that moved.
+
+An empty `@intent` cell has two causes a reader must be able to tell apart — the rules withheld the
+figure, or the nightly cache is simply behind and holds no minute for the newest sessions — so the
+strip's `slip @intent` names the second on its detail line: `intent prices 24.08.26` for the
+snapshot day it does hold, `intent prices unavailable` where none was ever built, and nothing at
+all while it is current or while no drawn row named a minute for it to answer. The cells
+themselves stay empty either way; an empty value is empty here as everywhere.
 `marketPrice`
 is an **observation**, not an intent and not a fill; it is written once at the order's birth and
 never revised (an edit leaves it alone), and carried unchanged onto whatever the order becomes,

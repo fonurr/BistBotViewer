@@ -47,6 +47,15 @@ vi.mock('../../bistApi/client', () => ({ bistApi: api }));
 const priceApiMock = vi.hoisted(() => ({ getClosingAuctionBars: vi.fn() }));
 vi.mock('../../priceApi/client', () => ({ priceApi: priceApiMock }));
 
+const histApiMock = vi.hoisted(() => ({
+  getSnapshotStatus: vi.fn(),
+  getIntentBars: vi.fn(),
+}));
+vi.mock('../../histApi/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../histApi/client')>()),
+  histApi: histApiMock,
+}));
+
 const runtime = vi.hoisted(() => ({ writesHeldReason: null as string | null }));
 vi.mock('../../app/ViewerRuntime', () => ({
   useViewerRuntime: () => ({
@@ -84,6 +93,16 @@ beforeEach(() => {
   api.cancelPendingOrderRequests.mockReset();
   priceApiMock.getClosingAuctionBars.mockReset();
   priceApiMock.getClosingAuctionBars.mockResolvedValue([]);
+  histApiMock.getSnapshotStatus.mockReset();
+  histApiMock.getSnapshotStatus.mockResolvedValue({
+    available: true,
+    snapshotFor: '2026-08-24',
+    builtAt: 1,
+    barRows: 1,
+    stale: false,
+  });
+  histApiMock.getIntentBars.mockReset();
+  histApiMock.getIntentBars.mockResolvedValue([]);
 });
 
 afterEach(() => vi.clearAllMocks());
@@ -317,6 +336,42 @@ describe('The Book page states', () => {
     const strip = document.querySelector('.book-stat-strip')!;
     expect(strip).toHaveTextContent('last known');
     expect(strip.querySelector('.number-untrusted')).not.toBeNull();
+  });
+
+  it('names a behind or missing intent cache on the strip, never in a cell', async () => {
+    // An empty @intent column has two causes and the reader must tell them
+    // apart: the rules withheld the figure, or the nightly cache is behind.
+    // The fixture order's intent instant is a whole minute, so a row does ask.
+    book.data = {
+      ...emptyRead(),
+      activeOrders: [makeActiveOrder({ createdTime: Date.parse('2026-08-25T11:30:00+03:00') })],
+    };
+    histApiMock.getSnapshotStatus.mockResolvedValue({
+      available: true,
+      snapshotFor: '2026-08-24',
+      builtAt: 1,
+      barRows: 1,
+      stale: true,
+    });
+    renderBook();
+
+    const strip = document.querySelector('.book-stat-strip')!;
+    await waitFor(() => expect(strip).toHaveTextContent('intent prices 24.08.26'));
+    // The cells themselves stay empty; an empty value is empty here as everywhere.
+    expect(document.querySelector('.book-row .book-intent-price')!.textContent).toBe('');
+  });
+
+  it('says nothing about the cache when it is current', async () => {
+    book.data = {
+      ...emptyRead(),
+      activeOrders: [makeActiveOrder({ createdTime: Date.parse('2026-08-25T11:30:00+03:00') })],
+    };
+    renderBook();
+
+    // The strip stays silent while the read is in flight too: 'unavailable'
+    // before the cache has answered would assert a state nothing confirms.
+    await waitFor(() => expect(histApiMock.getIntentBars).toHaveBeenCalled());
+    expect(document.querySelector('.book-stat-strip')!).not.toHaveTextContent('intent prices');
   });
 
   it('reads a prior close for a carried-over position and fills its today cell', async () => {

@@ -260,6 +260,20 @@ export function BookPage() {
     );
     return slips.length ? slips.reduce((sum, value) => sum + value, 0) / slips.length : null;
   }, [intentCells]);
+  /*
+   * An empty `@intent` column has two very different causes, and the reader has
+   * to be able to tell them apart: the rules withheld every figure, or the
+   * nightly cache is behind and simply has no minute for the newest sessions.
+   * Only the second is worth a word, and only once a row actually asked for one.
+   */
+  const intentCacheNote =
+    !intentPrices.asked ||
+    !intentPrices.statusSettled ||
+    (intentPrices.available && !intentPrices.stale)
+      ? null
+      : intentPrices.available && intentPrices.snapshotFor !== null
+        ? `intent prices ${formatDate(Date.parse(`${intentPrices.snapshotFor}T00:00:00+03:00`))}`
+        : 'intent prices unavailable';
   const todaySummary = useMemo(
     () =>
       summarizeBookToday(
@@ -449,6 +463,7 @@ export function BookPage() {
           today={todaySummary}
           pendingCount={visiblePending.length}
           avgSlipIntent={avgSlipIntent}
+          intentCacheNote={intentCacheNote}
         />
       ) : null}
       {snapshotAvailable && filters.noClosingOrder ? (
@@ -940,11 +955,13 @@ function StatStrip({
   today,
   pendingCount,
   avgSlipIntent,
+  intentCacheNote,
 }: {
   summary: BookSummary;
   today: BookTodaySummary;
   pendingCount: number;
   avgSlipIntent: number | null;
+  intentCacheNote: string | null;
 }) {
   const trustClass = summary.marketFiguresTrusted ? '' : ' number-untrusted';
   return (
@@ -1008,6 +1025,7 @@ function StatStrip({
       <Stat
         label="slip @intent"
         value={avgSlipIntent === null ? 'not available' : formatSlip(avgSlipIntent)}
+        detail={intentCacheNote}
         unavailable={avgSlipIntent === null}
       />
       <Stat

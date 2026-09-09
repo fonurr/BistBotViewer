@@ -26,9 +26,19 @@ export interface ResolvedIntentPrices {
   raw: ReadonlyMap<string, number>;
   /** The guarded, per-row answer: null wherever the instant cannot be priced. */
   priceFor: (request: IntentPriceRequest) => number | null;
-  /** True once a snapshot exists but is not the current one — the header says so. */
+  /** True once a snapshot exists but is not the current one. */
   stale: boolean;
   available: boolean;
+  /** The snapshot day the cache holds, for saying which one a stale figure is from. */
+  snapshotFor: string | null;
+  /** Whether any drawn row named a minute at all — without one the cache is not why. */
+  asked: boolean;
+  /**
+   * Whether the cache has answered for itself yet. Until it has, nothing is known
+   * about it, and a page that said 'unavailable' in the meantime would be
+   * asserting a state it cannot confirm.
+   */
+  statusSettled: boolean;
 }
 
 const EMPTY: ReadonlyMap<string, number> = new Map();
@@ -78,6 +88,8 @@ export function useIntentPrices(
     retry: false,
   });
 
+  const settled = status.isSuccess || status.isError;
+
   return useMemo(() => {
     const byKey = new Map(
       (bars.data ?? []).map((bar) => [intentPriceKey(bar.symbol, bar.ts), bar] as const),
@@ -99,6 +111,9 @@ export function useIntentPrices(
       },
       stale: status.data ? status.data.stale : false,
       available: status.data ? status.data.available : false,
+      snapshotFor: status.data?.snapshotFor ?? null,
+      asked: wanted.size > 0,
+      statusSettled: !enabled || settled,
     };
-  }, [bars.data, holidays, status.data, wanted]);
+  }, [bars.data, enabled, holidays, settled, status.data, wanted]);
 }
