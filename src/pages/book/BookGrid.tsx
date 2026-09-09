@@ -583,13 +583,26 @@ const BookRow = memo(function BookRow({
       <div role="cell" className="muted book-time">
         <RowTime timestamp={row.intentTime} batchDate={batchDate} />
       </div>
-      <div role="cell" className="muted book-time">
+      {/*
+       * `sent` reddens when the send trailed the order's plan: it is more than ten
+       * seconds later than every stamp it has to measure against (`scheduledTime`
+       * and `createdTime`). `final` reddens the same way past two minutes, against
+       * `orderTime` and `intentTime` — a fill this server was slow to hear about,
+       * or one that landed well after the order could first have traded.
+       */}
+      <div
+        role="cell"
+        className={`muted book-time${lateAgainst(row.sentTime, [row.scheduledTime, row.createdTime], LATE_SENT_MS) ? ' book-time-late' : ''}`}
+      >
         <RowTime timestamp={row.sentTime} batchDate={batchDate} />
       </div>
       <div role="cell" className="muted book-time">
         <RowTime timestamp={row.orderTime} batchDate={batchDate} />
       </div>
-      <div role="cell" className="muted book-time">
+      <div
+        role="cell"
+        className={`muted book-time${lateAgainst(row.finalSeenTime, [row.orderTime, row.intentTime], LATE_FINAL_MS) ? ' book-time-late' : ''}`}
+      >
         <RowTime timestamp={row.finalSeenTime} batchDate={batchDate} />
       </div>
       <ColumnDivider />
@@ -633,6 +646,27 @@ const BookRow = memo(function BookRow({
     </div>
   );
 });
+
+/** A send more than this later than its plan is drawn late. */
+const LATE_SENT_MS = 10_000;
+/** A final-seen more than this after the order could trade, or after it registered, is drawn late. */
+const LATE_FINAL_MS = 120_000;
+
+/**
+ * Whether `stamp` trails every anchor it can be measured against by more than
+ * `toleranceMs`. A `null` stamp or no usable anchor is never late; an anchor
+ * that sits after the stamp (clock skew, a plan revised past the send) is not
+ * counted against it.
+ */
+function lateAgainst(
+  stamp: number | null,
+  anchors: readonly (number | null)[],
+  toleranceMs: number,
+): boolean {
+  if (stamp === null) return false;
+  const present = anchors.filter((anchor): anchor is number => anchor !== null);
+  return present.length > 0 && present.every((anchor) => stamp - anchor > toleranceMs);
+}
 
 /*
  * The minute is what a reader scans down the column; the seconds only settle

@@ -514,6 +514,15 @@
 }
 
 /*
+ * A `sent` that trailed the order's plan, or a `final` this server was slow to
+ * hear, is drawn in the same dead-red the header uses for a gone stream — the
+ * stamp is the one a reader is meant to catch, so it overrides the muted ink.
+ */
+.book-time.book-time-late {
+  color: var(--st-dead);
+}
+
+/*
  * The day distance from the batch (`+1`, `−3`) rides against the seconds like
  * an exponent, but it carries the same weight as the hour and minute — it
  * says which day this is, not which of two orders came first, so it is not

@@ -149,6 +149,62 @@ describe('BookGrid row vocabulary', () => {
     expect(intent?.textContent).toBe('');
   });
 
+  const sentCell = () => [...document.querySelectorAll('.book-row [role="cell"].book-time')][3];
+
+  it('leaves sent in muted ink when the send followed close on the plan', () => {
+    const created = Date.parse('2026-08-25T07:00:00.000Z');
+    renderGrid(
+      {},
+      {
+        activeOrders: [
+          makeActiveOrder({ id: 1, chainId: 'a', createdTime: created, sentTime: created + 4_000 }),
+        ],
+        canceledOrders: [],
+        positions: [],
+        closedTrades: [],
+      },
+    );
+    expect(sentCell()).not.toHaveClass('book-time-late');
+  });
+
+  it('reddens sent when the send trailed every stamp it has by more than ten seconds', () => {
+    const created = Date.parse('2026-08-25T07:00:00.000Z');
+    renderGrid(
+      {},
+      {
+        activeOrders: [
+          makeActiveOrder({ id: 2, chainId: 'b', createdTime: created, sentTime: created + 45_000 }),
+        ],
+        canceledOrders: [],
+        positions: [],
+        closedTrades: [],
+      },
+    );
+    expect(sentCell()).toHaveClass('book-time-late');
+  });
+
+  it('reddens final when it landed over two minutes after the order registered and could trade', () => {
+    const orderTime = Date.parse('2026-08-25T07:30:00.000Z');
+    renderGrid(
+      {},
+      {
+        activeOrders: [],
+        canceledOrders: [],
+        positions: [
+          makePosition({
+            createdTime: orderTime - 2_000,
+            orderTime,
+            finalSeenTime: orderTime + 5 * 60_000,
+          }),
+        ],
+        closedTrades: [],
+      },
+    );
+
+    const finalCell = [...document.querySelectorAll('.book-row [role="cell"].book-time')][5];
+    expect(finalCell).toHaveClass('book-time-late');
+  });
+
   it('leaves a cell empty rather than substituting a dash or a zero', () => {
     renderGrid();
 
