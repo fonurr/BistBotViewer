@@ -560,9 +560,11 @@ const BookRow = memo(function BookRow({
       <ColumnDivider />
       {/*
        * `created` and `fire` carry the least useful clocks — when this server first
-       * wrote the row, and when a scheduled row is set to go off — so both are drawn
-       * at the seconds' strength, a shade quieter than `sent`/`order`/`final`. A row
-       * that is not scheduled has no fire time and leaves that cell empty.
+       * wrote the row, and when the order was due to go out — so both are drawn at
+       * the seconds' strength, a shade quieter than `sent`/`order`/`final`.
+       * `scheduledTime` is an order stamp: it rides through every table, so a filled
+       * position or a closed trade that opened from a schedule still shows its fire
+       * time. Only an order sent the moment it was asked for leaves the cell empty.
        */}
       <div role="cell" className="muted book-time book-time-minor">
         <RowTime timestamp={row.createdTime} batchDate={batchDate} />

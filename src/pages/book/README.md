@@ -27,14 +27,17 @@ states the signed day distance from it (`+1`, `−3`) tucked against the seconds
 `formatRowTimeParts` returns it as `dayOffset` — but at the hour's weight, not the seconds': it
 says which day this is, not which order came first. The row carries
 five time columns, read left to right as the order's life: `created` and `sent` are this server's
-own `createdTime`/`sentTime`, `fire` is a scheduled order's `scheduledTime` — the moment it is set
-to go off, empty on every row that is not scheduled — `order` is the exchange's `orderTime` (the
-same word the price column carries, never confusable — one is a price, one a clock), and `final` is
-`finalSeenTime`. A **scheduled row** has only been written and set to fire: its time sits in `fire`
-alone, and `sent`/`order` stay empty until it goes off. `created` and `fire` are the two clocks a
-reader rarely needs, so `.book-time-minor` draws the whole cell at the seconds' strength. Every
-column carries its seconds: the minute is what a reader scans, so `formatRowTimeParts` hands the
-seconds back separately and the cell draws them — their colon with them — at about a quarter opacity.
+own `createdTime`/`sentTime`, `fire` is `scheduledTime` — when the order was **due** to go out —
+`order` is the exchange's `orderTime` (the same word the price column carries, never confusable —
+one is a price, one a clock), and `final` is `finalSeenTime`. `scheduledTime` is an order stamp
+that rides through every table, split per side on a round trip (`openScheduledTime`/
+`closeScheduledTime`), so a filled position or a closed trade that opened from a schedule still
+shows its fire time; only an order sent the moment it was asked for leaves `fire` empty. A
+**scheduled row** has reached nothing past it: its time sits in `fire` alone, and `sent`/`order`
+stay empty until it goes off. `created` and `fire` are the two clocks a reader rarely needs, so
+`.book-time-minor` draws the whole cell at the seconds' strength. Every column carries its seconds:
+the minute is what a reader scans, so `formatRowTimeParts` hands the seconds back separately and the
+cell draws them — their colon with them — at about a quarter opacity.
 
 A batch heading is the control that opens its batch: the whole line is a button with a chevron
 and `aria-expanded`, and the column band and every bot under it are drawn only while it is open.

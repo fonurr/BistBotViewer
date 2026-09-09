@@ -537,6 +537,28 @@ describe('buildBookChains', () => {
     expect(chain?.tradeRows.find((row) => row.leg === 'open')?.origin).toBeNull();
   });
 
+  it('carries the fire time onto a position and a closed trade that opened from a schedule', () => {
+    const dueAt = at('2026-08-24T06:55:00.000Z');
+    const chains = build({
+      positions: [position({ id: 4, chainId: 'p', clientOrderId: 'p', scheduledTime: dueAt })],
+      closedTrades: [
+        trade({
+          id: 5,
+          chainId: 't',
+          clientOpenOrderId: 't',
+          openScheduledTime: dueAt,
+          closeScheduledTime: null,
+        }),
+      ],
+    });
+
+    const positionRow = chains.flatMap((chain) => chain.rows).find((row) => row.source === 'position');
+    expect(positionRow?.scheduledTime).toBe(dueAt);
+    const tradeRows = chains.flatMap((chain) => chain.tradeRows);
+    expect(tradeRows.find((row) => row.leg === 'open')?.scheduledTime).toBe(dueAt);
+    expect(tradeRows.find((row) => row.leg === 'close')?.scheduledTime).toBeNull();
+  });
+
   it('files every chain under exactly one scope, by the stage its own life reached', () => {
     const waitingOnly = build({
       activeOrders: [active({ id: 1, chainId: 'w', clientOrderId: 'w' })],

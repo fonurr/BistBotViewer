@@ -268,7 +268,13 @@ export const activeOrderSchema = z
     originData: originDataSchema,
     intentType: orderTypeSchema,
     cancelAtFloor: z.boolean(),
+    /** When the order was due to go out — an order stamp beside `createdTime`/
+     * `sentTime`, kept for the rest of its life. `null` on one that was sent the
+     * moment it was asked for rather than parked. It is the plan, not the send:
+     * `sentTime` lands after it, never on it. */
     scheduledTime: z.number().nullable().optional(),
+    /** The name a client asked the schedule by; ends with the pending row, so it
+     * is only ever set while `status` is `Scheduled`. */
     whenType: whenTypeSchema.nullable().optional(),
     openPrice: storedPriceRuleSchema,
     closePrice: storedPriceRuleSchema,
@@ -290,6 +296,10 @@ export const canceledOrderSchema = z
     /** When the dead order was stated to this server; optional and `null` for the
      * same reasons as on an active order. */
     createdTime: z.number().nullable().optional(),
+    /** When it was due to go out, if it was ever a plan — carried on the order for
+     * the rest of its life, so a row killed before it fired still says what it was
+     * planned for. `null` when it was sent the moment it was asked for. */
+    scheduledTime: z.number().nullable().optional(),
     sentTime: z.number().nullable(),
     finalSeenTime: z.number().nullable(),
     orderQuantity: z.number().int(),
@@ -338,9 +348,11 @@ export const positionSchema = z
     positionId: z.string().nullable(),
     symbol: z.string(),
     orderTime: z.number().nullable(),
-    /** The opening buy's own `createdTime`/`sentTime`, carried on because this row
-     * is all that is left of it. Optional and `null` as on an active order. */
+    /** The opening buy's own `createdTime`/`scheduledTime`/`sentTime`, carried on
+     * because this row is all that is left of it. Optional and `null` as on an
+     * active order; `scheduledTime` is `null` unless the buy was a scheduled one. */
     createdTime: z.number().nullable().optional(),
+    scheduledTime: z.number().nullable().optional(),
     sentTime: z.number().nullable().optional(),
     finalSeenTime: z.number().nullable(),
     orderQuantity: z.number().int(),
@@ -374,13 +386,16 @@ export const closedTradeSchema = z
     positionId: z.string().nullable(),
     symbol: z.string(),
     openOrderTime: z.number().nullable(),
-    /** Each side's own `createdTime`/`sentTime`, since this row is the last carrier
-     * of both orders. Optional and `null` as on an active order. */
+    /** Each side's own `createdTime`/`scheduledTime`/`sentTime`, since this row is
+     * the last carrier of both orders. Optional and `null` as on an active order;
+     * a `*ScheduledTime` is `null` unless that side was a scheduled order. */
     openCreatedTime: z.number().nullable().optional(),
+    openScheduledTime: z.number().nullable().optional(),
     openSentTime: z.number().nullable().optional(),
     openFinalSeenTime: z.number().nullable(),
     closeOrderTime: z.number().nullable(),
     closeCreatedTime: z.number().nullable().optional(),
+    closeScheduledTime: z.number().nullable().optional(),
     closeSentTime: z.number().nullable().optional(),
     closeFinalSeenTime: z.number().nullable(),
     quantity: z.number().int(),
