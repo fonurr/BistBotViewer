@@ -13,6 +13,8 @@ import { Modal } from '../../components/Modal';
 import { ResultList, type ActionResult } from '../../components/ResultList';
 import { accountIdentityKey } from '../../domain/accounts';
 import { holidayCalendar, previousTradingDate, sessionBatchDate } from '../../domain/calendar';
+import { intentBarLookup, intentPriceReference, intentSlipAllowed } from '../../domain/intentPrice';
+import { useIntentPrices } from '../../app/useIntentPrices';
 import { buildBookChains, rowReasons, type BookChain, type BookScope } from '../../domain/chains';
 import {
   formatDate,
@@ -27,6 +29,7 @@ import {
 import {
   committedAmount,
   deriveFilledPnlState,
+  intentSlippagePercentage,
   marketSlippagePercentage,
   pnlPercentage,
   realizedPnl,
@@ -38,7 +41,7 @@ import { BookFilters } from './BookFilters';
 import { BookGrid, ColumnDivider, summarizeBookToday } from './BookGrid';
 import { OrderDialog, type OrderDialogAction } from './OrderDialog';
 import { rangeLabel } from '../../components/DateRangeFilter';
-import { defaultBookFilters, type BookFilterState } from './types';
+import { defaultBookFilters, type BookFilterState, type BookIntentCell } from './types';
 import './book.css';
 
 interface OpenChainState {
@@ -208,6 +211,55 @@ export function BookPage() {
       ),
     [closingBarsQuery.data],
   );
+  /*
+   * The `@intent/slip` column. Every drawn row names the minute it wants — most
+   * name none, since an intent instant during trading hours carries seconds —
+   * and the resolved prices come back from the nightly BistData cache. The scale
+   * guard is applied per row rather than per bar, because two rows can hold the
+   * same minute against different recorded prices.
+   */
+  const intentRequests = useMemo(
+    () =>
+      visibleChains.flatMap((chain) =>
+        chain.rows.map((row) => ({
+          symbol: row.symbol,
+          intentTime: row.intentTime,
+          reference: intentPriceReference(row),
+        })),
+      ),
+    [visibleChains],
+  );
+  const intentPrices = useIntentPrices(intentRequests, calendar, snapshotAvailable);
+  const intentCells = useMemo(() => {
+    const cells = new Map<string, BookIntentCell>();
+    for (const chain of visibleChains) {
+      for (const row of chain.rows) {
+        const price = intentPrices.priceFor({
+          symbol: row.symbol,
+          intentTime: row.intentTime,
+          reference: intentPriceReference(row),
+        });
+        if (price === null || row.intentTime === null) continue;
+        const lookup = intentBarLookup(row.intentTime, calendar);
+        const slip =
+          lookup !== null &&
+          row.averagePrice !== null &&
+          intentSlipAllowed(lookup, row.intentTime, row.orderTime)
+            ? intentSlippagePercentage({ intentPrice: price, averagePrice: row.averagePrice })
+            : null;
+        cells.set(row.key, { price, slip });
+      }
+    }
+    return cells;
+  }, [calendar, intentPrices, visibleChains]);
+  // The strip averages exactly the slips the rows drew, so a withheld one — an
+  // auction print, a late registration, an unpriced instant — is absent here too.
+  const avgSlipIntent = useMemo(() => {
+    const slips = [...intentCells.values()].flatMap((cell) =>
+      cell.slip === null ? [] : [cell.slip],
+    );
+    return slips.length ? slips.reduce((sum, value) => sum + value, 0) / slips.length : null;
+  }, [intentCells]);
   const todaySummary = useMemo(
     () =>
       summarizeBookToday(
@@ -392,7 +444,12 @@ export function BookPage() {
         </div>
       ) : null}
       {snapshotAvailable && !genuineEmpty ? (
-        <StatStrip summary={summary} today={todaySummary} pendingCount={visiblePending.length} />
+        <StatStrip
+          summary={summary}
+          today={todaySummary}
+          pendingCount={visiblePending.length}
+          avgSlipIntent={avgSlipIntent}
+        />
       ) : null}
       {snapshotAvailable && filters.noClosingOrder ? (
         <div className="no-exit-heading">
@@ -457,6 +514,7 @@ export function BookPage() {
           pricesTrustworthy={priceFeed.trustworthy}
           todayCalendarDate={todayCalendarDate}
           closingBars={closingBars}
+          intentCells={intentCells}
           writesHeldReason={writesHeldReason}
           showCanceled={showCanceled}
           openCanceledChains={canceledOverrides}
@@ -881,10 +939,12 @@ function StatStrip({
   summary,
   today,
   pendingCount,
+  avgSlipIntent,
 }: {
   summary: BookSummary;
   today: BookTodaySummary;
   pendingCount: number;
+  avgSlipIntent: number | null;
 }) {
   const trustClass = summary.marketFiguresTrusted ? '' : ' number-untrusted';
   return (
@@ -944,6 +1004,11 @@ function StatStrip({
           summary.avgSlipCreated === null ? 'not available' : formatSlip(summary.avgSlipCreated)
         }
         unavailable={summary.avgSlipCreated === null}
+      />
+      <Stat
+        label="slip @intent"
+        value={avgSlipIntent === null ? 'not available' : formatSlip(avgSlipIntent)}
+        unavailable={avgSlipIntent === null}
       />
       <Stat
         label="slip @sent"
@@ -1094,10 +1159,11 @@ function PendingBaskets({
                   <div className="align-right">
                     {stock.price === undefined ? '' : formatNumber(stock.price)}
                   </div>
-                  {/* @sent/slip, fill, p&l, today, created, sent, order, final:
-                      a queued stock has none of them yet, and each keeps its own
-                      cell — and the bands between them their divider — so the row
-                      stays on the Book's column grid. */}
+                  {/* @intent/slip, @sent/slip, fill, p&l, today, created, sent,
+                      order, final: a queued stock has none of them yet, and each
+                      keeps its own cell — and the bands between them their
+                      divider — so the row stays on the Book's column grid. */}
+                  <div />
                   <div />
                   <div />
                   <ColumnDivider />

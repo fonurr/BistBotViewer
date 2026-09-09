@@ -13,6 +13,7 @@ import {
   makeResolvedPrice,
 } from '../../test/fixtures';
 import { BookGrid } from './BookGrid';
+import type { BookIntentCell } from './types';
 
 function renderGrid(
   overrides: Partial<Parameters<typeof BookGrid>[0]> = {},
@@ -32,6 +33,7 @@ function renderGrid(
     pricesTrustworthy: true,
     todayCalendarDate: '2026-08-25',
     closingBars: new Map<string, number>(),
+    intentCells: new Map<string, BookIntentCell>(),
     writesHeldReason: null,
     showCanceled: false,
     openCanceledChains: new Set<string>(),
@@ -308,7 +310,7 @@ describe('BookGrid row vocabulary', () => {
     const headings = [...document.querySelectorAll('.book-columns [role="columnheader"]')].map(
       (cell) => cell.textContent,
     );
-    expect(headings.slice(4, 7)).toEqual(['@created/slip', '@sent/slip', 'fill']);
+    expect(headings.slice(4, 8)).toEqual(['@created/slip', '@intent/slip', '@sent/slip', 'fill']);
 
     const market = document.querySelector('.book-row .book-market-price')!;
     // An unfilled buy has no fill to measure against, so the cell is the tape price alone.
@@ -337,6 +339,45 @@ describe('BookGrid row vocabulary', () => {
     expect(created[0]).toHaveClass('book-order-price-live');
     expect(created[1]).not.toHaveClass('book-order-price-live');
     expect(created.at(-1)).not.toHaveClass('book-order-price-live');
+  });
+
+  it('draws the intent price it was given, and its slip only when one was resolved', () => {
+    const chains = buildBookChains({
+      activeOrders: [makeActiveOrder()],
+      canceledOrders: [],
+      positions: [],
+      closedTrades: [],
+    });
+    const rowKey = chains[0]!.rows[0]!.key;
+    renderGrid({
+      intentCells: new Map([[rowKey, { price: 68.4, slip: -0.44 }]]),
+    });
+
+    const intent = document.querySelector('.book-row .book-intent-price')!;
+    expect(intent.textContent).toBe('68,40 (−0,44%)');
+    // A reference, never an instruction: it is not given the limit order's ink.
+    expect(intent).not.toHaveClass('book-order-price-live');
+  });
+
+  it('keeps an intent price on screen when the slip beside it is withheld', () => {
+    // An auction print, or an order that registered more than ten seconds late.
+    const chains = buildBookChains({
+      activeOrders: [makeActiveOrder()],
+      canceledOrders: [],
+      positions: [],
+      closedTrades: [],
+    });
+    renderGrid({
+      intentCells: new Map([[chains[0]!.rows[0]!.key, { price: 68.4, slip: null }]]),
+    });
+
+    expect(document.querySelector('.book-row .book-intent-price')!.textContent).toBe('68,40');
+  });
+
+  it('leaves the intent cell empty when the instant could not be priced', () => {
+    renderGrid();
+
+    expect(document.querySelector('.book-row .book-intent-price')!.textContent).toBe('');
   });
 
   it('leaves the market cell empty on a scheduled row, which decided nothing yet', () => {

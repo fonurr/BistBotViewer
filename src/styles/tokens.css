@@ -51,8 +51,8 @@
    * Book's stylesheet.
    */
   --book-divider-col: 5px;
-  --book-grid: 3px var(--book-symbol-col) 46px 46px 112px 112px 70px var(--book-divider-col) 112px
-    112px var(--book-divider-col) 76px 76px 76px 76px 76px 76px var(--book-divider-col)
+  --book-grid: 3px var(--book-symbol-col) 46px 46px 112px 112px 112px 70px var(--book-divider-col)
+    112px 112px var(--book-divider-col) 76px 76px 76px 76px 76px 76px var(--book-divider-col)
     minmax(0, 1fr) 148px;
 }
 

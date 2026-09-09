@@ -59,6 +59,7 @@ so `npm run check` fails if coverage drops below them.
 browser pages
   |- src/bistApi/client.ts   -> /bridge/bist/*  -> MatriksOrder HTTP/SSE + read-only log DBs
   |- src/priceApi/client.ts  -> /bridge/price/* -> DailyDataAggregator HTTP/SSE + read-only bars.db worker
+  |- src/histApi/client.ts   -> /bridge/hist/*  -> read-only intent-bars.db (built nightly from BistData)
 ```
 
 The bridges are **Vite plugins** ([src/bistApi/server/bridge.ts](src/bistApi/server/bridge.ts),
@@ -74,6 +75,12 @@ separate backend process. Consequences:
   per-launch CSRF token (cookie plus `X-BotViewer-CSRF` header, compared with `timingSafeEqual`).
 - SQLite runs in workers (`*.mjs`), read-only and query-only, opened per bounded request and
   closed, so no WAL checkpoint is held open. No endpoint accepts SQL or a filesystem path.
+- **`../BistData`'s DuckDB files are opened once a night and never on a request.** Any open
+  connection there — read-only included — takes a cross-process lock that makes BistData's own
+  pipeline abort its next `sync`, so the viewer reads a SQLite cache it builds instead. The
+  scheduler in `src/histApi/server/` aims at 23:00 Istanbul and retries hourly until 18:00 the
+  next evening; `@duckdb/node-api` is imported only by the snapshot worker, which is terminated
+  the moment it answers. Never add a DuckDB read to a request path.
 - `BIST_VIEWER_FIXTURES=true` blocks every live bridge before a worker or upstream connection is
   created. Playwright sets it and intercepts its own fixtures.
 - `tsconfig.app.json` deliberately excludes `src/*Api/server` and `src/serverBridge`; that server
@@ -108,8 +115,8 @@ separate backend process. Consequences:
 ### Module boundaries (enforced by [scripts/check-architecture.mjs](scripts/check-architecture.mjs))
 
 - `src/bistApi/` is the only module that may contact MatriksOrder or read its databases;
-  `src/priceApi/` the only one for DailyDataAggregator and `bars.db`. The two never import
-  each other.
+  `src/priceApi/` the only one for DailyDataAggregator and `bars.db`; `src/histApi/` the only one
+  for `../BistData` and the intent-bar cache. The three never import each other.
 - `fetch` / `EventSource` outside those two boundaries is an error. `node:fs`, `node:path`,
   `node:worker_threads`, and any sqlite import are allowed only under `*/server/`.
 - `src/pages/*` may import `src/components/*`; `src/components/*` must never import a page.

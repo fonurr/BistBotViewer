@@ -17,6 +17,7 @@ import type {
   Quote,
   ResolvedPrice,
 } from '../../priceApi/types';
+import type { IntentBar, SnapshotStatus } from '../../histApi/types';
 
 export const FIXTURE_NOW_MS = Date.parse('2026-08-25T09:00:00.000Z');
 export const FIXTURE_DAY = '2026-08-25';
@@ -39,6 +40,17 @@ export interface PriceReadFixture {
   quotes: Quote[];
   closingBars: AuctionBar[];
   latestBars: LatestBar[];
+}
+
+/**
+ * The nightly intent-bar cache, as the history bridge would answer it. Fixtures
+ * hold no bars by default: `@intent/slip` is empty on most rows in real use too,
+ * because an intent instant during trading hours carries seconds and names no
+ * minute. A spec that wants the column filled supplies its own bars.
+ */
+export interface HistReadFixture {
+  status: SnapshotStatus;
+  intentBars: IntentBar[];
 }
 
 export function makeBot(overrides: Partial<Bot> = {}): Bot {
@@ -350,6 +362,20 @@ export function makePerformanceReadFixture(): BistReadFixture {
     ],
     errors: [],
     budgets: { [bot.id]: makeBotBudget() },
+  };
+}
+
+export function makeHistReadFixture(overrides: Partial<HistReadFixture> = {}): HistReadFixture {
+  return {
+    status: {
+      available: true,
+      snapshotFor: '2026-08-24',
+      builtAt: FIXTURE_NOW_MS - 12 * 60 * 60 * 1_000,
+      barRows: 0,
+      stale: false,
+    },
+    intentBars: [],
+    ...overrides,
   };
 }
 

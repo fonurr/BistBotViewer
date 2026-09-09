@@ -458,6 +458,7 @@
  * under the row, so it reads as an annotation on the price rather than a figure.
  */
 .book-order-price,
+.book-intent-price,
 .book-market-price {
   color: var(--mut);
   opacity: 0.25;
@@ -483,6 +484,7 @@
 }
 
 .book-order-price small,
+.book-intent-price small,
 .book-market-price small {
   font-size: var(--font-kicker);
   font-weight: 400;

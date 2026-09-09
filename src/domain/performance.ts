@@ -8,7 +8,12 @@ import {
   sessionBatchDate,
   type HolidayCalendar,
 } from './calendar';
-import { intentBarLookup, intentPriceKey, intentSlipAllowed } from './intentPrice';
+import {
+  intentBarLookup,
+  intentPriceKey,
+  intentSlipAllowed,
+  withinIntentTolerance,
+} from './intentPrice';
 import { toIstanbulDate } from './chains';
 
 export const PERFORMANCE_WINDOW_DAYS = 90;
@@ -588,9 +593,9 @@ function intentSlipMetric(options: {
   if (!intentSlipAllowed(lookup, options.intentTime, options.orderTime)) return unavailable;
   const price = options.intentPrices?.get(intentPriceKey(options.symbol, lookup.ts));
   if (price === undefined) return unavailable;
-  // The page resolves a bar's own field and applies the scale guard before it
-  // hands the price over, so what arrives here is already a price to stand behind.
-  if (!Number.isFinite(price) || price <= 0) return unavailable;
+  // The page resolves a bar's own field; the scale guard is held against this
+  // leg's own recorded price, since two legs can share a minute and not a scale.
+  if (!withinIntentTolerance(price, options.reference)) return unavailable;
   return availableMetric(((options.averagePrice - price) / price) * 100, 1);
 }
 

@@ -288,9 +288,10 @@
   font-size: var(--font-meta);
 }
 
+/* Six cards: each leg against each of the three references, read across. */
 .slippage-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: var(--space-4);
 }
 

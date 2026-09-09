@@ -12,15 +12,25 @@ estimates.
 ## What is derived, and from which stored field
 
 - **Slippage** is `(averagePrice − reference) / reference`, signed by the direction the price
-  moved — never by whether the move helped, and never inked (`SPEC.md` §4). It is read on a 2×2
-  grid: each leg (`entry` / `exit`) against two references — `@created` is the leg's own
-  `orderPrice`, `@sent` is the `marketPrice` it was decided against. `openOrderPrice` is always
-  present, so `entry @created` exists for every trade; `closeOrderPrice` is `null` for a priceless
-  market sell or a manual close, so `exit @created` then yields nothing rather than a zero. `@sent`
-  yields nothing for a leg the server stored no `marketPrice` for. The strip and the by-bot table
-  carry the two legs pooled per reference (`created`, `sent`); each mixes buy and sell directions,
-  so it sits near zero. The **limit/market split the reference shows is not derivable**:
-  ClosedTrades stores prices but not order type, and the slippage section states that once.
+  moved — never by whether the move helped, and never inked (`SPEC.md` §4). It is read on a 2×3
+  grid: each leg (`entry` / `exit`) against three references — `@created` is the leg's own
+  `orderPrice`, `@intent` the tape at the instant it could first have traded, `@sent` the
+  `marketPrice` it was decided against. `openOrderPrice` is always present, so `entry @created`
+  exists for every trade; `closeOrderPrice` is `null` for a priceless market sell or a manual
+  close, so `exit @created` then yields nothing rather than a zero. `@sent` yields nothing for a leg
+  the server stored no `marketPrice` for. The strip and the by-bot table carry the two legs pooled
+  per reference (`created`, `intent`, `sent`); each mixes buy and sell directions, so it sits near
+  zero. The **limit/market split the reference shows is not derivable**: ClosedTrades stores prices
+  but not order type, and the slippage section states that once.
+- **`@intent` is deliberately the sparsest of the three.** Its price is not a stored field at all:
+  each leg's `firstTradeInstant` is priced from `../BistData`'s minute history through
+  `src/histApi/`, whose nightly snapshot is the only thing that opens those DuckDB files. The page
+  builds the report twice for it, exactly as it does for the closing bars — once to learn which
+  instants it must ask for, once with what came back. `domain/intentPrice` then withholds the slip
+  on an auction print (a match, not a working price), on a leg that registered more than ten
+  seconds after its instant, on an instant carrying seconds (it names no minute), and on a scaled
+  bar more than 23% from the price the leg already carries. The section counts and explains every
+  dropped leg once, at its foot.
 - **Hold** is `closeFinalSeenTime − openFinalSeenTime`. Both are stamps from this server's own clock,
   so their difference is a duration. It is never a time-to-fill or a latency — `API.md` rules those
   out, because each stamp is an upper bound on when the shares actually traded.

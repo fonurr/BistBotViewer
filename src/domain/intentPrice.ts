@@ -98,10 +98,18 @@ export function intentPriceFrom(
   if (!bar) return null;
   const price = lookup.field === 'open' ? bar.open : bar.close;
   if (!Number.isFinite(price) || price <= 0) return null;
-  if (reference !== null && Number.isFinite(reference) && reference > 0) {
-    if (Math.abs(price / reference - 1) > INTENT_PRICE_TOLERANCE) return null;
-  }
-  return price;
+  return withinIntentTolerance(price, reference) ? price : null;
+}
+
+/**
+ * The guard on its own, for callers that already hold a resolved price — the
+ * Performance report reads a whole window's minutes in one go and then holds each
+ * against its own leg. With no reference the guard cannot run and does not refuse.
+ */
+export function withinIntentTolerance(price: number, reference: number | null): boolean {
+  if (!Number.isFinite(price) || price <= 0) return false;
+  if (reference === null || !Number.isFinite(reference) || reference <= 0) return true;
+  return Math.abs(price / reference - 1) <= INTENT_PRICE_TOLERANCE;
 }
 
 /**

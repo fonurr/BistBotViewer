@@ -37,3 +37,13 @@ export const priceKeys = {
   latestBars: (symbols: readonly string[]) =>
     ['price', 'latestBars', [...symbols].sort().join(',')] as const,
 };
+
+/**
+ * BistData's minute history, through the nightly cache. Every read here is a
+ * point lookup keyed by the exact minutes a page draws, so the key is that set.
+ */
+export const histKeys = {
+  root: ['hist'] as const,
+  status: ['hist', 'status'] as const,
+  intentBars: (key: string) => ['hist', 'intentBars', key] as const,
+};

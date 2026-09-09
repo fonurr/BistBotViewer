@@ -121,7 +121,7 @@ the full height of a row instead, consecutive rows draw one unbroken rule that b
 where the chains, the scope headings and the batches already break, so the split follows the
 grouping on the page rather than cutting a second grid across it. The dividers are
 `aria-hidden`, like the status spine: a reader crossing one would only hear an empty cell between
-two it does need, so the grid still exposes seventeen column headers. Every BIST ticker is five
+two it does need, so the grid still exposes eighteen column headers. Every BIST ticker is five
 letters, so `--book-symbol-col` is sized for one and no wider; what that frees goes to `status`,
 which is the grid's only flexible track — `minmax(0, 1fr)`, so a long status wraps inside its
 cell rather than widening the column past the header band and pushing the two grids out of step.
@@ -135,9 +135,9 @@ Both the chain id and every order's client-order id are read in the chain dialog
 symbol, and there they are given in full rather than abbreviated to a tail. The
 **The `side` column carries only `buy` / `sell`, inked** — the order type is no longer written
 there; whether a price was a real instruction is said by how `@created/slip` is drawn instead.
-`@created/slip` is `orderPrice` (the setting the row was created with) and `@sent/slip` is
-`marketPrice` (the tape the order was decided against), while `fill` is the figure the `p&l`
-beside it is read off. `@sent/slip` is always an observation, so it stays muted at `opacity: 0.25`;
+`@created/slip` is `orderPrice` (the setting the row was created with), `@intent/slip` is the tape
+at the instant the order could **first have traded**, and `@sent/slip` is `marketPrice` (the tape it
+was decided against), while `fill` is the figure the `p&l` beside it is read off. `@intent/slip` and `@sent/slip` are always observations, so they stay muted at `opacity: 0.25`;
 `@created/slip` takes **full ink and opacity only for a limit order** (`.book-order-price-live`),
 whose price was a real instruction the exchange saw. A market order's captured price — still in
 italic — was never sent, and a Positions/ClosedTrades row stores no type and is read as a market
@@ -147,7 +147,23 @@ so it annotates the price rather than competing with it:
 `@created/slip` shows `(averagePrice − orderPrice) / orderPrice` (empty for a market order, whose
 captured price was never sent) and `@sent/slip` shows `(averagePrice − marketPrice) / marketPrice`
 — **drawn for a market order too**, since that is the one slippage a market order really has. The
-sign is the direction the price moved, never whether it helped; neither is ever inked. `marketPrice`
+sign is the direction the price moved, never whether it helped; none of the three is ever inked.
+
+`@intent/slip` is the odd one out, and the sparsest by design. Its price is not stored anywhere by
+MatriksOrder: it is read from `../BistData`'s minute history through `src/histApi/`, whose nightly
+snapshot is the only thing that ever opens those DuckDB files. `domain/intentPrice.ts` decides which
+minute answers an instant — an auction print reads its own minute, the continuous open reads the
+10:00 bar's `open`, any other whole minute reads the **previous** minute's `close`, and an instant
+carrying seconds prices nothing rather than reaching for a neighbour. Since `firstTradeInstant`
+hands back the raw stamp during trading hours, and a `createdTime` never lands on a whole minute,
+in practice this column fills on **scheduled orders and off-hours-written ones**. Two further rules
+leave the price on screen but withhold the slip, and drop the row from the strip average with it:
+an **auction print** is a single match rather than a price the order could have been worked
+against, and an order that **registered more than ten seconds after** its instant was not competing
+for that price at all (registering earlier is ordinary and withholds nothing). One last guard: a
+scaled bar more than **23%** from the price the row already carries is refused outright, since same
+instrument and same session means that gap is a mis-scaled bar rather than a market that moved.
+`marketPrice`
 is an **observation**, not an intent and not a fill; it is written once at the order's birth and
 never revised (an edit leaves it alone), and carried unchanged onto whatever the order becomes,
 which is why a position and a closed leg show one too — a round trip splits it per side

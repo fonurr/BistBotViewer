@@ -34,6 +34,8 @@ import {
   toIstanbulDateKey,
 } from '../../domain/format';
 import { committedAmount } from '../../domain/orders';
+import { intentPriceReference } from '../../domain/intentPrice';
+import { useIntentPrices } from '../../app/useIntentPrices';
 import { priceApi } from '../../priceApi/client';
 import type { AuctionBar, AuctionBarKey } from '../../priceApi/types';
 import './performance.css';
@@ -233,11 +235,42 @@ export function PerformancePage() {
       : bars.isError
         ? 'error'
         : 'ready';
+  /*
+   * The same two passes the closing bars take: the base report names each leg's
+   * first tradeable instant, this read prices those minutes off the nightly
+   * BistData cache, and the real report is built with what came back.
+   */
+  const intentRequests = useMemo(
+    () =>
+      baseReport.trades.flatMap((trade) => [
+        {
+          symbol: trade.symbol,
+          intentTime: trade.openIntentTime,
+          reference: intentPriceReference({
+            marketPrice: trade.raw.openMarketPrice ?? null,
+            averagePrice: trade.raw.averageOpenPrice,
+            orderPrice: trade.raw.openOrderPrice,
+          }),
+        },
+        {
+          symbol: trade.symbol,
+          intentTime: trade.closeIntentTime,
+          reference: intentPriceReference({
+            marketPrice: trade.raw.closeMarketPrice ?? null,
+            averagePrice: trade.raw.averageClosePrice,
+            orderPrice: trade.raw.closeOrderPrice,
+          }),
+        },
+      ]),
+    [baseReport.trades],
+  );
+  const intentPrices = useIntentPrices(intentRequests, calendar, sourceReady);
   const report = useMemo(
     () =>
       buildPerformanceReport({
         trades: scopedTrades,
         closingBars: bars.data ?? [],
+        intentPrices: intentPrices.raw,
         holidays: data.holidays,
         // The window bounds the batches; `asOf` is only the line a close cannot
         // be on the far side of, so a trip opened in the window and closed
@@ -246,7 +279,7 @@ export function PerformancePage() {
         startDate: bounds.from,
         endDate: bounds.to,
       }),
-    [bars.data, bounds.from, bounds.to, data.holidays, readAt, scopedTrades],
+    [bars.data, bounds.from, bounds.to, data.holidays, intentPrices.raw, readAt, scopedTrades],
   );
   const completeSelectedBots = selectedBots.filter((bot) => bot.complete);
   const committedKnown =
@@ -504,6 +537,7 @@ function budgetScopeCopy(botCount: number, botScoped: boolean, accountScoped: bo
 
 function PerformanceStrip({ summary }: { summary: PerformanceAggregate }) {
   const slipCreated = summary.slippage.created;
+  const slipIntent = summary.slippage.intent;
   const slipSent = summary.slippage.sent;
   const metrics: Array<{
     label: string;
@@ -583,6 +617,13 @@ function PerformanceStrip({ summary }: { summary: PerformanceAggregate }) {
       sub: 'order price vs fill, signed',
       tone: slipCreated.available ? undefined : 'status-warn',
       subTone: slipCreated.available ? 'muted' : 'status-warn',
+    },
+    {
+      label: 'slip @intent',
+      value: slipIntent.available ? formatSlip(slipIntent.value) : 'not available',
+      sub: 'tape at the first tradeable instant',
+      tone: slipIntent.available ? undefined : 'status-warn',
+      subTone: slipIntent.available ? 'muted' : 'status-warn',
     },
     {
       label: 'slip @sent',
@@ -735,6 +776,7 @@ function RollupTable({
             <th>per trip</th>
             <th>avg hold</th>
             <th>slip @cr</th>
+            <th>slip @int</th>
             <th>slip @sent</th>
             <th>retried</th>
           </tr>
@@ -756,6 +798,7 @@ function RollupTable({
               <MetricCell metric={row.averageTradePnl} money />
               <HoldCell metric={row.averageHoldDurationMs} />
               <SlipCell metric={row.slippage.created} />
+              <SlipCell metric={row.slippage.intent} />
               <SlipCell metric={row.slippage.sent} />
               <td className="muted">{row.retriedChainCount}</td>
             </tr>
@@ -766,7 +809,7 @@ function RollupTable({
           {silentBots.map((bot) => (
             <tr key={bot.id}>
               <td className="status-wait">{bot.id}</td>
-              <td className="status-wait table-note" colSpan={10}>
+              <td className="status-wait table-note" colSpan={11}>
                 {bot.reason}
               </td>
             </tr>
@@ -968,10 +1011,14 @@ function SlippageSection({ report }: { report: PerformanceReport }) {
   const {
     entryCreated,
     entrySent,
+    entryIntent,
     exitCreated,
     exitSent,
+    exitIntent,
     entrySentCount,
     exitSentCount,
+    entryIntentCount,
+    exitIntentCount,
     legCount,
   } = report.summary.slippage;
   const cells: Array<{ label: string; metric: PerformanceMetric; sub: string }> = [
@@ -979,6 +1026,11 @@ function SlippageSection({ report }: { report: PerformanceReport }) {
       label: 'entry @created',
       metric: entryCreated,
       sub: `${plural(entryCreated.sampleSize, 'opening fill')} · every buy carries an order price`,
+    },
+    {
+      label: 'entry @intent',
+      metric: entryIntent,
+      sub: `${plural(entryIntent.sampleSize, 'opening fill')} priced at their first tradeable minute`,
     },
     {
       label: 'entry @sent',
@@ -991,17 +1043,23 @@ function SlippageSection({ report }: { report: PerformanceReport }) {
       sub: `${plural(exitCreated.sampleSize, 'closing fill')} carried an order price`,
     },
     {
+      label: 'exit @intent',
+      metric: exitIntent,
+      sub: `${plural(exitIntent.sampleSize, 'closing fill')} priced at their first tradeable minute`,
+    },
+    {
       label: 'exit @sent',
       metric: exitSent,
       sub: `${plural(exitSent.sampleSize, 'closing fill')} priced against the tape`,
     },
   ];
   const marketPriceMissing = legCount - entrySentCount - exitSentCount;
+  const intentMissing = legCount - entryIntentCount - exitIntentCount;
   return (
     <section className="performance-section">
       <SectionHeading
         title="slippage"
-        detail="average fill against its order price (@created) and the tape it was decided against (@sent), signed by which way the price moved"
+        detail="average fill against its order price (@created), the tape at its first tradeable minute (@intent) and the tape it was decided against (@sent), signed by which way the price moved"
       />
       <div className="slippage-grid">
         {cells.map((cell) => (
@@ -1026,6 +1084,11 @@ function SlippageSection({ report }: { report: PerformanceReport }) {
         without inventing which prices were sent.
         {marketPriceMissing > 0
           ? ` @sent also drops ${plural(marketPriceMissing, 'leg')} the server stored no market price for.`
+          : ''}
+        {/* @intent is the sparsest of the three by design, and saying why once
+            here is what stops an empty column reading as a broken one. */}
+        {intentMissing > 0
+          ? ` @intent drops ${plural(intentMissing, 'leg')}: an instant carrying seconds names no minute, an auction print is a match rather than a working price, and a leg that registered more than ten seconds late was not competing for it.`
           : ''}
       </p>
     </section>

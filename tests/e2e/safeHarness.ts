@@ -3,9 +3,11 @@ import { expect, test as base, type Page, type Request, type Route } from '@play
 import {
   FIXTURE_NOW_MS,
   makeBookReadFixture,
+  makeHistReadFixture,
   makeLogReadFixture,
   makePriceReadFixture,
   type BistReadFixture,
+  type HistReadFixture,
   type LogReadFixture,
   type PriceReadFixture,
 } from '../../src/test/fixtures';
@@ -13,6 +15,7 @@ import {
 export interface BrowserReadScenario {
   bist: BistReadFixture;
   price: PriceReadFixture;
+  hist: HistReadFixture;
   logs: LogReadFixture;
 }
 
@@ -55,6 +58,7 @@ export function makeBrowserScenario(
   return {
     bist: makeBookReadFixture(),
     price: makePriceReadFixture(),
+    hist: makeHistReadFixture(),
     logs: makeLogReadFixture(),
     ...overrides,
   };
@@ -208,6 +212,14 @@ export const test = base.extend<HarnessFixtures>({
         }
         if (url.pathname === '/bridge/price/bars/latest' && request.method() === 'POST') {
           return fulfillJson(route, scenario.price.latestBars);
+        }
+        // The history bridge never reaches DuckDB: it answers from the nightly
+        // cache, and under fixtures the plugin refuses before a worker exists.
+        if (url.pathname === '/bridge/hist/status' && request.method() === 'GET') {
+          return fulfillJson(route, scenario.hist.status);
+        }
+        if (url.pathname === '/bridge/hist/bars/intent' && request.method() === 'POST') {
+          return fulfillJson(route, scenario.hist.intentBars);
         }
         if (url.pathname === '/bridge/bist/logs/extents' && request.method() === 'GET') {
           return fulfillJson(route, scenario.logs.extents);

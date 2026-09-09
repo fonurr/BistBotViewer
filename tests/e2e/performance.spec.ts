@@ -29,11 +29,12 @@ test('keeps unprovable Performance metrics unavailable instead of rendering zero
   await expect(exitTiming).toContainText(/required hold-boundary bars (?:are )?missing/);
   await expect(exitTiming).toContainText('never counted as zero');
 
-  // Each leg is read against its order price (@created) and the tape it was
-  // decided against (@sent) — a 2×2 grid. The limit/market split is what
-  // ClosedTrades cannot supply, and the section says so once.
+  // Each leg is read against its order price (@created), the tape at its first
+  // tradeable minute (@intent) and the tape it was decided against (@sent) — a
+  // 2×3 grid. The limit/market split is what ClosedTrades cannot supply, and the
+  // section says so once.
   const slippage = page.locator('.slippage-grid');
-  await expect(slippage.locator('.slippage-metric')).toHaveCount(4);
+  await expect(slippage.locator('.slippage-metric')).toHaveCount(6);
   await expect(page.locator('.slippage-reason')).toContainText(
     'cannot be sorted that way without inventing which prices were sent',
   );

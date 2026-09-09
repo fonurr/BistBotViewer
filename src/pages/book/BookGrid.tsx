@@ -35,7 +35,7 @@ import { useMinuteClock } from '../../components/useMinuteClock';
 import { RowDetail, RowVerdict } from './RowDetail';
 import { bookRowPresentation } from './rowPresentation';
 import { orderActionsForRow, type OrderDialogAction } from './orderActions';
-import { scopeLabels } from './types';
+import { scopeLabels, type BookIntentCell } from './types';
 
 interface BookGridProps {
   chains: readonly BookChain[];
@@ -58,6 +58,12 @@ interface BookGridProps {
    */
   todayCalendarDate: string | null;
   closingBars: ReadonlyMap<string, number>;
+  /**
+   * The tape at each row's own intent instant, and the slip off it, already
+   * guarded and keyed by row. Absent is the ordinary case: most intent instants
+   * carry seconds and name no minute at all.
+   */
+  intentCells: ReadonlyMap<string, BookIntentCell>;
   writesHeldReason: string | null;
   showCanceled: boolean;
   openCanceledChains: ReadonlySet<string>;
@@ -82,6 +88,7 @@ const columns: readonly BookColumn[] = [
   { label: 'qty' },
   { label: 'side' },
   { label: '@created/slip', alignRight: true },
+  { label: '@intent/slip', alignRight: true },
   { label: '@sent/slip', alignRight: true },
   { label: 'fill', alignRight: true },
   DIVIDER,
@@ -269,6 +276,7 @@ export function BookGrid(props: BookGridProps) {
                               pricesTrustworthy={props.pricesTrustworthy}
                               todayCalendarDate={props.todayCalendarDate}
                               closingBars={props.closingBars}
+                              intentCells={props.intentCells}
                               writesHeldReason={props.writesHeldReason}
                               showCanceled={props.showCanceled}
                               canceledOpen={props.openCanceledChains.has(chain.key)}
@@ -335,6 +343,12 @@ interface ChainRowsProps {
   pricesTrustworthy: boolean;
   todayCalendarDate: string | null;
   closingBars: ReadonlyMap<string, number>;
+  /**
+   * The tape at each row's own intent instant, and the slip off it, already
+   * guarded and keyed by row. Absent is the ordinary case: most intent instants
+   * carry seconds and name no minute at all.
+   */
+  intentCells: ReadonlyMap<string, BookIntentCell>;
   writesHeldReason: string | null;
   showCanceled: boolean;
   canceledOpen: boolean;
@@ -365,6 +379,7 @@ const ChainRows = memo(function ChainRows(props: ChainRowsProps) {
           pricesTrustworthy={props.pricesTrustworthy}
           todayCalendarDate={props.todayCalendarDate}
           closingBars={props.closingBars}
+          intentCells={props.intentCells}
           writesHeldReason={props.writesHeldReason}
           now={props.now}
           onOpenChain={props.onOpenChain}
@@ -388,6 +403,7 @@ const ChainRows = memo(function ChainRows(props: ChainRowsProps) {
                 pricesTrustworthy={props.pricesTrustworthy}
                 todayCalendarDate={props.todayCalendarDate}
                 closingBars={props.closingBars}
+                intentCells={props.intentCells}
                 writesHeldReason={props.writesHeldReason}
                 now={props.now}
                 onOpenChain={props.onOpenChain}
@@ -446,6 +462,7 @@ const BookRow = memo(function BookRow({
   pricesTrustworthy,
   todayCalendarDate,
   closingBars,
+  intentCells,
   writesHeldReason,
   now,
   onOpenChain,
@@ -458,6 +475,12 @@ const BookRow = memo(function BookRow({
   pricesTrustworthy: boolean;
   todayCalendarDate: string | null;
   closingBars: ReadonlyMap<string, number>;
+  /**
+   * The tape at each row's own intent instant, and the slip off it, already
+   * guarded and keyed by row. Absent is the ordinary case: most intent instants
+   * carry seconds and name no minute at all.
+   */
+  intentCells: ReadonlyMap<string, BookIntentCell>;
   writesHeldReason: string | null;
   now: number;
   onOpenChain: BookGridProps['onOpenChain'];
@@ -493,6 +516,7 @@ const BookRow = memo(function BookRow({
           marketPrice: row.marketPrice,
           averagePrice: row.averagePrice,
         });
+  const intentCell = intentCells.get(row.key);
   const status = bookRowPresentation(row, chain, now, opener);
   const actionButtons = orderActionsForRow(row, chain);
   const capturedPrice = displayType === 'market' && row.orderPrice !== null;
@@ -568,6 +592,18 @@ const BookRow = memo(function BookRow({
       >
         {row.orderPrice === null ? '' : formatNumber(row.orderPrice)}
         {slip === null ? null : <small> ({formatSlip(slip)})</small>}
+      </div>
+      {/*
+       * `@intent/slip`: the tape at the instant this order could **first** have
+       * traded, read from BistData's minute history rather than from anything
+       * MatriksOrder stored. It is empty far more often than its neighbours, and
+       * every reason is deliberate — an instant carrying seconds names no minute,
+       * and the slip is withheld on an auction print and on an order that
+       * registered more than ten seconds late. `domain/intentPrice` owns them all.
+       */}
+      <div role="cell" className="align-right book-intent-price">
+        {intentCell === undefined ? '' : formatNumber(intentCell.price)}
+        {intentCell?.slip == null ? null : <small> ({formatSlip(intentCell.slip)})</small>}
       </div>
       {/*
        * `@sent/slip`: the market the order was decided against, an observation

@@ -1,5 +1,16 @@
 import type { BookScope } from '../../domain/chains';
 
+/**
+ * One row's `@intent/slip` cell, resolved on the page so the grid stays a
+ * renderer. `slip` is null on its own where the price stands but the slip is
+ * withheld — an auction print, or an order that registered more than ten
+ * seconds after the instant it could first have traded.
+ */
+export interface BookIntentCell {
+  price: number;
+  slip: number | null;
+}
+
 export interface BookFilterState {
   scopes: ReadonlySet<BookScope>;
   botIds: ReadonlySet<string> | null;

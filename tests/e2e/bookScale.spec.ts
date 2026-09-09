@@ -3,6 +3,7 @@ import {
   makeAccount,
   makeBot,
   makeBotBudget,
+  makeHistReadFixture,
   makeClosedTrade,
   makeLogReadFixture,
   makePriceReadFixture,
@@ -62,6 +63,7 @@ test.describe('The Book at a year of batches', () => {
         budgets: { [bot.id]: makeBotBudget() },
       },
       price: makePriceReadFixture(),
+      hist: makeHistReadFixture(),
       logs: makeLogReadFixture(),
     });
     await page.clock.setFixedTime(new Date(FIXTURE_NOW_MS));
@@ -182,7 +184,7 @@ test.describe('The Book at a year of batches', () => {
     });
 
     expect(templates.band).toBe(templates.row);
-    // 17 data cells plus the three aria-hidden band dividers.
-    expect(templates.cells).toBe(20);
+    // 18 data cells plus the three aria-hidden band dividers.
+    expect(templates.cells).toBe(21);
   });
 });
