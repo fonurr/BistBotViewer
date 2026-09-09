@@ -37,7 +37,7 @@ test.describe('The Book safety smoke', () => {
       'p&l',
       'today',
       'created',
-      'fire',
+      'sched',
       'sent',
       'order',
       'final',

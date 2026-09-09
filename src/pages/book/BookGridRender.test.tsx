@@ -52,7 +52,7 @@ describe('BookGrid row vocabulary', () => {
     expect(screen.getByText('buy')).toHaveClass('side-buy');
   });
 
-  it('prints a scheduled row"s fire time in its own column, leaving sent and order empty', () => {
+  it('prints a scheduled row"s fire time in the sched column, leaving sent and order empty', () => {
     const fireTime = Date.now() + 3 * 60 * 60 * 1_000;
     renderGrid(
       {},
@@ -74,8 +74,8 @@ describe('BookGrid row vocabulary', () => {
       },
     );
 
-    // The five time cells are created, fire, sent, order, final. A scheduled row
-    // has only been written and set to fire: its fire time sits in `fire`, drawn
+    // The five time cells are created, sched, sent, order, final. A scheduled row
+    // has only been written and set to fire: its fire time sits in `sched`, drawn
     // quiet like `created`, and `sent`/`order` stay empty until it goes off — never
     // a dash.
     const times = [...document.querySelectorAll('.book-row [role="cell"].book-time')];

@@ -45,7 +45,7 @@
   --book-symbol-col: 64px;
   /*
    * The four reading bands — the order and what it got, the two P&L views, the
-   * clocks (created, fire, sent, order, final), and the verdict — are split by a
+   * clocks (created, sched, sent, order, final), and the verdict — are split by a
    * column of their own rather than a border on the cell beside them, so the rule
    * can stand the full height of a row. See `.book-divider` in the Book's stylesheet.
    */

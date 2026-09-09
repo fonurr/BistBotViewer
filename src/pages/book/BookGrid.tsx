@@ -89,7 +89,7 @@ const columns: readonly BookColumn[] = [
   { label: 'today', alignRight: true },
   DIVIDER,
   { label: 'created' },
-  { label: 'fire' },
+  { label: 'sched' },
   { label: 'sent' },
   { label: 'order' },
   { label: 'final' },
@@ -559,7 +559,7 @@ const BookRow = memo(function BookRow({
       </div>
       <ColumnDivider />
       {/*
-       * `created` and `fire` carry the least useful clocks — when this server first
+       * `created` and `sched` carry the least useful clocks — when this server first
        * wrote the row, and when the order was due to go out — so both are drawn at
        * the seconds' strength, a shade quieter than `sent`/`order`/`final`.
        * `scheduledTime` is an order stamp: it rides through every table, so a filled
