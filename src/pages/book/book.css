@@ -501,7 +501,9 @@
 
 /*
  * The day distance from the batch (`+1`, `−3`) rides against the seconds like
- * an exponent — same faded ink, no extra gap.
+ * an exponent, but it carries the same weight as the hour and minute — it
+ * says which day this is, not which of two orders came first, so it is not
+ * faded the way the seconds are.
  */
 .book-time-dayoffset {
   margin-left: 1px;

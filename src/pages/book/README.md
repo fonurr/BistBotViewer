@@ -23,16 +23,16 @@ order belongs to. A session keeps what is written for it until ten minutes past 
 to the next trading day. `domain/calendar.ts` owns that rule and reads it against the
 `GetHolidays` calendar; without one it still rolls off a weekend and off the close, since an
 absent holiday row cannot prove a weekday was open. A row whose own day is not the batch date
-states the signed day distance from it (`+1`, `−3`) tucked against the seconds like an exponent,
-which is what `formatRowTimeParts` returns as `dayOffset`. The row carries
+states the signed day distance from it (`+1`, `−3`) tucked against the seconds like an exponent —
+`formatRowTimeParts` returns it as `dayOffset` — but at the hour's weight, not the seconds': it
+says which day this is, not which order came first. The row carries
 four time columns, read left to right as the order's life: `created` and `sent` are this server's
 own `createdTime`/`sentTime`, `order` is the exchange's `orderTime` (the same word the price
 column carries, never confusable — one is a price, one a clock), and `final` is `finalSeenTime`.
 A **scheduled row** has reached none of them: its `scheduledTime` stands in the `sent` column, amber
 like the rest of its wait, and `order` stays empty until the exchange registers it. All four carry
 their seconds: the minute is what a reader scans, so `formatRowTimeParts` hands the seconds back
-separately and the cell draws them — their colon and any day-offset exponent with them — at half
-opacity.
+separately and the cell draws them — their colon with them — at half opacity.
 
 A batch heading is the control that opens its batch: the whole line is a button with a chevron
 and `aria-expanded`, and the column band and every bot under it are drawn only while it is open.

@@ -627,12 +627,10 @@ function RowTime({ timestamp, batchDate }: { timestamp: number | null; batchDate
   return (
     <>
       {parts.minute}
-      <span className="book-time-seconds">
-        {parts.seconds}
-        {parts.dayOffset === null ? null : (
-          <sup className="book-time-dayoffset">{parts.dayOffset}</sup>
-        )}
-      </span>
+      <span className="book-time-seconds">{parts.seconds}</span>
+      {parts.dayOffset === null ? null : (
+        <sup className="book-time-dayoffset">{parts.dayOffset}</sup>
+      )}
     </>
   );
 }
