@@ -157,7 +157,6 @@ async function pullFromDuckDb({ minuteDbPath, scaleDbPath, sessions }) {
   let ranges = [];
   let exceptions = [];
   let findings = [];
-  let aliases = [];
   try {
     scaleConnection = await scaleInstance.connect();
     const symbolList = quoted(symbols);
@@ -178,16 +177,12 @@ async function pullFromDuckDb({ minuteDbPath, scaleDbPath, sessions }) {
       `SELECT scope, symbol, CAST(session_date AS VARCHAR) AS session_date
          FROM data_quality_finding WHERE symbol IN (${symbolList})`,
     );
-    aliases = await read(
-      `SELECT symbol, bulletin_symbol, CAST(also_stored_locally AS INTEGER) AS also_stored_locally
-         FROM symbol_alias`,
-    );
   } finally {
     scaleConnection?.closeSync();
     scaleInstance.closeSync();
   }
 
-  return { bars, ranges, exceptions, findings, aliases };
+  return { bars, ranges, exceptions, findings };
 }
 
 // ---------------------------------------------------------------------------
@@ -211,12 +206,14 @@ function factorFor(ranges, symbol, scope, sessionDate) {
   return covering ? Number(covering.factor) : 1;
 }
 
-function buildRows({ bars, ranges, exceptions, findings, aliases, holidays }) {
-  const alias = new Map(
-    aliases
-      .filter((row) => Number(row.also_stored_locally) === 1)
-      .map((row) => [String(row.symbol), String(row.bulletin_symbol)]),
-  );
+/*
+ * `symbol_alias` is deliberately not read. BIST renames tickers, and collapsing a
+ * retired local ticker onto its bulletin name is right for cross-sectional work —
+ * but every lookup here is a point read keyed by MatriksOrder's own symbol, so
+ * renaming a row would hide it from the only caller there is. We ask BistData only
+ * for the tickers MatriksOrder names, so nothing is double-counted either.
+ */
+function buildRows({ bars, ranges, exceptions, findings, holidays }) {
   const untrusted = new Set(
     [...exceptions, ...findings].map(
       (row) => `${row.scope}|${row.symbol}|${String(row.session_date)}`,
@@ -251,14 +248,16 @@ function buildRows({ bars, ranges, exceptions, findings, aliases, holidays }) {
        * session's own close + 5 here. Matching by role rather than by clock is
        * what lets the domain do a plain point lookup on both kinds of day.
        */
-      ts = istanbulMinuteAt(sessionDate, closeMinuteOn(sessionDate, holidays) + CLOSING_AUCTION_OFFSET);
+      ts = istanbulMinuteAt(
+        sessionDate,
+        closeMinuteOn(sessionDate, holidays) + CLOSING_AUCTION_OFFSET,
+      );
     } else {
       ts = istanbulMinuteAt(sessionDate, minute);
     }
 
-    const symbol = alias.get(bar.symbol) ?? bar.symbol;
-    rows.set(`${symbol}|${ts}`, {
-      symbol,
+    rows.set(`${bar.symbol}|${ts}`, {
+      symbol: bar.symbol,
       sessionDate,
       ts,
       open: open * factor,

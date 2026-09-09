@@ -41,8 +41,6 @@ export interface ResolvedIntentPrices {
   statusSettled: boolean;
 }
 
-const EMPTY: ReadonlyMap<string, number> = new Map();
-
 function lookupsFor(
   requests: readonly IntentPriceRequest[],
   holidays: HolidayCalendar,
@@ -100,7 +98,7 @@ export function useIntentPrices(
       if (price !== null) raw.set(key, price);
     }
     return {
-      raw: byKey.size === 0 ? EMPTY : raw,
+      raw,
       // The guard is applied per row, not per bar: two rows can hold the same
       // minute against different recorded prices.
       priceFor: (request: IntentPriceRequest) => {

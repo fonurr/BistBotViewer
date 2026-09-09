@@ -66,8 +66,11 @@ The snapshot applies the factor and drops what it cannot stand behind, so a requ
   nothing can be measured; the ±23% guard in `domain/intentPrice` is what catches a bad scale
   instead. `scale_used` keeps every range that was applied, for explaining a surprising figure
   without opening DuckDB again.
-- `symbol_alias` rows with `also_stored_locally` are collapsed onto `bulletin_symbol`, or the
-  instrument would be stored twice.
+- `symbol_alias` is deliberately **not** read. Collapsing a retired local ticker onto its
+  bulletin name is right for cross-sectional work, but every lookup here is a point read keyed
+  by MatriksOrder's own symbol, so a renamed row would be invisible to the only caller there
+  is. Nothing is double-counted either, since BistData is only asked for the tickers
+  MatriksOrder names.
 
 ### The half-day re-stamp
 
@@ -81,10 +84,10 @@ the close.
 
 Both are loopback and same-origin only, and both are refused outright under fixtures.
 
-| Route | Body | Answers |
-|---|---|---|
-| `GET /bridge/hist/status` | — | `available`, `snapshotFor`, `builtAt`, `barRows`, `stale` |
-| `POST /bridge/hist/bars/intent` | `{ keys: [{ symbol, ts }] }`, ≤ 1000 | the matching `intent_bar` rows |
+| Route                           | Body                                 | Answers                                                   |
+| ------------------------------- | ------------------------------------ | --------------------------------------------------------- |
+| `GET /bridge/hist/status`       | —                                    | `available`, `snapshotFor`, `builtAt`, `barRows`, `stale` |
+| `POST /bridge/hist/bars/intent` | `{ keys: [{ symbol, ts }] }`, ≤ 1000 | the matching `intent_bar` rows                            |
 
 `ts` is epoch milliseconds and must already be the **exact minute wanted**: which minute answers an
 intent instant is `domain/intentPrice`'s rule, not a database's. A missing minute comes back absent

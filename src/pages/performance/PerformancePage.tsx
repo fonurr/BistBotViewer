@@ -34,7 +34,6 @@ import {
   toIstanbulDateKey,
 } from '../../domain/format';
 import { committedAmount } from '../../domain/orders';
-import { intentPriceReference } from '../../domain/intentPrice';
 import { useIntentPrices } from '../../app/useIntentPrices';
 import { priceApi } from '../../priceApi/client';
 import type { AuctionBar, AuctionBarKey } from '../../priceApi/types';
@@ -243,24 +242,10 @@ export function PerformancePage() {
   const intentRequests = useMemo(
     () =>
       baseReport.trades.flatMap((trade) => [
-        {
-          symbol: trade.symbol,
-          intentTime: trade.openIntentTime,
-          reference: intentPriceReference({
-            marketPrice: trade.raw.openMarketPrice ?? null,
-            averagePrice: trade.raw.averageOpenPrice,
-            orderPrice: trade.raw.openOrderPrice,
-          }),
-        },
-        {
-          symbol: trade.symbol,
-          intentTime: trade.closeIntentTime,
-          reference: intentPriceReference({
-            marketPrice: trade.raw.closeMarketPrice ?? null,
-            averagePrice: trade.raw.averageClosePrice,
-            orderPrice: trade.raw.closeOrderPrice,
-          }),
-        },
+        // No reference: the report holds each bar against its own leg's
+        // recorded price when it reads them back, so the guard runs there.
+        { symbol: trade.symbol, intentTime: trade.openIntentTime, reference: null },
+        { symbol: trade.symbol, intentTime: trade.closeIntentTime, reference: null },
       ]),
     [baseReport.trades],
   );
