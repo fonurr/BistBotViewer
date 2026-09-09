@@ -68,7 +68,7 @@ interface BookGridProps {
  * The grid's columns in order. A `divider` is a real column, not a border on the
  * cell beside it — see `.book-divider` — and it separates the four bands the row
  * reads in: what the order asked for and what it got, the two views of P&L, the
- * four clocks, and the verdict. `alignRight` marks the figure columns and `act`.
+ * clocks, and the verdict. `alignRight` marks the figure columns and `act`.
  */
 type BookColumn =
   { readonly label: string; readonly alignRight?: true } | { readonly divider: true };
@@ -89,6 +89,7 @@ const columns: readonly BookColumn[] = [
   { label: 'today', alignRight: true },
   DIVIDER,
   { label: 'created' },
+  { label: 'fire' },
   { label: 'sent' },
   { label: 'order' },
   { label: 'final' },
@@ -447,11 +448,6 @@ const BookRow = memo(function BookRow({
   const capturedPrice = displayType === 'market' && row.orderPrice !== null;
   const pnlTrusted = pnlFigure?.marketBased !== true || pricesTrustworthy;
   const batchDate = chain.batchDate ?? '';
-  // A scheduled row has not been sent or registered anywhere yet: its fire time
-  // is what it waits on, so it sits in `sent` (where `sentTime` would land) and
-  // `order` stays empty until the exchange registers it.
-  const scheduled = row.source === 'scheduled';
-  const sentTime = scheduled ? row.scheduledTime : row.sentTime;
   const signature = rowFlashSignature(row);
   const previousSignature = useRef(signature);
   const [flashing, setFlashing] = useState(false);
@@ -562,11 +558,20 @@ const BookRow = memo(function BookRow({
         )}
       </div>
       <ColumnDivider />
-      <div role="cell" className="muted book-time">
+      {/*
+       * `created` and `fire` carry the least useful clocks — when this server first
+       * wrote the row, and when a scheduled row is set to go off — so both are drawn
+       * at the seconds' strength, a shade quieter than `sent`/`order`/`final`. A row
+       * that is not scheduled has no fire time and leaves that cell empty.
+       */}
+      <div role="cell" className="muted book-time book-time-minor">
         <RowTime timestamp={row.createdTime} batchDate={batchDate} />
       </div>
-      <div role="cell" className={scheduled ? 'status-wait book-time' : 'muted book-time'}>
-        <RowTime timestamp={sentTime} batchDate={batchDate} />
+      <div role="cell" className="muted book-time book-time-minor">
+        <RowTime timestamp={row.scheduledTime} batchDate={batchDate} />
+      </div>
+      <div role="cell" className="muted book-time">
+        <RowTime timestamp={row.sentTime} batchDate={batchDate} />
       </div>
       <div role="cell" className="muted book-time">
         <RowTime timestamp={row.orderTime} batchDate={batchDate} />

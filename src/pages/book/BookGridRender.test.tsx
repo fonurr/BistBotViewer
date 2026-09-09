@@ -52,7 +52,7 @@ describe('BookGrid row vocabulary', () => {
     expect(screen.getByText('buy')).toHaveClass('side-buy');
   });
 
-  it('prints a scheduled row"s fire time in the sent column, leaving order empty', () => {
+  it('prints a scheduled row"s fire time in its own column, leaving sent and order empty', () => {
     const fireTime = Date.now() + 3 * 60 * 60 * 1_000;
     renderGrid(
       {},
@@ -74,13 +74,15 @@ describe('BookGrid row vocabulary', () => {
       },
     );
 
-    // The four time cells are created, sent, order, final. The fire time is what
-    // the row waits on, so it sits amber in `sent`; `order` stays empty until the
-    // exchange registers it, and never a dash.
+    // The five time cells are created, fire, sent, order, final. A scheduled row
+    // has only been written and set to fire: its fire time sits in `fire`, drawn
+    // quiet like `created`, and `sent`/`order` stay empty until it goes off — never
+    // a dash.
     const times = [...document.querySelectorAll('.book-row [role="cell"].book-time')];
-    expect(times[1]).toHaveClass('status-wait');
+    expect(times[1]).toHaveClass('book-time-minor');
     expect(times[1]!.textContent).not.toBe('');
     expect(times[2]!.textContent).toBe('');
+    expect(times[3]!.textContent).toBe('');
     expect(screen.getByText(/^Scheduled · in/)).toBeVisible();
     // A market order's captured price is a fact the record kept, not an instruction.
     expect(document.querySelector('.book-row .captured-value')).not.toBeNull();

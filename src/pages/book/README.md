@@ -26,13 +26,15 @@ absent holiday row cannot prove a weekday was open. A row whose own day is not t
 states the signed day distance from it (`+1`, `−3`) tucked against the seconds like an exponent —
 `formatRowTimeParts` returns it as `dayOffset` — but at the hour's weight, not the seconds': it
 says which day this is, not which order came first. The row carries
-four time columns, read left to right as the order's life: `created` and `sent` are this server's
-own `createdTime`/`sentTime`, `order` is the exchange's `orderTime` (the same word the price
-column carries, never confusable — one is a price, one a clock), and `final` is `finalSeenTime`.
-A **scheduled row** has reached none of them: its `scheduledTime` stands in the `sent` column, amber
-like the rest of its wait, and `order` stays empty until the exchange registers it. All four carry
-their seconds: the minute is what a reader scans, so `formatRowTimeParts` hands the seconds back
-separately and the cell draws them — their colon with them — at half opacity.
+five time columns, read left to right as the order's life: `created` and `sent` are this server's
+own `createdTime`/`sentTime`, `fire` is a scheduled order's `scheduledTime` — the moment it is set
+to go off, empty on every row that is not scheduled — `order` is the exchange's `orderTime` (the
+same word the price column carries, never confusable — one is a price, one a clock), and `final` is
+`finalSeenTime`. A **scheduled row** has only been written and set to fire: its time sits in `fire`
+alone, and `sent`/`order` stay empty until it goes off. `created` and `fire` are the two clocks a
+reader rarely needs, so `.book-time-minor` draws the whole cell at the seconds' strength. Every
+column carries its seconds: the minute is what a reader scans, so `formatRowTimeParts` hands the
+seconds back separately and the cell draws them — their colon with them — well under half opacity.
 
 A batch heading is the control that opens its batch: the whole line is a button with a chevron
 and `aria-expanded`, and the column band and every bot under it are drawn only while it is open.
@@ -82,15 +84,15 @@ decides what it counts.
   all-or-nothing rule unrealized P&L follows.
 
 The grid reads in **four bands**, split by a hairline: what the order asked for and what it got
-(`symbol` through `slip`), the two views of P&L (`p&l`, `today`), the four clocks (`created`
-through `final`), and the verdict (`status`, `act`). Each hairline is a **column of its own** —
+(`symbol` through `slip`), the two views of P&L (`p&l`, `today`), the clocks (`created` through
+`final`), and the verdict (`status`, `act`). Each hairline is a **column of its own** —
 `.book-divider`, one 1px rule in a 5px column — and not a border on the cell beside it, because
 the row centers its cells and a border would stand only as tall as that one cell's text. Standing
 the full height of a row instead, consecutive rows draw one unbroken rule that breaks exactly
 where the chains, the scope headings and the batches already break, so the split follows the
 grouping on the page rather than cutting a second grid across it. The dividers are
 `aria-hidden`, like the status spine: a reader crossing one would only hear an empty cell between
-two it does need, so the grid still exposes sixteen column headers. Every BIST ticker is five
+two it does need, so the grid still exposes seventeen column headers. Every BIST ticker is five
 letters, so `--book-symbol-col` is sized for one and no wider; what that frees goes to `status`,
 which is the grid's only `1fr`.
 
