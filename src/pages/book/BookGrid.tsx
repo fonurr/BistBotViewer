@@ -143,7 +143,12 @@ export function BookGrid(props: BookGridProps) {
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
 
   return (
-    <div className="book-grid-wrap" role="table" aria-label="Order, position and trade chains">
+    <div
+      className="book-grid-wrap"
+      role="table"
+      aria-label="Order, position and trade chains"
+      ref={measureBookNavigation}
+    >
       {groups.map((dateGroup, dateIndex) => {
         /*
          * The newest batch is the one being worked, so it opens itself and the
@@ -169,28 +174,28 @@ export function BookGrid(props: BookGridProps) {
              * The batch heading comes first and the column band sits under it:
              * the columns belong to the batch they head, not to the whole page.
              */}
-            <button
-              type="button"
-              className="book-date-heading"
-              aria-expanded={open}
-              onClick={toggle}
-            >
+            <div className="book-batch-header" ref={open ? measureBatchHeader : undefined}>
+              <button
+                type="button"
+                className="book-date-heading"
+                aria-expanded={open}
+                onClick={toggle}
+              >
+                {open ? (
+                  <CaretDown size={14} weight="bold" aria-hidden="true" />
+                ) : (
+                  <CaretRight size={14} weight="bold" aria-hidden="true" />
+                )}
+                <span className="book-batch-date">
+                  {dateGroup.date === 'unknown' ? 'Date unknown' : formatDateKey(dateGroup.date)}
+                </span>
+                <span className="kicker">
+                  batch{dateGroup.date === 'unknown' ? '' : ` · ${weekdayName(dateGroup.date)}`}
+                </span>
+                <span className="muted">{plural(dateGroup.chains.length, 'chain')}</span>
+                <BudgetSummary chains={dateGroup.chains} />
+              </button>
               {open ? (
-                <CaretDown size={14} weight="bold" aria-hidden="true" />
-              ) : (
-                <CaretRight size={14} weight="bold" aria-hidden="true" />
-              )}
-              <span className="book-batch-date">
-                {dateGroup.date === 'unknown' ? 'Date unknown' : formatDateKey(dateGroup.date)}
-              </span>
-              <span className="kicker">
-                batch{dateGroup.date === 'unknown' ? '' : ` · ${weekdayName(dateGroup.date)}`}
-              </span>
-              <span className="muted">{plural(dateGroup.chains.length, 'chain')}</span>
-              <BudgetSummary chains={dateGroup.chains} />
-            </button>
-            {open ? (
-              <>
                 <div className="book-columns" role="row">
                   {columns.map((column, index) =>
                     'divider' in column ? (
@@ -206,7 +211,10 @@ export function BookGrid(props: BookGridProps) {
                     ),
                   )}
                 </div>
-                {dateGroup.bots.map((botGroup) => {
+              ) : null}
+            </div>
+            {open
+              ? dateGroup.bots.map((botGroup) => {
                   const bot = botById.get(botGroup.botId);
                   const account = bot?.accountId ? accountById.get(bot.accountId) : undefined;
                   return (
@@ -262,14 +270,36 @@ export function BookGrid(props: BookGridProps) {
                       ))}
                     </section>
                   );
-                })}
-              </>
-            ) : null}
+                })
+              : null}
           </section>
         );
       })}
     </div>
   );
+}
+
+// Keep the sticky offsets tied to the rendered heights, including font loading
+// and navigation status changes. Scrolling itself stays entirely in CSS.
+function observeHeaderHeight(element: Element, target: HTMLElement, property: string) {
+  const update = () =>
+    target.style.setProperty(property, `${element.getBoundingClientRect().height}px`);
+  update();
+  if (typeof ResizeObserver === 'undefined') return;
+  const observer = new ResizeObserver(update);
+  observer.observe(element, { box: 'border-box' });
+  return () => observer.disconnect();
+}
+
+function measureBookNavigation(grid: HTMLDivElement | null) {
+  const navigation = grid?.closest('.viewer-app')?.querySelector('.viewer-nav');
+  if (grid && navigation) return observeHeaderHeight(navigation, grid, '--book-nav-height');
+}
+
+function measureBatchHeader(header: HTMLDivElement | null) {
+  if (header?.parentElement) {
+    return observeHeaderHeight(header, header.parentElement, '--book-batch-header-height');
+  }
 }
 
 function with_(current: ReadonlySet<string>, value: string): ReadonlySet<string> {

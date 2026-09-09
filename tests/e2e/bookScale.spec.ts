@@ -125,7 +125,7 @@ test.describe('The Book at a year of batches', () => {
     });
 
     expect(templates.band).toBe(templates.row);
-    // 16 data cells plus the three aria-hidden band dividers.
-    expect(templates.cells).toBe(19);
+    // 18 data cells plus the three aria-hidden band dividers.
+    expect(templates.cells).toBe(21);
   });
 });

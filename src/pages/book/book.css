@@ -229,6 +229,22 @@
   font-size: var(--font-meta);
 }
 
+/* Each batch keeps its date and columns together below the navigation. The
+ * bot heading sticks below that pair only while its own group is in view. */
+.book-batch-header {
+  position: sticky;
+  top: var(--book-nav-height, 0px);
+  z-index: 20;
+  background-color: var(--color-bg);
+}
+
+.book-bot-heading {
+  position: sticky;
+  top: calc(var(--book-nav-height, 0px) + var(--book-batch-header-height, 0px));
+  z-index: 10;
+  background-color: var(--color-bg);
+}
+
 .book-columns,
 .book-row {
   display: grid;

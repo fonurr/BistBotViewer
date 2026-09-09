@@ -67,6 +67,12 @@ aggregate — unrealized for positions, realized for trades — and nothing else
 neither the chain count the batch heading already carries nor what the scope means. The
 focused `no closing order` list spans scopes on purpose, so it groups by bot alone.
 
+While scrolling, the batch date and column band stay together below the main navigation,
+with the current bot heading directly beneath them. Each heading stays within its own group,
+so the next bot or batch takes its place. `BookGrid` measures the navigation and open batch
+headers with `ResizeObserver` to keep these offsets aligned when their heights change;
+CSS handles scrolling, including the desktop grid's horizontal alignment.
+
 ### The budget line
 
 Both the batch heading and the bot heading carry the **buy budget of the chains under them** —
