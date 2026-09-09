@@ -1,5 +1,5 @@
 import { CaretDown, CaretRight, Warning } from '@phosphor-icons/react';
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import type { Account, Bot } from '../../bistApi/types';
 import type { ResolvedPrice } from '../../priceApi/types';
@@ -141,6 +141,17 @@ export function BookGrid(props: BookGridProps) {
   }, [props.chains]);
   const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
+  const collapseAnchor = useRef<{ heading: HTMLButtonElement; top: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const anchor = collapseAnchor.current;
+    if (!anchor) return;
+    collapseAnchor.current = null;
+    // Collapsing releases the sticky heading back into normal flow. Keep its
+    // viewport position before paint; the browser clamps at the page edges.
+    const shift = anchor.heading.getBoundingClientRect().top - anchor.top;
+    if (shift !== 0) window.scrollBy({ top: shift, behavior: 'instant' });
+  }, [opened, closed]);
 
   return (
     <div
@@ -158,9 +169,10 @@ export function BookGrid(props: BookGridProps) {
          */
         const openByDefault = dateIndex === 0;
         const open = openByDefault ? !closed.has(dateGroup.date) : opened.has(dateGroup.date);
-        const toggle = () => {
+        const toggle = (heading: HTMLButtonElement) => {
           const target = dateGroup.date;
           if (open) {
+            collapseAnchor.current = { heading, top: heading.getBoundingClientRect().top };
             setOpened((current) => without(current, target));
             setClosed((current) => with_(current, target));
           } else {
@@ -179,7 +191,7 @@ export function BookGrid(props: BookGridProps) {
                 type="button"
                 className="book-date-heading"
                 aria-expanded={open}
-                onClick={toggle}
+                onClick={(event) => toggle(event.currentTarget)}
               >
                 {open ? (
                   <CaretDown size={14} weight="bold" aria-hidden="true" />

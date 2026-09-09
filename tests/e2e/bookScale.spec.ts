@@ -112,6 +112,63 @@ test.describe('The Book at a year of batches', () => {
     await expect(page.locator('.book-chain')).toHaveCount(second);
   });
 
+  for (const { batchIndex, activation } of [
+    { batchIndex: 5, activation: 'click' },
+    { batchIndex: 5, activation: 'keyboard' },
+    { batchIndex: -1, activation: 'click' },
+  ]) {
+    test(`preserves a collapsed sticky heading as far as the page allows (batch ${batchIndex}, ${activation})`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 900, height: 700 });
+      const groups = page.locator('.book-date-group');
+      const group = batchIndex === -1 ? groups.last() : groups.nth(batchIndex);
+      const heading = group.locator('.book-date-heading');
+      await heading.click();
+      await heading.focus();
+      await group.evaluate((element) => {
+        window.scrollTo(250, window.scrollY + element.getBoundingClientRect().top + 400);
+      });
+      const before = await heading.evaluate((element) => ({
+        top: element.getBoundingClientRect().top,
+        height: element.getBoundingClientRect().height,
+        documentTop:
+          element.closest('.book-date-group')!.getBoundingClientRect().top + window.scrollY,
+        navBottom: document.querySelector('.viewer-nav')!.getBoundingClientRect().bottom,
+        scrollX: window.scrollX,
+      }));
+      expect(before.top).toBeCloseTo(before.navBottom, 0);
+      expect(before.scrollX).toBeGreaterThan(0);
+
+      // Real input avoids Playwright scrolling the heading before activation.
+      if (activation === 'click') await page.mouse.click(450, before.top + before.height / 2);
+      else await page.keyboard.press('Space');
+      await expect(heading).toHaveAttribute('aria-expanded', 'false');
+      await expect(group.locator('.book-columns')).toHaveCount(0);
+      await expect(heading).toBeFocused();
+      await expect
+        .poll(() =>
+          heading.evaluate((element, anchor) => {
+            const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+            const expectedScroll = Math.max(
+              0,
+              Math.min(anchor.documentTop - anchor.top, maxScroll),
+            );
+            return {
+              scrollError: Math.round(Math.abs(window.scrollY - expectedScroll)),
+              headingError: Math.round(
+                Math.abs(
+                  element.getBoundingClientRect().top - (anchor.documentTop - expectedScroll),
+                ),
+              ),
+              scrollX: window.scrollX,
+            };
+          }, before),
+        )
+        .toEqual({ scrollError: 0, headingError: 0, scrollX: before.scrollX });
+    });
+  }
+
   test('keeps the fixed desktop grid on the batch it draws', async ({ page }) => {
     const templates = await page.evaluate(() => {
       const columnBand = document.querySelector('.book-columns');

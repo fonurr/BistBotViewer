@@ -72,6 +72,9 @@ with the current bot heading directly beneath them. Each heading stays within it
 so the next bot or batch takes its place. `BookGrid` measures the navigation and open batch
 headers with `ResizeObserver` to keep these offsets aligned when their heights change;
 CSS handles scrolling, including the desktop grid's horizontal alignment.
+Collapsing a batch preserves its heading's viewport position before the next paint, so a
+sticky heading stays where it was clicked. If the shorter page cannot reach that position,
+scrolling stops at the nearest page edge; horizontal scrolling is preserved.
 
 ### The budget line
 
