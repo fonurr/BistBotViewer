@@ -559,6 +559,51 @@ describe('buildBookChains', () => {
     expect(tradeRows.find((row) => row.leg === 'close')?.scheduledTime).toBeNull();
   });
 
+  it('dates each row"s intent off its plan — scheduledTime first, then createdTime, else null', () => {
+    const [chain] = build({
+      activeOrders: [
+        active({
+          id: 1,
+          chainId: 'c',
+          clientOrderId: 'buy',
+          createdTime: at('2026-08-19T12:00:00.000Z'),
+        }),
+        active({
+          id: 2,
+          chainId: 'c',
+          clientOrderId: 'sell',
+          parentClientOrderId: 'buy',
+          direction: 'sell',
+          status: 'Scheduled',
+          orderTime: null,
+          sentTime: null,
+          createdTime: at('2026-08-19T12:00:00.000Z'),
+          scheduledTime: at('2026-08-25T09:50:00.000Z'),
+        }),
+      ],
+      canceledOrders: [
+        canceled({
+          id: 3,
+          chainId: 'c',
+          clientOrderId: 'dead',
+          parentClientOrderId: 'buy',
+          createdTime: null,
+          orderTime: null,
+          sentTime: null,
+        }),
+      ],
+    });
+    const intentByClient = Object.fromEntries(
+      (chain?.rows ?? []).map((row) => [row.clientOrderId, row.intentDate]),
+    );
+
+    // The buy was written Wednesday and trades that day; the sell not until its
+    // Tuesday fire; the dead leg carries no plan, so it says nothing.
+    expect(intentByClient['buy']).toBe('2026-08-19');
+    expect(intentByClient['sell']).toBe('2026-08-25');
+    expect(intentByClient['dead']).toBeNull();
+  });
+
   it('files every chain under exactly one scope, by the stage its own life reached', () => {
     const waitingOnly = build({
       activeOrders: [active({ id: 1, chainId: 'w', clientOrderId: 'w' })],

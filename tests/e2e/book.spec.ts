@@ -24,7 +24,7 @@ test.describe('The Book safety smoke', () => {
     await expect(page.getByRole('heading', { name: 'The Book' })).toBeVisible();
 
     const headers = page.getByRole('columnheader');
-    await expect(headers).toHaveCount(17);
+    await expect(headers).toHaveCount(18);
     await expect(headers).toHaveText([
       '',
       'symbol',
@@ -38,6 +38,7 @@ test.describe('The Book safety smoke', () => {
       'today',
       'created',
       'sched',
+      'intent',
       'sent',
       'order',
       'final',
@@ -64,9 +65,9 @@ test.describe('The Book safety smoke', () => {
       columnDisplay: 'grid',
       dataDisplay: 'grid',
       htmlMinWidth: '1440px',
-      // 17 columns of data plus the three band dividers, which are aria-hidden
-      // and so never reach the 17 column headers counted above.
-      rowCellCount: 20,
+      // 18 columns of data plus the three band dividers, which are aria-hidden
+      // and so never reach the 18 column headers counted above.
+      rowCellCount: 21,
       viewportWidth: 900,
     });
     expect(layout.columnTemplate).toBe(layout.dataTemplate);

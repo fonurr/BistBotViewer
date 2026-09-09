@@ -26,16 +26,25 @@ absent holiday row cannot prove a weekday was open. A row whose own day is not t
 states the signed day distance from it (`+1`, `−3`) tucked against the seconds like an exponent —
 `formatRowTimeParts` returns it as `dayOffset` — but at the hour's weight, not the seconds': it
 says which day this is, not which order came first. The row carries
-five time columns, read left to right as the order's life: `created` and `sent` are this server's
+six time columns, read left to right as the order's life: `created` and `sent` are this server's
 own `createdTime`/`sentTime`, `sched` is `scheduledTime` — when the order was **due** to go out —
-`order` is the exchange's `orderTime` (the same word the price column carries, never confusable —
-one is a price, one a clock), and `final` is `finalSeenTime`. `scheduledTime` is an order stamp
-that rides through every table, split per side on a round trip (`openScheduledTime`/
-`closeScheduledTime`), so a filled position or a closed trade that opened from a schedule still
-shows its fire time; only an order sent the moment it was asked for leaves `sched` empty. A
-**scheduled row** has reached nothing past it: its time sits in `sched` alone, and `sent`/`order`
-stay empty until it goes off. `created` and `sched` are the two clocks a reader rarely needs, so
-`.book-time-minor` draws the whole cell at the seconds' strength. Every column carries its seconds:
+`intent` is the calendar date that plan lands in, `order` is the exchange's `orderTime` (the same
+word the price column carries, never confusable — one is a price, one a clock), and `final` is
+`finalSeenTime`. `scheduledTime` is an order stamp that rides through every table, split per side
+on a round trip (`openScheduledTime`/`closeScheduledTime`), so a filled position or a closed trade
+that opened from a schedule still shows its fire time; only an order sent the moment it was asked
+for leaves `sched` empty. A **scheduled row** has reached nothing past it: its time sits in `sched`
+alone, and `sent`/`order` stay empty until it goes off.
+
+`intent` is the date the order was **meant** to first execute: `scheduledTime`, or `createdTime`
+when it was never a plan, run through the exchange calendar and MatriksOrder's "Which session an
+order belongs to" rule — the same rule the batch is filed by, so `intent` normally equals the batch
+date and reads a session ahead only on a row planned for a later day (an evening buy's reversing
+sell dated to the next close). It is empty when the order carries neither stamp;
+`orderTime`/`sentTime` are deliberately not fallbacks — `intent` is read off the plan, not off when
+the order actually registered. `domain/chains.ts` computes it per row via `sessionBatchDate`.
+`created` and `sched` are the two clocks a reader rarely needs, so `.book-time-minor` draws the
+whole cell at the seconds' strength. Every column carries its seconds:
 the minute is what a reader scans, so `formatRowTimeParts` hands the seconds back separately and the
 cell draws them — their colon with them — at about a quarter opacity.
 
@@ -95,7 +104,7 @@ the full height of a row instead, consecutive rows draw one unbroken rule that b
 where the chains, the scope headings and the batches already break, so the split follows the
 grouping on the page rather than cutting a second grid across it. The dividers are
 `aria-hidden`, like the status spine: a reader crossing one would only hear an empty cell between
-two it does need, so the grid still exposes seventeen column headers. Every BIST ticker is five
+two it does need, so the grid still exposes eighteen column headers. Every BIST ticker is five
 letters, so `--book-symbol-col` is sized for one and no wider; what that frees goes to `status`,
 which is the grid's only `1fr`.
 

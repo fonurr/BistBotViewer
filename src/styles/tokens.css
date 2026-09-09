@@ -45,13 +45,15 @@
   --book-symbol-col: 64px;
   /*
    * The four reading bands — the order and what it got, the two P&L views, the
-   * clocks (created, sched, sent, order, final), and the verdict — are split by a
-   * column of their own rather than a border on the cell beside them, so the rule
-   * can stand the full height of a row. See `.book-divider` in the Book's stylesheet.
+   * clocks (created, sched, intent, sent, order, final), and the verdict — are
+   * split by a column of their own rather than a border on the cell beside them,
+   * so the rule can stand the full height of a row. See `.book-divider` in the
+   * Book's stylesheet.
    */
   --book-divider-col: 5px;
   --book-grid: 3px var(--book-symbol-col) 46px 84px 70px 70px 70px 62px var(--book-divider-col)
-    112px 112px var(--book-divider-col) 76px 76px 76px 76px 76px var(--book-divider-col) 1fr 148px;
+    112px 112px var(--book-divider-col) 76px 76px 76px 76px 76px 76px var(--book-divider-col) 1fr
+    148px;
 }
 
 @keyframes spin {

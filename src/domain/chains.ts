@@ -47,6 +47,16 @@ interface BookChainRowBase {
   readonly sentTime: number | null;
   readonly finalSeenTime: number | null;
   readonly scheduledTime: number | null;
+  /**
+   * The calendar date of the first session this order could have traded in,
+   * `YYYY-MM-DD` — its `scheduledTime` run through the "which session an order
+   * belongs to" rule, or its `createdTime` when it was never a plan. `null` when
+   * neither stamp is present. It is the date the order was *meant* to first
+   * execute, read off the plan rather than off when it actually registered, so it
+   * can lag the batch the chain is filed under (an evening buy's reversing sell
+   * planned for the next close intends a later day than the buy that anchors it).
+   */
+  readonly intentDate: string | null;
   readonly status: BookRowStatus;
   readonly isWaiting: boolean;
   readonly cancelInFlight: boolean;
@@ -225,6 +235,7 @@ export function toIstanbulDate(timestamp: number | null): string | null {
 export function buildBookChains(input: BuildBookChainsInput): BookChain[] {
   const linked = new Map<string, ChainAccumulator>();
   const unlinked: ChainAccumulator[] = [];
+  const calendar = holidayCalendar(input.holidays ?? []);
 
   for (const order of input.activeOrders) {
     addRecord(
@@ -233,7 +244,7 @@ export function buildBookChains(input: BuildBookChainsInput): BookChain[] {
       order.chainId,
       unlinkedOrderKey(order.clientOrderId, order.id, 'active'),
       { source: 'activeOrders', raw: order },
-      [normalizeActiveOrder(order)],
+      [normalizeActiveOrder(order, calendar)],
     );
   }
 
@@ -244,7 +255,7 @@ export function buildBookChains(input: BuildBookChainsInput): BookChain[] {
       order.chainId,
       unlinkedOrderKey(order.clientOrderId, order.id, 'canceled'),
       { source: 'canceledOrders', raw: order },
-      [normalizeCanceledOrder(order)],
+      [normalizeCanceledOrder(order, calendar)],
     );
   }
 
@@ -255,7 +266,7 @@ export function buildBookChains(input: BuildBookChainsInput): BookChain[] {
       position.chainId,
       `unlinked:position:${stableSourceIdentity(position.clientOrderId, position.id)}`,
       { source: 'positions', raw: position },
-      [normalizePosition(position)],
+      [normalizePosition(position, calendar)],
     );
   }
 
@@ -266,11 +277,10 @@ export function buildBookChains(input: BuildBookChainsInput): BookChain[] {
       trade.chainId,
       `unlinked:closed-trade:${trade.id}`,
       { source: 'closedTrades', raw: trade },
-      normalizeClosedTrade(trade),
+      normalizeClosedTrade(trade, calendar),
     );
   }
 
-  const calendar = holidayCalendar(input.holidays ?? []);
   const chains = [...linked.values(), ...unlinked].map((accumulator) =>
     finalizeChain(accumulator, calendar),
   );
@@ -452,7 +462,20 @@ function createAccumulator(key: string, chainId: string | null): ChainAccumulato
   };
 }
 
-function normalizeActiveOrder(order: ActiveOrder): BookActiveOrderRow {
+/**
+ * The date an order was meant to first execute: its `scheduledTime` — or its
+ * `createdTime` when it was never a plan — run through the session rule. `null`
+ * when the order carries neither stamp.
+ */
+function intentDateFor(
+  scheduledTime: number | null | undefined,
+  createdTime: number | null | undefined,
+  calendar: HolidayCalendar,
+): string | null {
+  return sessionBatchDate(scheduledTime ?? createdTime ?? null, calendar);
+}
+
+function normalizeActiveOrder(order: ActiveOrder, calendar: HolidayCalendar): BookActiveOrderRow {
   const scheduled = order.status === 'Scheduled';
   const why = originReason(order.origin, order.originData);
 
@@ -480,6 +503,7 @@ function normalizeActiveOrder(order: ActiveOrder): BookActiveOrderRow {
     sentTime: order.sentTime,
     finalSeenTime: null,
     scheduledTime: order.scheduledTime ?? null,
+    intentDate: intentDateFor(order.scheduledTime, order.createdTime, calendar),
     status: order.status,
     isWaiting: isWaitingOrderStatus(order.status),
     cancelInFlight: order.cancelSource !== null,
@@ -493,7 +517,10 @@ function normalizeActiveOrder(order: ActiveOrder): BookActiveOrderRow {
   };
 }
 
-function normalizeCanceledOrder(order: CanceledOrder): BookCanceledOrderRow {
+function normalizeCanceledOrder(
+  order: CanceledOrder,
+  calendar: HolidayCalendar,
+): BookCanceledOrderRow {
   return {
     key: `canceled-order:${stableSourceIdentity(order.clientOrderId, order.id)}`,
     rawId: order.id,
@@ -518,6 +545,7 @@ function normalizeCanceledOrder(order: CanceledOrder): BookCanceledOrderRow {
     sentTime: order.sentTime,
     finalSeenTime: order.finalSeenTime,
     scheduledTime: order.scheduledTime ?? null,
+    intentDate: intentDateFor(order.scheduledTime, order.createdTime, calendar),
     status: order.status,
     isWaiting: false,
     cancelInFlight: false,
@@ -529,7 +557,7 @@ function normalizeCanceledOrder(order: CanceledOrder): BookCanceledOrderRow {
   };
 }
 
-function normalizePosition(position: Position): BookPositionRow {
+function normalizePosition(position: Position, calendar: HolidayCalendar): BookPositionRow {
   return {
     key: `position:${stableSourceIdentity(
       position.positionId ?? position.clientOrderId,
@@ -557,6 +585,7 @@ function normalizePosition(position: Position): BookPositionRow {
     sentTime: position.sentTime ?? null,
     finalSeenTime: position.finalSeenTime,
     scheduledTime: position.scheduledTime ?? null,
+    intentDate: intentDateFor(position.scheduledTime, position.createdTime, calendar),
     status: 'Position',
     isWaiting: false,
     cancelInFlight: false,
@@ -568,7 +597,10 @@ function normalizePosition(position: Position): BookPositionRow {
   };
 }
 
-function normalizeClosedTrade(trade: ClosedTrade): [BookClosedTradeRow, BookClosedTradeRow] {
+function normalizeClosedTrade(
+  trade: ClosedTrade,
+  calendar: HolidayCalendar,
+): [BookClosedTradeRow, BookClosedTradeRow] {
   const shared = {
     rawId: trade.id,
     source: 'closed-trade' as const,
@@ -599,6 +631,7 @@ function normalizeClosedTrade(trade: ClosedTrade): [BookClosedTradeRow, BookClos
       orderTime: trade.openOrderTime,
       createdTime: trade.openCreatedTime ?? null,
       scheduledTime: trade.openScheduledTime ?? null,
+      intentDate: intentDateFor(trade.openScheduledTime, trade.openCreatedTime, calendar),
       sentTime: trade.openSentTime ?? null,
       finalSeenTime: trade.openFinalSeenTime,
       status: 'Closed',
@@ -622,6 +655,7 @@ function normalizeClosedTrade(trade: ClosedTrade): [BookClosedTradeRow, BookClos
       orderTime: trade.closeOrderTime,
       createdTime: trade.closeCreatedTime ?? null,
       scheduledTime: trade.closeScheduledTime ?? null,
+      intentDate: intentDateFor(trade.closeScheduledTime, trade.closeCreatedTime, calendar),
       sentTime: trade.closeSentTime ?? null,
       finalSeenTime: trade.closeFinalSeenTime,
       status: 'Closed',

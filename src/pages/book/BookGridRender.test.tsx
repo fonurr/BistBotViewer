@@ -46,7 +46,7 @@ describe('BookGrid row vocabulary', () => {
   it('groups by batch date and bot, and inks the side word', () => {
     renderGrid();
 
-    expect(screen.getByText('25.08.26')).toBeVisible();
+    expect(document.querySelector('.book-batch-date')).toHaveTextContent('25.08.26');
     expect(screen.getByText('1 chain')).toBeVisible();
     expect(screen.getByText('bot-alpha')).toHaveAttribute('title', 'Deterministic browser fixture');
     expect(screen.getByText('buy')).toHaveClass('side-buy');
@@ -74,18 +74,78 @@ describe('BookGrid row vocabulary', () => {
       },
     );
 
-    // The five time cells are created, sched, sent, order, final. A scheduled row
-    // has only been written and set to fire: its fire time sits in `sched`, drawn
-    // quiet like `created`, and `sent`/`order` stay empty until it goes off — never
-    // a dash.
+    // The time cells are created, sched, intent, sent, order, final. A scheduled
+    // row has only been written and set to fire: its fire time sits in `sched`
+    // (drawn quiet like `created`), `intent` names the session that fire lands in,
+    // and `sent`/`order` stay empty until it goes off — never a dash.
     const times = [...document.querySelectorAll('.book-row [role="cell"].book-time')];
     expect(times[1]).toHaveClass('book-time-minor');
     expect(times[1]!.textContent).not.toBe('');
-    expect(times[2]!.textContent).toBe('');
+    expect(times[2]!.textContent).not.toBe('');
     expect(times[3]!.textContent).toBe('');
+    expect(times[4]!.textContent).toBe('');
     expect(screen.getByText(/^Scheduled · in/)).toBeVisible();
     // A market order's captured price is a fact the record kept, not an instruction.
     expect(document.querySelector('.book-row .captured-value')).not.toBeNull();
+  });
+
+  it('dates the intent column by the session the plan lands in, a batch ahead when it must', () => {
+    // Friday buy, its reversing sell scheduled for the following Tuesday. One
+    // chain, filed under Friday's batch; the sell intends Tuesday.
+    renderGrid(
+      {},
+      {
+        activeOrders: [
+          makeActiveOrder({
+            id: 1,
+            clientOrderId: 'buy',
+            chainId: 'chain-1',
+            symbol: 'THYAO',
+            createdTime: Date.parse('2026-08-21T12:00:00.000Z'),
+            orderTime: Date.parse('2026-08-21T12:00:01.000Z'),
+            sentTime: Date.parse('2026-08-21T12:00:01.000Z'),
+          }),
+          makeActiveOrder({
+            id: 2,
+            clientOrderId: 'sell',
+            parentClientOrderId: 'buy',
+            chainId: 'chain-1',
+            symbol: 'THYAO',
+            direction: 'sell',
+            status: 'Scheduled',
+            matriksOrderId: null,
+            orderTime: null,
+            sentTime: null,
+            createdTime: Date.parse('2026-08-21T12:00:00.000Z'),
+            scheduledTime: Date.parse('2026-08-25T09:50:00.000Z'),
+          }),
+        ],
+        canceledOrders: [],
+        positions: [],
+        closedTrades: [],
+      },
+    );
+
+    const intents = [...document.querySelectorAll('.book-row')].map(
+      (row) => [...row.querySelectorAll('[role="cell"].book-time')][2]?.textContent,
+    );
+    // The opening buy trades Friday; the scheduled sell not until Tuesday.
+    expect(intents).toEqual(['21.08.26', '25.08.26']);
+  });
+
+  it('leaves the intent column empty when the row carries no plan', () => {
+    renderGrid(
+      {},
+      {
+        activeOrders: [],
+        canceledOrders: [],
+        positions: [makePosition({ createdTime: null, scheduledTime: null })],
+        closedTrades: [],
+      },
+    );
+
+    const intent = [...document.querySelectorAll('.book-row [role="cell"].book-time')][2];
+    expect(intent?.textContent).toBe('');
   });
 
   it('leaves a cell empty rather than substituting a dash or a zero', () => {

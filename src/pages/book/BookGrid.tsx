@@ -90,6 +90,7 @@ const columns: readonly BookColumn[] = [
   DIVIDER,
   { label: 'created' },
   { label: 'sched' },
+  { label: 'intent' },
   { label: 'sent' },
   { label: 'order' },
   { label: 'final' },
@@ -571,6 +572,15 @@ const BookRow = memo(function BookRow({
       </div>
       <div role="cell" className="muted book-time book-time-minor">
         <RowTime timestamp={row.scheduledTime} batchDate={batchDate} />
+      </div>
+      {/*
+       * `intent` is the calendar date this order was meant to first trade — its
+       * plan (`scheduledTime`, else `createdTime`) run through the same session
+       * rule the batch is filed by. It reads a session ahead of the batch on a
+       * row planned for a later day, and is empty when the order carries no plan.
+       */}
+      <div role="cell" className="muted book-time">
+        {row.intentDate === null ? '' : formatDateKey(row.intentDate)}
       </div>
       <div role="cell" className="muted book-time">
         <RowTime timestamp={row.sentTime} batchDate={batchDate} />
