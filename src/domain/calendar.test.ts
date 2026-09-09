@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Holiday } from '../bistApi/types';
 import {
   areLivePricesExpected,
+  firstTradeInstant,
   holidayCalendar,
   isProducerExpectedUp,
   lastCompletedSessionDate,
@@ -59,6 +60,58 @@ describe('sessionBatchDate', () => {
   it('has no batch for a moment that is not one', () => {
     expect(sessionBatchDate(null, calendar())).toBeNull();
     expect(sessionBatchDate(Number.NaN, calendar())).toBeNull();
+  });
+});
+
+describe('firstTradeInstant', () => {
+  const iso = (ms: number | null) => (ms === null ? null : new Date(ms).toISOString());
+
+  it('leaves a stamp inside continuous trading as its own instant', () => {
+    expect(iso(firstTradeInstant(at('2026-08-13T10:30:00+03:00'), calendar()))).toBe(
+      iso(at('2026-08-13T10:30:00+03:00')),
+    );
+  });
+
+  it('folds a pre-open stamp forward to that day"s auction and open', () => {
+    expect(iso(firstTradeInstant(at('2026-08-13T08:00:00+03:00'), calendar()))).toBe(
+      iso(at('2026-08-13T09:55:00+03:00')),
+    );
+    expect(iso(firstTradeInstant(at('2026-08-13T09:57:00+03:00'), calendar()))).toBe(
+      iso(at('2026-08-13T10:00:00+03:00')),
+    );
+  });
+
+  it('holds a just-past-close stamp for the closing auction, then rolls the day', () => {
+    expect(iso(firstTradeInstant(at('2026-08-13T18:02:00+03:00'), calendar()))).toBe(
+      iso(at('2026-08-13T18:05:00+03:00')),
+    );
+    // 13.08 is a Thursday; past close+10 rolls to Friday's opening match.
+    expect(iso(firstTradeInstant(at('2026-08-13T18:11:00+03:00'), calendar()))).toBe(
+      iso(at('2026-08-14T09:55:00+03:00')),
+    );
+  });
+
+  it('rolls a weekend or holiday stamp to the next trading day"s match', () => {
+    // 15.08 is a Saturday → Monday 17.08.
+    expect(iso(firstTradeInstant(at('2026-08-15T11:00:00+03:00'), calendar()))).toBe(
+      iso(at('2026-08-17T09:55:00+03:00')),
+    );
+  });
+
+  it('agrees with sessionBatchDate on the trade date, and is null for a non-moment', () => {
+    for (const stamp of [
+      '2026-08-13T08:00:00+03:00',
+      '2026-08-13T14:00:00+03:00',
+      '2026-08-13T18:11:00+03:00',
+      '2026-08-15T11:00:00+03:00',
+    ]) {
+      const instant = firstTradeInstant(at(stamp), calendar());
+      expect(instant).not.toBeNull();
+      expect(new Date(instant!).toLocaleDateString('en-CA', { timeZone: 'Europe/Istanbul' })).toBe(
+        sessionBatchDate(at(stamp), calendar()),
+      );
+    }
+    expect(firstTradeInstant(null, calendar())).toBeNull();
   });
 });
 

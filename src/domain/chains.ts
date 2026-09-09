@@ -9,7 +9,13 @@ import type {
   Position,
   ReasonData,
 } from '../bistApi/types';
-import { holidayCalendar, istanbulDay, sessionBatchDate, type HolidayCalendar } from './calendar';
+import {
+  firstTradeInstant,
+  holidayCalendar,
+  istanbulDay,
+  sessionBatchDate,
+  type HolidayCalendar,
+} from './calendar';
 
 export type BookScope = 'waiting' | 'positions' | 'trades' | 'canceled';
 
@@ -48,15 +54,16 @@ interface BookChainRowBase {
   readonly finalSeenTime: number | null;
   readonly scheduledTime: number | null;
   /**
-   * The calendar date of the first session this order could have traded in,
-   * `YYYY-MM-DD` — its `scheduledTime` run through the "which session an order
-   * belongs to" rule, or its `createdTime` when it was never a plan. `null` when
-   * neither stamp is present. It is the date the order was *meant* to first
-   * execute, read off the plan rather than off when it actually registered, so it
-   * can lag the batch the chain is filed under (an evening buy's reversing sell
-   * planned for the next close intends a later day than the buy that anchors it).
+   * The first instant this order could have traded — its `scheduledTime` run
+   * through the "which session an order belongs to" rule, or its `createdTime`
+   * when it was never a plan. `null` when neither stamp is present. It is read off
+   * the *plan*, not off when the order actually registered, so its date (the
+   * `intent` column) can lag the batch the chain is filed under: an evening buy's
+   * reversing sell planned for the next close intends a later day than the buy
+   * that anchors it. The `sent` and `final` cells colour late when a stamp trails
+   * this and its neighbours by more than a threshold — see `BookGrid`.
    */
-  readonly intentDate: string | null;
+  readonly intentTime: number | null;
   readonly status: BookRowStatus;
   readonly isWaiting: boolean;
   readonly cancelInFlight: boolean;
@@ -463,16 +470,16 @@ function createAccumulator(key: string, chainId: string | null): ChainAccumulato
 }
 
 /**
- * The date an order was meant to first execute: its `scheduledTime` — or its
+ * The first instant an order was meant to trade: its `scheduledTime` — or its
  * `createdTime` when it was never a plan — run through the session rule. `null`
  * when the order carries neither stamp.
  */
-function intentDateFor(
+function intentTimeFor(
   scheduledTime: number | null | undefined,
   createdTime: number | null | undefined,
   calendar: HolidayCalendar,
-): string | null {
-  return sessionBatchDate(scheduledTime ?? createdTime ?? null, calendar);
+): number | null {
+  return firstTradeInstant(scheduledTime ?? createdTime ?? null, calendar);
 }
 
 function normalizeActiveOrder(order: ActiveOrder, calendar: HolidayCalendar): BookActiveOrderRow {
@@ -503,7 +510,7 @@ function normalizeActiveOrder(order: ActiveOrder, calendar: HolidayCalendar): Bo
     sentTime: order.sentTime,
     finalSeenTime: null,
     scheduledTime: order.scheduledTime ?? null,
-    intentDate: intentDateFor(order.scheduledTime, order.createdTime, calendar),
+    intentTime: intentTimeFor(order.scheduledTime, order.createdTime, calendar),
     status: order.status,
     isWaiting: isWaitingOrderStatus(order.status),
     cancelInFlight: order.cancelSource !== null,
@@ -545,7 +552,7 @@ function normalizeCanceledOrder(
     sentTime: order.sentTime,
     finalSeenTime: order.finalSeenTime,
     scheduledTime: order.scheduledTime ?? null,
-    intentDate: intentDateFor(order.scheduledTime, order.createdTime, calendar),
+    intentTime: intentTimeFor(order.scheduledTime, order.createdTime, calendar),
     status: order.status,
     isWaiting: false,
     cancelInFlight: false,
@@ -585,7 +592,7 @@ function normalizePosition(position: Position, calendar: HolidayCalendar): BookP
     sentTime: position.sentTime ?? null,
     finalSeenTime: position.finalSeenTime,
     scheduledTime: position.scheduledTime ?? null,
-    intentDate: intentDateFor(position.scheduledTime, position.createdTime, calendar),
+    intentTime: intentTimeFor(position.scheduledTime, position.createdTime, calendar),
     status: 'Position',
     isWaiting: false,
     cancelInFlight: false,
@@ -631,7 +638,7 @@ function normalizeClosedTrade(
       orderTime: trade.openOrderTime,
       createdTime: trade.openCreatedTime ?? null,
       scheduledTime: trade.openScheduledTime ?? null,
-      intentDate: intentDateFor(trade.openScheduledTime, trade.openCreatedTime, calendar),
+      intentTime: intentTimeFor(trade.openScheduledTime, trade.openCreatedTime, calendar),
       sentTime: trade.openSentTime ?? null,
       finalSeenTime: trade.openFinalSeenTime,
       status: 'Closed',
@@ -655,7 +662,7 @@ function normalizeClosedTrade(
       orderTime: trade.closeOrderTime,
       createdTime: trade.closeCreatedTime ?? null,
       scheduledTime: trade.closeScheduledTime ?? null,
-      intentDate: intentDateFor(trade.closeScheduledTime, trade.closeCreatedTime, calendar),
+      intentTime: intentTimeFor(trade.closeScheduledTime, trade.closeCreatedTime, calendar),
       sentTime: trade.closeSentTime ?? null,
       finalSeenTime: trade.closeFinalSeenTime,
       status: 'Closed',

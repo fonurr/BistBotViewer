@@ -89,9 +89,9 @@ describe('BookGrid row vocabulary', () => {
     expect(document.querySelector('.book-row .captured-value')).not.toBeNull();
   });
 
-  it('dates the intent column by the session the plan lands in, a batch ahead when it must', () => {
+  it('sets the intent column to the instant the plan could first trade, a batch ahead when it must', () => {
     // Friday buy, its reversing sell scheduled for the following Tuesday. One
-    // chain, filed under Friday's batch; the sell intends Tuesday.
+    // chain, filed under Friday's batch; the sell intends the Tuesday fire.
     renderGrid(
       {},
       {
@@ -129,8 +129,9 @@ describe('BookGrid row vocabulary', () => {
     const intents = [...document.querySelectorAll('.book-row')].map(
       (row) => [...row.querySelectorAll('[role="cell"].book-time')][2]?.textContent,
     );
-    // The opening buy trades Friday; the scheduled sell not until Tuesday.
-    expect(intents).toEqual(['21.08.26', '25.08.26']);
+    // The buy trades in its own Friday 15:00 instant, on the batch's own day; the
+    // scheduled sell at its Tuesday 12:50 fire, four calendar days past the batch.
+    expect(intents).toEqual(['15:00:00', '12:50:00+4']);
   });
 
   it('leaves the intent column empty when the row carries no plan', () => {

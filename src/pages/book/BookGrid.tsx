@@ -574,13 +574,14 @@ const BookRow = memo(function BookRow({
         <RowTime timestamp={row.scheduledTime} batchDate={batchDate} />
       </div>
       {/*
-       * `intent` is the calendar date this order was meant to first trade — its
-       * plan (`scheduledTime`, else `createdTime`) run through the same session
-       * rule the batch is filed by. It reads a session ahead of the batch on a
-       * row planned for a later day, and is empty when the order carries no plan.
+       * `intent` is the exact instant this order was first able to trade — its
+       * plan (`scheduledTime`, else `createdTime`) run through the same "which
+       * session an order belongs to" rule the batch is filed by, which folds an
+       * off-hours stamp forward to the next auction. Empty when the order carries
+       * no plan; its day-offset shows when that session is not the batch's.
        */}
       <div role="cell" className="muted book-time">
-        {row.intentDate === null ? '' : formatDateKey(row.intentDate)}
+        <RowTime timestamp={row.intentTime} batchDate={batchDate} />
       </div>
       <div role="cell" className="muted book-time">
         <RowTime timestamp={row.sentTime} batchDate={batchDate} />

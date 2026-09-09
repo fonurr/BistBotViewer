@@ -559,7 +559,7 @@ describe('buildBookChains', () => {
     expect(tradeRows.find((row) => row.leg === 'close')?.scheduledTime).toBeNull();
   });
 
-  it('dates each row"s intent off its plan — scheduledTime first, then createdTime, else null', () => {
+  it('sets each row"s intent instant off its plan — scheduledTime first, then createdTime, else null', () => {
     const [chain] = build({
       activeOrders: [
         active({
@@ -594,13 +594,14 @@ describe('buildBookChains', () => {
       ],
     });
     const intentByClient = Object.fromEntries(
-      (chain?.rows ?? []).map((row) => [row.clientOrderId, row.intentDate]),
+      (chain?.rows ?? []).map((row) => [row.clientOrderId, row.intentTime]),
     );
 
-    // The buy was written Wednesday and trades that day; the sell not until its
-    // Tuesday fire; the dead leg carries no plan, so it says nothing.
-    expect(intentByClient['buy']).toBe('2026-08-19');
-    expect(intentByClient['sell']).toBe('2026-08-25');
+    // The buy was written Wednesday 15:00 and trades in that instant; the sell
+    // fires Tuesday 12:50; the dead leg carries no plan, so it says nothing. The
+    // deliberate non-fallback: the dead leg still has a `finalSeenTime`.
+    expect(intentByClient['buy']).toBe(at('2026-08-19T12:00:00.000Z'));
+    expect(intentByClient['sell']).toBe(at('2026-08-25T09:50:00.000Z'));
     expect(intentByClient['dead']).toBeNull();
   });
 

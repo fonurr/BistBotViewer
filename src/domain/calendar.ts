@@ -5,6 +5,8 @@ const MAX_DAYS_AHEAD = 366;
 /** The close: 18:00, or 12:30 on a half day, which only moves the close. */
 const CLOSE_MINUTE = 18 * 60;
 const HALF_DAY_CLOSE_MINUTE = 12 * 60 + 30;
+/** The opening auction match — the first moment anything trades on a session. */
+const OPENING_MATCH_MINUTE = 9 * 60 + 55;
 /** A session keeps the work written for it until ten minutes past its close. */
 const SESSION_GRACE_MINUTES = 10;
 /**
@@ -120,6 +122,46 @@ export function sessionBatchDate(
   );
   if (timestamp <= lastMoment) return stamped;
   return rollToTradingDay(nextDay(stamped), holidays) ?? stamped;
+}
+
+/**
+ * The first instant an order stamped at `timestamp` could have traded — MatriksOrder's "which
+ * session an order belongs to" table. An off-hours or pre-open stamp folds forward to the next
+ * real trading window; a stamp inside continuous trading is its own first chance. `null` when the
+ * timestamp is unusable or a year of trading days ahead is closed. The Istanbul date of the
+ * result is the order's trade date, and it always agrees with `sessionBatchDate`.
+ */
+export function firstTradeInstant(
+  timestamp: number | null,
+  holidays: HolidayCalendar,
+): number | null {
+  if (timestamp === null || !Number.isFinite(timestamp)) return null;
+  const day = istanbulDay(timestamp);
+  if (day === null) return null;
+
+  if (isTradingDay(day, holidays)) {
+    const closeMinute = closeMinuteOn(day, holidays);
+    const match = istanbulMinuteAt(day, OPENING_MATCH_MINUTE);
+    const open = istanbulMinuteAt(day, CONTINUOUS_OPEN_MINUTE);
+    const close = istanbulMinuteAt(day, closeMinute);
+    const closePlus5 = istanbulMinuteAt(day, closeMinute + 5);
+    const closePlus8 = istanbulMinuteAt(day, closeMinute + 8);
+    const closePlus10 = istanbulMinuteAt(day, closeMinute + 10);
+
+    if (timestamp < match) return match; // before the auction → today's own match
+    if (timestamp < open) return open; // in the auction → the continuous open
+    if (timestamp < close) return timestamp; // trading hours → its own instant
+    if (timestamp < closePlus5) return closePlus5; // just past the close → the closing auction
+    if (timestamp < closePlus8) return closePlus8;
+    if (timestamp < closePlus10) return timestamp;
+    // T ≥ close+10 min → the next trading day's match, handled below.
+  }
+
+  const nextTradingDay = rollToTradingDay(
+    isTradingDay(day, holidays) ? nextDay(day) : day,
+    holidays,
+  );
+  return nextTradingDay === null ? null : istanbulMinuteAt(nextTradingDay, OPENING_MATCH_MINUTE);
 }
 
 /**

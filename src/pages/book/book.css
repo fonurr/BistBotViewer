@@ -500,8 +500,8 @@
 }
 
 /*
- * `created` and `fire` are the two clocks a reader rarely needs — when the row
- * was first written, and when a scheduled order is set to fire — so the whole
+ * `created` and `sched` are the two clocks a reader rarely needs — when the row
+ * was first written, and when a scheduled order is due to fire — so the whole
  * cell is drawn at the seconds' strength. Its own seconds are then not faded a
  * second time on top of that.
  */
