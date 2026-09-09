@@ -317,6 +317,28 @@ describe('BookGrid row vocabulary', () => {
     expect(market).not.toHaveClass('book-fill-price');
   });
 
+  it('brightens @created/slip only for a limit order, not a market or a typeless trade', () => {
+    renderGrid(
+      {},
+      {
+        activeOrders: [
+          makeActiveOrder({ id: 1, clientOrderId: 'lim', type: 'limit' }),
+          makeActiveOrder({ id: 2, clientOrderId: 'mkt', type: 'market', chainId: 'mkt' }),
+        ],
+        canceledOrders: [],
+        positions: [makePosition({ id: 3, clientOrderId: 'pos', chainId: 'pos' })],
+        closedTrades: [],
+      },
+    );
+
+    const created = [...document.querySelectorAll('.book-row .book-order-price')];
+    // The limit order's price was a real instruction; the market capture and the
+    // typeless Positions row (read as a market buy everywhere) are not.
+    expect(created[0]).toHaveClass('book-order-price-live');
+    expect(created[1]).not.toHaveClass('book-order-price-live');
+    expect(created.at(-1)).not.toHaveClass('book-order-price-live');
+  });
+
   it('leaves the market cell empty on a scheduled row, which decided nothing yet', () => {
     renderGrid(
       {},

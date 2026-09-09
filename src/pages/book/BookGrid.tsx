@@ -80,7 +80,7 @@ const columns: readonly BookColumn[] = [
   { label: '' },
   { label: 'symbol' },
   { label: 'qty' },
-  { label: 'side / type' },
+  { label: 'side' },
   { label: '@created/slip', alignRight: true },
   { label: '@sent/slip', alignRight: true },
   { label: 'fill', alignRight: true },
@@ -548,19 +548,23 @@ const BookRow = memo(function BookRow({
       </div>
       <div role="cell">
         <span className={row.direction === 'buy' ? 'side-buy' : 'side-sell'}>{row.direction}</span>
-        {displayType ? ` ${displayType}` : ''}
       </div>
       {/*
        * Both reference-price columns step right back — a faint background gloss
-       * on what the fill is measured against. `@created/slip` is the price the
-       * order was created with; `@sent/slip` is the tape it was decided against.
-       * Each carries the fill's slip from its own reference in a smaller size
-       * beside it, the way the p&l column carries its percentage. A market
-       * order's captured price keeps its italic on top of the muting.
+       * on what the fill is measured against — with one exception: a **limit**
+       * order's `@created/slip` was a real instruction the exchange saw, so it
+       * keeps full ink and opacity. A market order's captured price was never
+       * sent, and a Positions/ClosedTrades row stores no type at all, which this
+       * app reads as a market buy everywhere else too — so both stay faint (a
+       * market order's also italic). `@sent/slip` is always an observation of
+       * the tape, so it never brightens. Each carries the fill's slip from its
+       * own reference in the kicker size beside it.
        */}
       <div
         role="cell"
-        className={`align-right book-order-price${capturedPrice ? ' captured-value' : ''}`}
+        className={`align-right book-order-price${capturedPrice ? ' captured-value' : ''}${
+          displayType === 'limit' ? ' book-order-price-live' : ''
+        }`}
       >
         {row.orderPrice === null ? '' : formatNumber(row.orderPrice)}
         {slip === null ? null : <small> ({formatSlip(slip)})</small>}

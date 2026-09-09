@@ -451,10 +451,10 @@
 
 /*
  * The two reference-price columns are a faint background gloss: the fill is the
- * figure the row acts on, and `@created` / `@sent` only say what it is measured
- * against. Muted ink, then held at a quarter opacity so they never compete with
- * the fill. `captured-value` still adds its italic over this for a market
- * order's price. The slip beside each price drops to the kicker size, well
+ * figure the row acts on, and `@created` / `@sent` mostly only say what it was
+ * measured against. Muted ink, held at a quarter opacity so they never compete
+ * with the fill. `captured-value` adds its italic over this for a market order's
+ * captured price. The slip beside each price drops to the kicker size, well
  * under the row, so it reads as an annotation on the price rather than a figure.
  */
 .book-order-price,
@@ -468,6 +468,18 @@
    */
   min-width: 0;
   white-space: nowrap;
+}
+
+/*
+ * The exception: a limit order's `@created` price was a real instruction the
+ * exchange saw, so it carries full ink and opacity like the fill. A market
+ * order's captured price — never sent — stays faint, and so does a
+ * Positions/ClosedTrades row, which stores no type and is read as a market buy
+ * everywhere else too. `@sent` is always an observation, so it never gets this.
+ */
+.book-order-price-live {
+  color: var(--color-text);
+  opacity: 1;
 }
 
 .book-order-price small,

@@ -133,11 +133,15 @@ empty** when its size is the buy's whole size — an `auto` sell, or one whose q
 chain's opening buy; only a partial sell writes a number there. **No id is printed in the grid.**
 Both the chain id and every order's client-order id are read in the chain dialog, opened from the
 symbol, and there they are given in full rather than abbreviated to a tail. The
-**The two reference-price columns are a faint gloss and the fill is not**: `@created/slip` is
-`orderPrice` (the setting the row was created with, a market order's captured price still in
-italic) and `@sent/slip` is `marketPrice` (the tape the order was decided against), while `fill`
-is the figure the `p&l` beside it is read off — so the fill column keeps the row's ink and weight
-and both reference columns step back to muted ink held at `opacity: 0.25`. Each reference column
+**The `side` column carries only `buy` / `sell`, inked** — the order type is no longer written
+there; whether a price was a real instruction is said by how `@created/slip` is drawn instead.
+`@created/slip` is `orderPrice` (the setting the row was created with) and `@sent/slip` is
+`marketPrice` (the tape the order was decided against), while `fill` is the figure the `p&l`
+beside it is read off. `@sent/slip` is always an observation, so it stays muted at `opacity: 0.25`;
+`@created/slip` takes **full ink and opacity only for a limit order** (`.book-order-price-live`),
+whose price was a real instruction the exchange saw. A market order's captured price — still in
+italic — was never sent, and a Positions/ClosedTrades row stores no type and is read as a market
+buy everywhere else too, so both stay muted. Each reference column
 carries **its own slip** beside the price, in parentheses at the kicker size — well under the row,
 so it annotates the price rather than competing with it:
 `@created/slip` shows `(averagePrice − orderPrice) / orderPrice` (empty for a market order, whose

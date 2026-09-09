@@ -1089,8 +1089,7 @@ function PendingBaskets({
                   <div>
                     <span className={request.direction === 'buy' ? 'side-buy' : 'side-sell'}>
                       {request.direction}
-                    </span>{' '}
-                    {request.request?.type}
+                    </span>
                   </div>
                   <div className="align-right">
                     {stock.price === undefined ? '' : formatNumber(stock.price)}

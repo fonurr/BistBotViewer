@@ -29,7 +29,7 @@ test.describe('The Book safety smoke', () => {
       '',
       'symbol',
       'qty',
-      'side / type',
+      'side',
       '@created/slip',
       '@sent/slip',
       'fill',
