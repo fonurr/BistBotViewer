@@ -628,9 +628,9 @@ const BookRow = memo(function BookRow({
       {/*
        * `sent` reddens when the send trailed the order's plan: it is more than ten
        * seconds later than every stamp it has to measure against (`scheduledTime`
-       * and `createdTime`). `final` reddens the same way past two minutes, against
-       * `orderTime` and `intentTime` — a fill this server was slow to hear about,
-       * or one that landed well after the order could first have traded.
+       * and `createdTime`). `final` reddens when it landed well past the order —
+       * two minutes past both its intent and its send once the order registered,
+       * ten seconds past intent on a row that never did.
        */}
       <div
         role="cell"
@@ -643,7 +643,7 @@ const BookRow = memo(function BookRow({
       </div>
       <div
         role="cell"
-        className={`muted book-time${lateAgainst(row.finalSeenTime, [row.orderTime, row.intentTime], LATE_FINAL_MS) ? ' book-time-late' : ''}`}
+        className={`muted book-time${finalIsLate(row.finalSeenTime, row.orderTime, row.intentTime, row.sentTime) ? ' book-time-late' : ''}`}
       >
         <RowTime timestamp={row.finalSeenTime} batchDate={batchDate} />
       </div>
@@ -691,8 +691,10 @@ const BookRow = memo(function BookRow({
 
 /** A send more than this later than its plan is drawn late. */
 const LATE_SENT_MS = 10_000;
-/** A final-seen more than this after the order could trade, or after it registered, is drawn late. */
+/** A fill seen this long past both the order's intent and its send, once registered, is drawn late. */
 const LATE_FINAL_MS = 120_000;
+/** With no registration to lean on, a fill this long past the order's intent is late. */
+const LATE_ORPHAN_FINAL_MS = 10_000;
 
 /**
  * Whether `stamp` trails every anchor it can be measured against by more than
@@ -708,6 +710,29 @@ function lateAgainst(
   if (stamp === null) return false;
   const present = anchors.filter((anchor): anchor is number => anchor !== null);
   return present.length > 0 && present.every((anchor) => stamp - anchor > toleranceMs);
+}
+
+/**
+ * Whether `final` landed late. Once the order had registered at the exchange
+ * (`orderTime` present) the fill notice has some lag, so it is late only when it
+ * trailed **both** the order's intent and its own send by more than two minutes.
+ * On a row that never registered — a scheduled order skipped before it fired —
+ * the order's intent is all there is, and ten seconds past it is late. A `null`
+ * final, or a stamp missing or sitting after it, is never late.
+ */
+function finalIsLate(
+  finalSeenTime: number | null,
+  orderTime: number | null,
+  intentTime: number | null,
+  sentTime: number | null,
+): boolean {
+  if (finalSeenTime === null || intentTime === null) return false;
+  if (orderTime === null) return finalSeenTime - intentTime > LATE_ORPHAN_FINAL_MS;
+  return (
+    sentTime !== null &&
+    finalSeenTime - intentTime > LATE_FINAL_MS &&
+    finalSeenTime - sentTime > LATE_FINAL_MS
+  );
 }
 
 /*

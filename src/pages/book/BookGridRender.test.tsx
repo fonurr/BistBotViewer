@@ -183,8 +183,10 @@ describe('BookGrid row vocabulary', () => {
     expect(sentCell()).toHaveClass('book-time-late');
   });
 
-  it('reddens final when it landed over two minutes after the order registered and could trade', () => {
-    const orderTime = Date.parse('2026-08-25T07:30:00.000Z');
+  const finalCell = () => [...document.querySelectorAll('.book-row [role="cell"].book-time')][5];
+
+  it('reddens final on a registered row when it landed over two minutes past both intent and send', () => {
+    const intent = Date.parse('2026-08-25T07:30:00.000Z');
     renderGrid(
       {},
       {
@@ -192,17 +194,95 @@ describe('BookGrid row vocabulary', () => {
         canceledOrders: [],
         positions: [
           makePosition({
-            createdTime: orderTime - 2_000,
-            orderTime,
-            finalSeenTime: orderTime + 5 * 60_000,
+            createdTime: intent,
+            sentTime: intent + 1_000,
+            orderTime: intent + 2_000,
+            finalSeenTime: intent + 5 * 60_000,
           }),
         ],
         closedTrades: [],
       },
     );
 
-    const finalCell = [...document.querySelectorAll('.book-row [role="cell"].book-time')][5];
-    expect(finalCell).toHaveClass('book-time-late');
+    expect(finalCell()).toHaveClass('book-time-late');
+  });
+
+  it('leaves final muted on a registered row whose send it followed within two minutes', () => {
+    const intent = Date.parse('2026-08-25T07:30:00.000Z');
+    renderGrid(
+      {},
+      {
+        activeOrders: [],
+        canceledOrders: [],
+        positions: [
+          makePosition({
+            // The send waited out a feed-down window, so it sits well past intent;
+            // the fill then followed the send promptly, so `final` is not late.
+            createdTime: intent,
+            sentTime: intent + 130_000,
+            orderTime: intent + 131_000,
+            finalSeenTime: intent + 200_000,
+          }),
+        ],
+        closedTrades: [],
+      },
+    );
+
+    expect(finalCell()).not.toHaveClass('book-time-late');
+  });
+
+  it('reddens final on a never-registered row when it landed over ten seconds past the intent', () => {
+    const scheduledTime = Date.parse('2026-08-25T09:00:00.000Z');
+    renderGrid(
+      { showCanceled: true },
+      {
+        activeOrders: [],
+        canceledOrders: [
+          makeCanceledOrder({
+            status: 'Canceled',
+            source: 'Server',
+            reason: 'AlreadyHasStock',
+            orderTime: null,
+            sentTime: null,
+            createdTime: scheduledTime - 3 * 60 * 60 * 1_000,
+            scheduledTime,
+            finalSeenTime: scheduledTime + 15_000,
+          }),
+        ],
+        positions: [],
+        closedTrades: [],
+      },
+    );
+
+    // No orderTime: the order never registered, so `intent` is the anchor and a
+    // 15-second lag past it is late.
+    expect(finalCell()).toHaveClass('book-time-late');
+  });
+
+  it('leaves final muted on a never-registered row killed promptly at its intent', () => {
+    const scheduledTime = Date.parse('2026-08-25T09:00:00.000Z');
+    renderGrid(
+      { showCanceled: true },
+      {
+        activeOrders: [],
+        canceledOrders: [
+          makeCanceledOrder({
+            status: 'Canceled',
+            source: 'Server',
+            reason: 'AlreadyHasStock',
+            orderTime: null,
+            sentTime: null,
+            createdTime: scheduledTime - 3 * 60 * 60 * 1_000,
+            scheduledTime,
+            finalSeenTime: scheduledTime + 4_000,
+          }),
+        ],
+        positions: [],
+        closedTrades: [],
+      },
+    );
+
+    expect(finalCell()).not.toHaveClass('book-time-late');
   });
 
   it('leaves a cell empty rather than substituting a dash or a zero', () => {

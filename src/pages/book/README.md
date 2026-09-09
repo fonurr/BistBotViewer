@@ -47,12 +47,14 @@ the order actually registered.
 
 `created` and `sched` are the two clocks a reader rarely needs, so `.book-time-minor` draws the
 whole cell at the seconds' strength. `sent` and `final` are drawn in dead-red (`.book-time-late`)
-when they ran late: `sent` when it trailed **every** stamp it can be measured against
-(`scheduledTime`, `createdTime`) by more than ten seconds, `final` when it trailed both `orderTime`
-and `intent` by more than two minutes — a fill this server was slow to hear, or one that landed
-well after the order could first have traded. Every column carries its seconds: the minute is what
-a reader scans, so `formatRowTimeParts` hands the seconds back separately and the cell draws them —
-their colon with them — at about a quarter opacity.
+when they ran late. `sent` is late when it trailed **every** stamp it can be measured against
+(`scheduledTime`, `createdTime`) by more than ten seconds. `final` is late, once the order had
+registered (`orderTime` present, so the fill notice carries some lag), only when it trailed
+**both** the order's `intent` and its own `sent` by more than two minutes. On a row that never
+registered — a scheduled order skipped before it fired — `intent` is all there is, and ten seconds
+past it is late. Every column carries its seconds: the minute is what a reader scans, so
+`formatRowTimeParts` hands the seconds back separately and the cell draws them — their colon with
+them — at about a quarter opacity.
 
 A batch heading is the control that opens its batch: the whole line is a button with a chevron
 and `aria-expanded`, and the column band and every bot under it are drawn only while it is open.
