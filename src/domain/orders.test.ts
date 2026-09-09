@@ -2,6 +2,7 @@ import type { ActiveOrder, Position } from '../bistApi/types';
 import {
   calculateSellable,
   deriveFilledPnlState,
+  intentSlippagePercentage,
   marketSlippagePercentage,
   realizedPnl,
   reservedBuyCost,
@@ -101,6 +102,16 @@ describe('order arithmetic', () => {
     // No order-type guard: unlike the intent slip, this one holds for a market order.
     expect(marketSlippagePercentage({ marketPrice: null, averagePrice: 38.2 })).toBeNull();
     expect(marketSlippagePercentage({ marketPrice: 0, averagePrice: 38.2 })).toBeNull();
+  });
+
+  it('measures fill against the price at the instant the order could first trade', () => {
+    expect(intentSlippagePercentage({ intentPrice: 38.16, averagePrice: 38.2 })).toBeCloseTo(
+      0.1048,
+    );
+    expect(intentSlippagePercentage({ intentPrice: 40, averagePrice: 39.8 })).toBeCloseTo(-0.5);
+    // Withheld where the minute history could not price the instant at all.
+    expect(intentSlippagePercentage({ intentPrice: null, averagePrice: 38.2 })).toBeNull();
+    expect(intentSlippagePercentage({ intentPrice: 0, averagePrice: 38.2 })).toBeNull();
   });
 
   it('reserves the market-buy buffer', () => {

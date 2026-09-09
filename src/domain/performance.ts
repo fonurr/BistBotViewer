@@ -1,7 +1,14 @@
 import type { ClosedTrade, Holiday } from '../bistApi/types';
 import type { AuctionBar, AuctionBarKey } from '../priceApi/types';
 import { accountIdentityKey } from './accounts';
-import { holidayCalendar, istanbulDay, sessionBatchDate } from './calendar';
+import {
+  firstTradeInstant,
+  holidayCalendar,
+  istanbulDay,
+  sessionBatchDate,
+  type HolidayCalendar,
+} from './calendar';
+import { intentBarLookup, intentPriceKey, intentSlipAllowed } from './intentPrice';
 import { toIstanbulDate } from './chains';
 
 export const PERFORMANCE_WINDOW_DAYS = 90;
@@ -16,6 +23,7 @@ export type PerformanceUnavailableReason =
   | 'order-type-not-stored-on-closed-trades'
   | 'close-order-price-not-stored'
   | 'market-price-not-stored'
+  | 'intent-price-not-available'
   | 'final-seen-times-incomplete'
   | 'portfolio-balance-history-not-provided'
   | 'holiday-calendar-coverage-unavailable'
@@ -71,11 +79,24 @@ export interface PerformanceTrade {
    *   tape when the order went out. It carries no order-type guard (the fill
    *   against the tape is the real slippage of a market order) and is unavailable
    *   only where the server stored no market price for that side.
+   * - `*Intent` is against the tape at the instant the leg could **first have
+   *   traded**, priced from BistData's minute history. It is unavailable wherever
+   *   that instant cannot be priced, and deliberately withheld on an auction
+   *   print and on a leg that registered more than ten seconds late - see
+   *   `domain/intentPrice`.
    */
   readonly entryCreatedSlippagePercent: PerformanceMetric;
   readonly entrySentSlippagePercent: PerformanceMetric;
+  readonly entryIntentSlippagePercent: PerformanceMetric;
   readonly exitCreatedSlippagePercent: PerformanceMetric;
   readonly exitSentSlippagePercent: PerformanceMetric;
+  readonly exitIntentSlippagePercent: PerformanceMetric;
+  /**
+   * Each side's `firstTradeInstant`, so the page knows which minutes to ask the
+   * history cache for before it builds the report that consumes them.
+   */
+  readonly openIntentTime: number | null;
+  readonly closeIntentTime: number | null;
   /**
    * Close final-seen minus open final-seen. Both stamps come from this
    * server's own clock, so the difference is a hold duration; it is never a
@@ -101,21 +122,27 @@ export interface PerformanceDay {
 }
 
 export interface PerformanceSlippageSummary {
-  /** The four cells of the leg × reference grid the section draws. */
+  /** The six cells of the leg × reference grid the section draws. */
   readonly entryCreated: PerformanceMetric;
   readonly entrySent: PerformanceMetric;
+  readonly entryIntent: PerformanceMetric;
   readonly exitCreated: PerformanceMetric;
   readonly exitSent: PerformanceMetric;
+  readonly exitIntent: PerformanceMetric;
   /**
-   * Both legs pooled, against the order price (`created`) and against the market
-   * price (`sent`). Each mixes buy and sell directions, so it sits near zero.
+   * Both legs pooled, against the order price (`created`), the market price
+   * (`sent`) and the tape at the first tradeable instant (`intent`). Each mixes
+   * buy and sell directions, so it sits near zero.
    */
   readonly created: PerformanceMetric;
   readonly sent: PerformanceMetric;
+  readonly intent: PerformanceMetric;
   readonly entryCreatedCount: number;
   readonly entrySentCount: number;
+  readonly entryIntentCount: number;
   readonly exitCreatedCount: number;
   readonly exitSentCount: number;
+  readonly exitIntentCount: number;
   /** `trades.length * 2` - the legs a full grid would have measured. */
   readonly legCount: number;
 }
@@ -244,6 +271,13 @@ export interface BuildPerformanceReportInput {
    * of batches rather than a set of closes.
    */
   readonly endDate?: string;
+  /**
+   * Resolved intent prices, keyed `SYMBOL|ts` by `histApi`'s `intentBarKey`. The
+   * page runs this report twice: once with none, to learn which instants it must
+   * ask the history cache for, and again with what came back. Absent keys are
+   * simply unpriced instants, which is the ordinary case.
+   */
+  readonly intentPrices?: ReadonlyMap<string, number>;
 }
 
 interface CalendarWindow {
@@ -328,7 +362,7 @@ export function buildPerformanceReport(input: BuildPerformanceReportInput): Perf
       openedAfterHoursCount += 1;
     }
 
-    included.push(normalizePerformanceTrade(trade, businessDate));
+    included.push(normalizePerformanceTrade(trade, businessDate, calendarDays, input.intentPrices));
   }
 
   included.sort(comparePerformanceTrades);
@@ -423,7 +457,20 @@ export function buildPerformanceReport(input: BuildPerformanceReportInput): Perf
   };
 }
 
-function normalizePerformanceTrade(trade: ClosedTrade, businessDate: string): PerformanceTrade {
+function normalizePerformanceTrade(
+  trade: ClosedTrade,
+  businessDate: string,
+  calendarDays: HolidayCalendar,
+  intentPrices: ReadonlyMap<string, number> | undefined,
+): PerformanceTrade {
+  const openIntentTime = firstTradeInstant(
+    trade.openScheduledTime ?? trade.openCreatedTime ?? null,
+    calendarDays,
+  );
+  const closeIntentTime = firstTradeInstant(
+    trade.closeScheduledTime ?? trade.closeCreatedTime ?? null,
+    calendarDays,
+  );
   const costBasis = trade.quantity * trade.averageOpenPrice;
   const grossPnl = trade.quantity * (trade.averageClosePrice - trade.averageOpenPrice);
   const grossReturnPercent =
@@ -446,8 +493,28 @@ function normalizePerformanceTrade(trade: ClosedTrade, businessDate: string): Pe
     grossReturnPercent,
     entryCreatedSlippagePercent: slipMetric(trade.openOrderPrice, trade.averageOpenPrice, 'entry'),
     entrySentSlippagePercent: marketSlipMetric(trade.openMarketPrice, trade.averageOpenPrice),
+    entryIntentSlippagePercent: intentSlipMetric({
+      intentTime: openIntentTime,
+      orderTime: trade.openOrderTime,
+      averagePrice: trade.averageOpenPrice,
+      reference: trade.openMarketPrice ?? trade.averageOpenPrice,
+      symbol: trade.symbol,
+      calendarDays,
+      intentPrices,
+    }),
     exitCreatedSlippagePercent: slipMetric(trade.closeOrderPrice, trade.averageClosePrice, 'exit'),
     exitSentSlippagePercent: marketSlipMetric(trade.closeMarketPrice, trade.averageClosePrice),
+    exitIntentSlippagePercent: intentSlipMetric({
+      intentTime: closeIntentTime,
+      orderTime: trade.closeOrderTime,
+      averagePrice: trade.averageClosePrice,
+      reference: trade.closeMarketPrice ?? trade.averageClosePrice,
+      symbol: trade.symbol,
+      calendarDays,
+      intentPrices,
+    }),
+    openIntentTime,
+    closeIntentTime,
     holdDurationMs: holdMetric(trade.openFinalSeenTime, trade.closeFinalSeenTime),
   };
 }
@@ -495,6 +562,36 @@ function marketSlipMetric(
   }
   if (!Number.isFinite(averagePrice)) return unavailableMetric('invalid-cost-basis', 0, 1);
   return availableMetric(((averagePrice - marketPrice) / marketPrice) * 100, 1);
+}
+
+/**
+ * The same figure against the tape at the leg's first tradeable instant. It is
+ * unavailable far more often than the other two, and for reasons that are all
+ * deliberate: an instant carrying seconds names no minute, an auction print is a
+ * match rather than a working price, a leg that registered more than ten seconds
+ * late was not competing for that price, and the nightly cache may simply not
+ * hold the minute. `domain/intentPrice` owns every one of those rules.
+ */
+function intentSlipMetric(options: {
+  intentTime: number | null;
+  orderTime: number | null;
+  averagePrice: number;
+  reference: number | null;
+  symbol: string;
+  calendarDays: HolidayCalendar;
+  intentPrices: ReadonlyMap<string, number> | undefined;
+}): PerformanceMetric {
+  const unavailable = unavailableMetric('intent-price-not-available', 0, 1);
+  if (options.intentTime === null || !Number.isFinite(options.averagePrice)) return unavailable;
+  const lookup = intentBarLookup(options.intentTime, options.calendarDays);
+  if (!lookup) return unavailable;
+  if (!intentSlipAllowed(lookup, options.intentTime, options.orderTime)) return unavailable;
+  const price = options.intentPrices?.get(intentPriceKey(options.symbol, lookup.ts));
+  if (price === undefined) return unavailable;
+  // The page resolves a bar's own field and applies the scale guard before it
+  // hands the price over, so what arrives here is already a price to stand behind.
+  if (!Number.isFinite(price) || price <= 0) return unavailable;
+  return availableMetric(((options.averagePrice - price) / price) * 100, 1);
 }
 
 function holdMetric(
@@ -658,25 +755,32 @@ function calculateDrawdown(
 function summarizeSlippage(trades: readonly PerformanceTrade[]): PerformanceSlippageSummary {
   const entryCreated = availableValues(trades.map((trade) => trade.entryCreatedSlippagePercent));
   const entrySent = availableValues(trades.map((trade) => trade.entrySentSlippagePercent));
+  const entryIntent = availableValues(trades.map((trade) => trade.entryIntentSlippagePercent));
   const exitCreated = availableValues(trades.map((trade) => trade.exitCreatedSlippagePercent));
   const exitSent = availableValues(trades.map((trade) => trade.exitSentSlippagePercent));
+  const exitIntent = availableValues(trades.map((trade) => trade.exitIntentSlippagePercent));
   const legCount = trades.length * 2;
 
   return {
     entryCreated: meanMetric(entryCreated, trades.length, 'invalid-cost-basis'),
     entrySent: meanMetric(entrySent, trades.length, 'market-price-not-stored'),
+    entryIntent: meanMetric(entryIntent, trades.length, 'intent-price-not-available'),
     exitCreated: meanMetric(exitCreated, trades.length, 'close-order-price-not-stored'),
     exitSent: meanMetric(exitSent, trades.length, 'market-price-not-stored'),
+    exitIntent: meanMetric(exitIntent, trades.length, 'intent-price-not-available'),
     created: meanMetric(
       [...entryCreated, ...exitCreated],
       legCount,
       'close-order-price-not-stored',
     ),
     sent: meanMetric([...entrySent, ...exitSent], legCount, 'market-price-not-stored'),
+    intent: meanMetric([...entryIntent, ...exitIntent], legCount, 'intent-price-not-available'),
     entryCreatedCount: entryCreated.length,
     entrySentCount: entrySent.length,
+    entryIntentCount: entryIntent.length,
     exitCreatedCount: exitCreated.length,
     exitSentCount: exitSent.length,
+    exitIntentCount: exitIntent.length,
     legCount,
   };
 }

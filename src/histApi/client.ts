@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { intentPriceKey } from '../domain/intentPrice';
 import { intentBarSchema, snapshotStatusSchema, type IntentBarKey } from './types';
 
 const bridgeBase = '/bridge/hist';
@@ -42,11 +43,6 @@ async function parseResponse<T>(response: Response, schema: z.ZodType<T>): Promi
   return parsed.data;
 }
 
-/** `SYMBOL|ts` — the one key shape both the request and the resolved map agree on. */
-export function intentBarKey(symbol: string, ts: number): string {
-  return `${symbol.toUpperCase()}|${ts}`;
-}
-
 export const histApi = {
   getSnapshotStatus: async () => {
     const response = await fetch(`${bridgeBase}/status`, {
@@ -64,7 +60,7 @@ export const histApi = {
     const unique = [
       ...new Map(
         keys.map((key) => [
-          intentBarKey(key.symbol, key.ts),
+          intentPriceKey(key.symbol, key.ts),
           { symbol: key.symbol.toUpperCase(), ts: key.ts },
         ]),
       ).values(),

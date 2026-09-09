@@ -52,12 +52,14 @@ function report(options: {
   closingBars?: AuctionBar[];
   holidays?: Holiday[];
   asOf?: number;
+  intentPrices?: ReadonlyMap<string, number>;
 }) {
   return buildPerformanceReport({
     trades: options.trades ?? [],
     closingBars: options.closingBars ?? [],
     holidays: options.holidays ?? calendarCoverage,
     asOf: options.asOf ?? at('2026-08-25T12:00:00.000Z'),
+    intentPrices: options.intentPrices,
   });
 }
 
@@ -297,6 +299,70 @@ describe('buildPerformanceReport', () => {
       exitSentCount: 1,
       legCount: 4,
     });
+  });
+
+  it('measures an intent slip off the minute the leg could first have traded', () => {
+    const intentTime = at('2026-08-20T08:30:00.000Z'); // 11:30 Istanbul, a whole minute
+    const result = report({
+      trades: [
+        trade({
+          id: 1,
+          openCreatedTime: intentTime,
+          // Registered inside the ten-second grace, so the price still stood.
+          openOrderTime: intentTime + 4_000,
+          averageOpenPrice: 100,
+        }),
+      ],
+      // The lookup reads the *previous* minute's close, so 11:29 is the key.
+      intentPrices: new Map([[`THYAO|${intentTime - 60_000}`, 98]]),
+    });
+
+    expect(result.trades[0]?.openIntentTime).toBe(intentTime);
+    expect(result.trades[0]?.entryIntentSlippagePercent.value).toBeCloseTo(2.0408, 4);
+    expect(result.summary.slippage.entryIntent.value).toBeCloseTo(2.0408, 4);
+    expect(result.summary.slippage).toMatchObject({ entryIntentCount: 1 });
+  });
+
+  it('withholds an intent slip that was registered late, or taken off an auction', () => {
+    const intentTime = at('2026-08-20T08:30:00.000Z');
+    // Written before the opening match, so `firstTradeInstant` folds it onto 09:55.
+    const auctionIntent = at('2026-08-20T04:00:00.000Z');
+    const matchInstant = Date.parse('2026-08-20T09:55:00+03:00');
+    const result = report({
+      trades: [
+        trade({
+          id: 1,
+          openCreatedTime: intentTime,
+          openOrderTime: intentTime + 10_001,
+          averageOpenPrice: 100,
+        }),
+        trade({ id: 2, openCreatedTime: auctionIntent, averageOpenPrice: 100 }),
+      ],
+      intentPrices: new Map([
+        [`THYAO|${intentTime - 60_000}`, 98],
+        [`THYAO|${matchInstant}`, 98],
+      ]),
+    });
+
+    // Ten seconds past the instant the tape had moved on; an auction print is a
+    // match rather than a price the order could have been worked against.
+    expect(result.trades[0]?.entryIntentSlippagePercent).toMatchObject({
+      available: false,
+      reason: 'intent-price-not-available',
+    });
+    expect(result.trades[1]?.openIntentTime).toBe(matchInstant);
+    expect(result.trades[1]?.entryIntentSlippagePercent.available).toBe(false);
+    expect(result.summary.slippage).toMatchObject({ entryIntentCount: 0 });
+  });
+
+  it('withholds every intent slip when the nightly cache priced nothing', () => {
+    const result = report({ trades: [trade({ id: 1 })] });
+
+    expect(result.summary.slippage.intent).toMatchObject({
+      available: false,
+      reason: 'intent-price-not-available',
+    });
+    expect(result.summary.slippage.legCount).toBe(2);
   });
 
   it('holds a round trip between its two final-seen stamps, never a latency', () => {

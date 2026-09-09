@@ -192,6 +192,27 @@ export function slippagePercentage(options: {
  * out. Signed by the direction the price moved, never by whether it helped.
  * Null when there was no market price to stand against.
  */
+/**
+ * Slippage of the fill against the market at the instant the order could first
+ * have traded — the `intent` instant, priced from BistData's minute history.
+ * Signed by the direction the price moved, like the other two. Whether the row
+ * is allowed a slip at all (auctions and late registrations are not) is
+ * `intentSlipAllowed`'s question, not this one's.
+ */
+export function intentSlippagePercentage(options: {
+  intentPrice: number | null;
+  averagePrice: number;
+}): number | null {
+  if (
+    options.intentPrice === null ||
+    !Number.isFinite(options.intentPrice) ||
+    options.intentPrice <= 0
+  ) {
+    return null;
+  }
+  return ((options.averagePrice - options.intentPrice) / options.intentPrice) * 100;
+}
+
 export function marketSlippagePercentage(options: {
   marketPrice: number | null;
   averagePrice: number;
