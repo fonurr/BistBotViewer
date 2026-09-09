@@ -454,8 +454,8 @@
  * figure the row acts on, and `@created` / `@sent` only say what it is measured
  * against. Muted ink, then held at a quarter opacity so they never compete with
  * the fill. `captured-value` still adds its italic over this for a market
- * order's price. The slip beside each price is a size down, like the p&l
- * percentage.
+ * order's price. The slip beside each price drops to the kicker size, well
+ * under the row, so it reads as an annotation on the price rather than a figure.
  */
 .book-order-price,
 .book-market-price {
@@ -472,7 +472,7 @@
 
 .book-order-price small,
 .book-market-price small {
-  font-size: var(--font-small);
+  font-size: var(--font-kicker);
   font-weight: 400;
 }
 

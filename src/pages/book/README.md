@@ -138,7 +138,8 @@ symbol, and there they are given in full rather than abbreviated to a tail. The
 italic) and `@sent/slip` is `marketPrice` (the tape the order was decided against), while `fill`
 is the figure the `p&l` beside it is read off — so the fill column keeps the row's ink and weight
 and both reference columns step back to muted ink held at `opacity: 0.25`. Each reference column
-carries **its own slip** beside the price, a size down in parentheses like the `p&l` percentage:
+carries **its own slip** beside the price, in parentheses at the kicker size — well under the row,
+so it annotates the price rather than competing with it:
 `@created/slip` shows `(averagePrice − orderPrice) / orderPrice` (empty for a market order, whose
 captured price was never sent) and `@sent/slip` shows `(averagePrice − marketPrice) / marketPrice`
 — **drawn for a market order too**, since that is the one slippage a market order really has. The
