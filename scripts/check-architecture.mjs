@@ -24,17 +24,22 @@ for (const file of await walk(sourceRoot)) {
     errors.push(`${relative}: components may not import pages`);
   }
 
-  const isBoundary = relative.startsWith('src/bistApi/') || relative.startsWith('src/priceApi/');
-  const isServerBoundary =
-    relative.startsWith('src/bistApi/server/') || relative.startsWith('src/priceApi/server/');
+  // The three data boundaries: MatriksOrder, DailyDataAggregator, and BistData's
+  // historical minutes. Each is the only module allowed to reach its own source.
+  const boundaries = ['src/bistApi/', 'src/priceApi/', 'src/histApi/'];
+  const isBoundary = boundaries.some((boundary) => relative.startsWith(boundary));
+  const isServerBoundary = boundaries.some((boundary) => relative.startsWith(`${boundary}server/`));
   if (
     !isBoundary &&
     /(?:\bfetch\s*\(|\bnew\s+EventSource\s*\(|\b(?:window|globalThis)\.fetch\s*\()/.test(text)
   ) {
-    errors.push(`${relative}: network access belongs in bistApi/ or priceApi/`);
+    errors.push(`${relative}: network access belongs in bistApi/, priceApi/ or histApi/`);
   }
 
-  if (!isServerBoundary && /from\s+['"](?:node:sqlite|better-sqlite3|sqlite3)['"]/.test(text)) {
+  if (
+    !isServerBoundary &&
+    /from\s+['"](?:node:sqlite|better-sqlite3|sqlite3|@duckdb\/[^'"]*)['"]/.test(text)
+  ) {
     errors.push(`${relative}: database access belongs in a server-side API boundary worker`);
   }
 
@@ -50,23 +55,29 @@ for (const file of await walk(sourceRoot)) {
   }
 
   if (
-    /from\s+['"][^'"]*(?:initial design handoff|MatriksOrder|DailyDataAggregator)[^'"]*['"]/.test(
+    /from\s+['"][^'"]*(?:initial design handoff|MatriksOrder|DailyDataAggregator|BistData)[^'"]*['"]/.test(
       text,
     )
   ) {
     errors.push(`${relative}: runtime code may not import handoff or sibling project files`);
   }
 
-  if (
-    (relative.startsWith('src/bistApi/') && /from\s+['"][^'"]*priceApi\//.test(text)) ||
-    (relative.startsWith('src/priceApi/') && /from\s+['"][^'"]*bistApi\//.test(text))
-  ) {
-    errors.push(`${relative}: the two API boundaries must remain independent`);
+  for (const boundary of boundaries) {
+    if (!relative.startsWith(boundary)) continue;
+    const others = boundaries.filter((other) => other !== boundary);
+    for (const other of others) {
+      const module = other.slice('src/'.length, -1);
+      if (new RegExp(`from\\s+['"][^'"]*${module}/`).test(text)) {
+        errors.push(`${relative}: the three API boundaries must remain independent`);
+      }
+    }
   }
 
   if (
     !isBoundary &&
-    /127\.0\.0\.1:(?:8788|8789)|MatriksOrder\/data|DailyDataAggregator\/data/.test(text)
+    /127\.0\.0\.1:(?:8788|8789)|MatriksOrder\/data|DailyDataAggregator\/data|BistData\/data/.test(
+      text,
+    )
   ) {
     errors.push(`${relative}: upstream locations belong in an API boundary`);
   }

@@ -5,6 +5,7 @@ import { defineConfig, loadEnv } from 'vite';
 
 import { createBistBridgePlugin } from './src/bistApi/server/bridge.ts';
 import { createLogsBridgePlugin } from './src/bistApi/server/logs/logsMiddleware.ts';
+import { createHistBridgePlugin } from './src/histApi/server/bridge.ts';
 import { createPriceBridgePlugin } from './src/priceApi/server/bridge.ts';
 
 export default defineConfig(({ mode }) => {
@@ -26,6 +27,16 @@ export default defineConfig(({ mode }) => {
       createPriceBridgePlugin({
         upstreamUrl: environment.BIST_VIEWER_PRICE_URL ?? 'http://127.0.0.1:8789/api',
         barsDatabasePath: environment.BIST_VIEWER_BARS_DB ?? '../DailyDataAggregator/data/bars.db',
+        fixtureMode,
+      }),
+      createHistBridgePlugin({
+        orderDatabasePath:
+          environment.BIST_VIEWER_ORDER_DB ?? '../MatriksOrder/data/matriksorder.db',
+        minuteDatabasePath:
+          environment.BIST_VIEWER_BISTDATA_MINUTE_DB ?? '../BistData/data/minute.duckdb',
+        scaleDatabasePath:
+          environment.BIST_VIEWER_BISTDATA_SCALE_DB ?? '../BistData/data/scale.duckdb',
+        cacheDatabasePath: environment.BIST_VIEWER_INTENT_CACHE_DB ?? 'data/intent-bars.db',
         fixtureMode,
       }),
       react(),

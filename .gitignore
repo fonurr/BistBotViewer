@@ -1,5 +1,7 @@
 node_modules/
 dist/
+# The derived intent-bar cache. Rebuilt from BistData by the nightly snapshot.
+data/
 coverage/
 test-results/
 playwright-report/

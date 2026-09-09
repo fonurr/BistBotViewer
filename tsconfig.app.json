@@ -19,5 +19,5 @@
     "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"]
   },
   "include": ["src"],
-  "exclude": ["src/bistApi/server", "src/priceApi/server", "src/serverBridge"]
+  "exclude": ["src/bistApi/server", "src/priceApi/server", "src/histApi/server", "src/serverBridge"]
 }

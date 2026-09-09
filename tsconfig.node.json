@@ -16,6 +16,7 @@
     "playwright.config.ts",
     "src/serverBridge/**/*.ts",
     "src/bistApi/server/**/*.ts",
-    "src/priceApi/server/**/*.ts"
+    "src/priceApi/server/**/*.ts",
+    "src/histApi/server/**/*.ts"
   ]
 }
