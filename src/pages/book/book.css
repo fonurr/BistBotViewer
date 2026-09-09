@@ -496,7 +496,7 @@
  * belongs to the seconds, not to the minute, and fades with them.
  */
 .book-time-seconds {
-  opacity: 0.4;
+  opacity: 0.25;
 }
 
 /*
@@ -506,7 +506,7 @@
  * second time on top of that.
  */
 .book-time-minor {
-  opacity: 0.4;
+  opacity: 0.25;
 }
 
 .book-time-minor .book-time-seconds {

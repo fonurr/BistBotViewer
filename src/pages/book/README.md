@@ -34,7 +34,7 @@ same word the price column carries, never confusable — one is a price, one a c
 alone, and `sent`/`order` stay empty until it goes off. `created` and `fire` are the two clocks a
 reader rarely needs, so `.book-time-minor` draws the whole cell at the seconds' strength. Every
 column carries its seconds: the minute is what a reader scans, so `formatRowTimeParts` hands the
-seconds back separately and the cell draws them — their colon with them — well under half opacity.
+seconds back separately and the cell draws them — their colon with them — at about a quarter opacity.
 
 A batch heading is the control that opens its batch: the whole line is a button with a chevron
 and `aria-expanded`, and the column band and every bot under it are drawn only while it is open.
