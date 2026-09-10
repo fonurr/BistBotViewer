@@ -242,6 +242,23 @@ describe('Performance scope and unavailable values', () => {
     }
   });
 
+  it('says which @sent legs the send rule dropped, apart from those with no market price', async () => {
+    const fixture = makePerformanceReadFixture();
+    fixture.closedTrades = [
+      // The buy went out at 09:29:59, into the opening queue; the sell at 10:59:59.
+      makeClosedTrade(),
+      makeClosedTrade({ id: 302, chainId: 'chain-2', closeMarketPrice: null }),
+    ];
+    useFixture(fixture);
+
+    renderPerformance();
+
+    const reason = await screen.findByText(/@sent also drops/);
+    expect(reason).toHaveTextContent(
+      '@sent also drops 1 leg the server stored no market price for, and 2 legs not sent inside continuous trading.',
+    );
+  });
+
   it('keeps configured limits while a current commitment read is unavailable', async () => {
     api.getBotBudget.mockRejectedValueOnce(new Error('budget unavailable'));
 

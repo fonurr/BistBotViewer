@@ -14,7 +14,12 @@ import { ResultList, type ActionResult } from '../../components/ResultList';
 import { accountIdentityKey } from '../../domain/accounts';
 import { formatBookTime, matchesBookTime } from '../../domain/bookTimeFilter';
 import { bookAllocation } from '../../domain/budget';
-import { holidayCalendar, previousTradingDate, sessionBatchDate } from '../../domain/calendar';
+import {
+  holidayCalendar,
+  previousTradingDate,
+  sessionBatchDate,
+  type HolidayCalendar,
+} from '../../domain/calendar';
 import { intentBarLookup, intentPriceReference, intentSlipAllowed } from '../../domain/intentPrice';
 import { useIntentPrices } from '../../app/useIntentPrices';
 import { buildBookChains, rowReasons, type BookChain, type BookScope } from '../../domain/chains';
@@ -34,6 +39,7 @@ import {
   marketSlippagePercentage,
   pnlPercentage,
   realizedPnl,
+  sentSlipAllowed,
   slippagePercentage,
   unrealizedPnl,
 } from '../../domain/orders';
@@ -161,9 +167,10 @@ export function BookPage() {
     () => visibleChains.reduce((count, chain) => count + chain.canceledRows.length, 0),
     [visibleChains],
   );
+  const calendar = useMemo(() => holidayCalendar(data.holidays), [data.holidays]);
   const summary = useMemo(
-    () => summarize(visibleChains, priceFeed.prices, priceFeed.trustworthy, botById),
-    [botById, priceFeed.prices, priceFeed.trustworthy, visibleChains],
+    () => summarize(visibleChains, priceFeed.prices, priceFeed.trustworthy, botById, calendar),
+    [botById, calendar, priceFeed.prices, priceFeed.trustworthy, visibleChains],
   );
 
   // The `today` column reads each chain's P&L from the start of today's Istanbul calendar
@@ -172,7 +179,6 @@ export function BookPage() {
   // here instead zeroed the column at that boundary: a chain opened today would suddenly
   // compare itself to today's own, now-final close. Only the chains carried over from an
   // earlier day need a bar read.
-  const calendar = useMemo(() => holidayCalendar(data.holidays), [data.holidays]);
   const todayCalendarDate = toIstanbulDateKey(Date.now());
   const basisSessionDate = useMemo(
     () => previousTradingDate(todayCalendarDate, calendar),
@@ -542,6 +548,7 @@ export function BookPage() {
           todayCalendarDate={todayCalendarDate}
           closingBars={closingBars}
           intentCells={intentCells}
+          calendar={calendar}
           writesHeldReason={writesHeldReason}
           showCanceled={showCanceled}
           openCanceledChains={canceledOverrides}
@@ -876,6 +883,7 @@ function summarize(
   prices: ReturnType<typeof useFleetPrices>['prices'],
   pricesTrustworthy: boolean,
   botById: ReadonlyMap<string, ReturnType<typeof useBookData>['bots'][number]>,
+  calendar: HolidayCalendar,
 ) {
   const trades = new Map(
     chains.flatMap((chain) => chain.sources.closedTrades).map((trade) => [trade.id, trade]),
@@ -932,7 +940,10 @@ function summarize(
       }),
     )
     .filter((value): value is number => value !== null);
+  // Exactly the `@sent` slips the rows drew: a send outside continuous trading
+  // withholds the row's slip, so it leaves the average too.
   const sentSlips = filledRows
+    .filter((row) => sentSlipAllowed(row.sentTime, calendar))
     .map((row) =>
       marketSlippagePercentage({
         marketPrice: row.marketPrice,

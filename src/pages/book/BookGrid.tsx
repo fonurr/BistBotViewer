@@ -3,6 +3,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'rea
 
 import type { Account, Bot } from '../../bistApi/types';
 import type { ResolvedPrice } from '../../priceApi/types';
+import type { HolidayCalendar } from '../../domain/calendar';
 import {
   toIstanbulDate,
   type BookChain,
@@ -27,6 +28,7 @@ import {
   marketSlippagePercentage,
   pnlPercentage,
   realizedPnl,
+  sentSlipAllowed,
   slippagePercentage,
   unrealizedPnl,
 } from '../../domain/orders';
@@ -64,6 +66,8 @@ interface BookGridProps {
    * carry seconds and name no minute at all.
    */
   intentCells: ReadonlyMap<string, BookIntentCell>;
+  /** The trading calendar a row's send is placed in, to decide whether it carries an `@sent` slip. */
+  calendar: HolidayCalendar;
   writesHeldReason: string | null;
   showCanceled: boolean;
   openCanceledChains: ReadonlySet<string>;
@@ -277,6 +281,7 @@ export function BookGrid(props: BookGridProps) {
                               todayCalendarDate={props.todayCalendarDate}
                               closingBars={props.closingBars}
                               intentCells={props.intentCells}
+                              calendar={props.calendar}
                               writesHeldReason={props.writesHeldReason}
                               showCanceled={props.showCanceled}
                               canceledOpen={props.openCanceledChains.has(chain.key)}
@@ -349,6 +354,7 @@ interface ChainRowsProps {
    * carry seconds and name no minute at all.
    */
   intentCells: ReadonlyMap<string, BookIntentCell>;
+  calendar: HolidayCalendar;
   writesHeldReason: string | null;
   showCanceled: boolean;
   canceledOpen: boolean;
@@ -380,6 +386,7 @@ const ChainRows = memo(function ChainRows(props: ChainRowsProps) {
           todayCalendarDate={props.todayCalendarDate}
           closingBars={props.closingBars}
           intentCells={props.intentCells}
+          calendar={props.calendar}
           writesHeldReason={props.writesHeldReason}
           now={props.now}
           onOpenChain={props.onOpenChain}
@@ -404,6 +411,7 @@ const ChainRows = memo(function ChainRows(props: ChainRowsProps) {
                 todayCalendarDate={props.todayCalendarDate}
                 closingBars={props.closingBars}
                 intentCells={props.intentCells}
+                calendar={props.calendar}
                 writesHeldReason={props.writesHeldReason}
                 now={props.now}
                 onOpenChain={props.onOpenChain}
@@ -463,6 +471,7 @@ const BookRow = memo(function BookRow({
   todayCalendarDate,
   closingBars,
   intentCells,
+  calendar,
   writesHeldReason,
   now,
   onOpenChain,
@@ -481,6 +490,7 @@ const BookRow = memo(function BookRow({
    * carry seconds and name no minute at all.
    */
   intentCells: ReadonlyMap<string, BookIntentCell>;
+  calendar: HolidayCalendar;
   writesHeldReason: string | null;
   now: number;
   onOpenChain: BookGridProps['onOpenChain'];
@@ -510,7 +520,7 @@ const BookRow = memo(function BookRow({
           type: displayType,
         });
   const marketSlip =
-    row.averagePrice === null
+    row.averagePrice === null || !sentSlipAllowed(row.sentTime, calendar)
       ? null
       : marketSlippagePercentage({
           marketPrice: row.marketPrice,
@@ -610,7 +620,8 @@ const BookRow = memo(function BookRow({
        * of the tape at the instant the server chose `orderPrice`. Its slip is
        * the fill against that tape — shown for a market order too, since that is
        * the one slippage figure a market order really has. Empty wherever the
-       * server had no price to stand behind.
+       * server had no price to stand behind. The slip alone is withheld where
+       * the order was not sent inside continuous trading — see `sentSlipAllowed`.
        */}
       <div role="cell" className="align-right book-market-price">
         {row.marketPrice === null ? '' : formatNumber(row.marketPrice)}

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Holiday } from '../bistApi/types';
 import {
   areLivePricesExpected,
+  continuousTradingOn,
   firstTradeInstant,
   holidayCalendar,
   isProducerExpectedUp,
@@ -172,6 +173,29 @@ describe('the price session windows', () => {
       expect(isProducerExpectedUp(at(`${day}T12:00:00+03:00`), holidays)).toBe(false);
       expect(areLivePricesExpected(at(`${day}T12:00:00+03:00`), holidays)).toBe(false);
     }
+  });
+});
+
+describe('continuousTradingOn', () => {
+  const holidays = calendar(
+    { date: '2026-08-14', type: 'half' },
+    { date: '2026-08-17', type: 'full' },
+  );
+
+  it('runs from the 10:00 open to the close, which a half day moves to 12:30', () => {
+    expect(continuousTradingOn('2026-08-13', holidays)).toEqual({
+      open: at('2026-08-13T10:00:00+03:00'),
+      close: at('2026-08-13T18:00:00+03:00'),
+    });
+    expect(continuousTradingOn('2026-08-14', holidays)).toEqual({
+      open: at('2026-08-14T10:00:00+03:00'),
+      close: at('2026-08-14T12:30:00+03:00'),
+    });
+  });
+
+  it('has nothing on a weekend or a full holiday', () => {
+    expect(continuousTradingOn('2026-08-15', holidays)).toBeNull();
+    expect(continuousTradingOn('2026-08-17', holidays)).toBeNull();
   });
 });
 

@@ -1,4 +1,5 @@
 import type { ActiveOrder, Position } from '../bistApi/types';
+import { holidayCalendar } from './calendar';
 import {
   calculateSellable,
   deriveFilledPnlState,
@@ -6,6 +7,7 @@ import {
   marketSlippagePercentage,
   realizedPnl,
   reservedBuyCost,
+  sentSlipAllowed,
   slippagePercentage,
   unrealizedPnl,
 } from './orders';
@@ -102,6 +104,36 @@ describe('order arithmetic', () => {
     // No order-type guard: unlike the intent slip, this one holds for a market order.
     expect(marketSlippagePercentage({ marketPrice: null, averagePrice: 38.2 })).toBeNull();
     expect(marketSlippagePercentage({ marketPrice: 0, averagePrice: 38.2 })).toBeNull();
+  });
+
+  it('allows an @sent slip only for a send inside continuous trading, a second clear of each edge', () => {
+    // 13.08.2026 is a Thursday, 14.08 a half day, 15.08 a Saturday and 17.08 a full holiday.
+    const holidays = holidayCalendar([
+      { date: '2026-08-14', type: 'half' },
+      { date: '2026-08-17', type: 'full' },
+    ]);
+    const allowed = (iso: string) => sentSlipAllowed(Date.parse(iso), holidays);
+
+    // Read to the whole second the `sent` column prints: 10:00:00.999 is still the open's own.
+    expect(allowed('2026-08-13T10:00:00.999+03:00')).toBe(false);
+    expect(allowed('2026-08-13T10:00:01.000+03:00')).toBe(true);
+    expect(allowed('2026-08-13T14:30:00.000+03:00')).toBe(true);
+    expect(allowed('2026-08-13T17:59:59.999+03:00')).toBe(true);
+    expect(allowed('2026-08-13T18:00:00.000+03:00')).toBe(false);
+    // Pre-open, the opening match, the closing auction and the evening all worked another tape.
+    expect(allowed('2026-08-13T09:00:00.000+03:00')).toBe(false);
+    expect(allowed('2026-08-13T09:55:30.000+03:00')).toBe(false);
+    expect(allowed('2026-08-13T18:00:30.000+03:00')).toBe(false);
+    expect(allowed('2026-08-13T21:06:00.000+03:00')).toBe(false);
+    // A half day closes at 12:30, so its last counted second is 12:29:59.
+    expect(allowed('2026-08-14T12:29:59.000+03:00')).toBe(true);
+    expect(allowed('2026-08-14T12:30:00.000+03:00')).toBe(false);
+    expect(allowed('2026-08-14T14:00:00.000+03:00')).toBe(false);
+    // A closed day, and a row with no send stamp to place at all.
+    expect(allowed('2026-08-15T12:00:00.000+03:00')).toBe(false);
+    expect(allowed('2026-08-17T12:00:00.000+03:00')).toBe(false);
+    expect(sentSlipAllowed(null, holidays)).toBe(false);
+    expect(sentSlipAllowed(Number.NaN, holidays)).toBe(false);
   });
 
   it('measures fill against the price at the instant the order could first trade', () => {

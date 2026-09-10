@@ -149,6 +149,16 @@ captured price was never sent) and `@sent/slip` shows `(averagePrice − marketP
 — **drawn for a market order too**, since that is the one slippage a market order really has. The
 sign is the direction the price moved, never whether it helped; none of the three is ever inked.
 
+⚠️ **An `@sent` slip is drawn only for an order sent inside continuous trading**: a `sentTime` from
+**10:00:01 through 17:59:59**, or through **12:29:59** on a half day, read to the whole second the
+`sent` column prints. `marketPrice` is the tape at that decision, and an order sent before the
+open, into an auction, after the close, on a closed day or with no send stamp at all was matched
+against something else. Such a row keeps its price on screen and loses only the slip, and the
+strip's `slip @sent` averages exactly the slips the rows drew, so it drops the row too. The hours
+are `domain/sessionHours.ts`'s; only the one-second margin kept clear of each edge belongs to this
+rule, as `SENT_SLIP_EDGE_MS` beside `sentSlipAllowed` in `domain/orders.ts`, and the Performance
+page applies the same function to every leg.
+
 `@intent/slip` is the odd one out: its price is not stored anywhere by
 MatriksOrder: it is read from `../BistData`'s minute history through `src/histApi/`, whose nightly
 snapshot is the only thing that ever opens those DuckDB files. `domain/intentPrice.ts` decides which

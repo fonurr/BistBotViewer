@@ -1,4 +1,5 @@
 import type { ActiveOrder, BotBudget, ClosedTrade, OrderType, Position } from '../bistApi/types';
+import { continuousTradingOn, istanbulDay, type HolidayCalendar } from './calendar';
 
 export interface FilledExposure {
   readonly source: 'position' | 'partial-buy';
@@ -225,6 +226,32 @@ export function marketSlippagePercentage(options: {
     return null;
   }
   return ((options.averagePrice - options.marketPrice) / options.marketPrice) * 100;
+}
+
+/**
+ * How far inside continuous trading a send has to land to carry an `@sent` slip. A send on the
+ * open's own second or the close's own second sits on an auction's edge, so one whole second is
+ * kept clear of each: 10:00:01 through 17:59:59, or through 12:29:59 on a half day.
+ */
+export const SENT_SLIP_EDGE_MS = 1_000;
+
+/**
+ * Whether a fill may carry an `@sent` slip: only when its order went on the wire inside continuous
+ * trading. `marketPrice` is the tape at that decision, and a fill measured against it says
+ * something only where the order then worked that same tape — one sent before the open, into an
+ * auction, after the close or on a closed day was matched somewhere else. The send is read to the
+ * whole second, the way the `sent` column prints it, and a row with no send stamp cannot be placed
+ * at all. Like the intent rules, this withholds the slip alone — the price stays on screen — and
+ * every average drops the row with it.
+ */
+export function sentSlipAllowed(sentTime: number | null, holidays: HolidayCalendar): boolean {
+  if (sentTime === null || !Number.isFinite(sentTime)) return false;
+  const day = istanbulDay(sentTime);
+  if (day === null) return false;
+  const session = continuousTradingOn(day, holidays);
+  if (session === null) return false;
+  const second = Math.floor(sentTime / 1_000) * 1_000;
+  return second >= session.open + SENT_SLIP_EDGE_MS && second <= session.close - SENT_SLIP_EDGE_MS;
 }
 
 export function reservedBuyCost(quantity: number, price: number, type: OrderType): number {

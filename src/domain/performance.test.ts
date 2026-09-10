@@ -257,10 +257,16 @@ describe('buildPerformanceReport', () => {
   });
 
   it('reads slippage per leg against both the order price and the market price', () => {
+    // Both legs sent inside continuous trading (10:30 and 15:00 Istanbul).
+    const sent = {
+      openSentTime: at('2026-08-20T07:30:00.000Z'),
+      closeSentTime: at('2026-08-24T12:00:00.000Z'),
+    };
     const result = report({
       trades: [
         trade({
           id: 1,
+          ...sent,
           openOrderPrice: 99,
           closeOrderPrice: 111,
           openMarketPrice: 98,
@@ -268,7 +274,7 @@ describe('buildPerformanceReport', () => {
         }),
         // A priceless sell yields no @created exit slip, and a side the server
         // stored no market price for yields no @sent slip.
-        trade({ id: 2, openOrderPrice: 101, closeOrderPrice: null, openMarketPrice: 102 }),
+        trade({ id: 2, ...sent, openOrderPrice: 101, closeOrderPrice: null, openMarketPrice: 102 }),
       ],
     });
 
@@ -297,6 +303,51 @@ describe('buildPerformanceReport', () => {
       exitCreatedCount: 1,
       entrySentCount: 2,
       exitSentCount: 1,
+      sentOutsideContinuousCount: 0,
+      legCount: 4,
+    });
+  });
+
+  it('withholds an @sent slip from a leg not sent inside continuous trading', () => {
+    const result = report({
+      trades: [
+        trade({
+          id: 1,
+          openMarketPrice: 98,
+          closeMarketPrice: 112,
+          // 09:59:59 is the opening queue, not continuous trading; 17:59:59 still is.
+          openSentTime: at('2026-08-20T06:59:59.000Z'),
+          closeSentTime: at('2026-08-24T14:59:59.000Z'),
+        }),
+        // Sent on the open's own second, and with no send stamp to place at all.
+        trade({
+          id: 2,
+          openMarketPrice: 98,
+          closeMarketPrice: 112,
+          openSentTime: at('2026-08-20T07:00:00.000Z'),
+          closeSentTime: null,
+        }),
+      ],
+    });
+
+    // The market price stood, so the reason is the send, not a missing price.
+    expect(result.trades[0]?.entrySentSlippagePercent).toMatchObject({
+      available: false,
+      reason: 'sent-outside-continuous-trading',
+    });
+    expect(result.trades[0]?.exitSentSlippagePercent.value).toBeCloseTo(-1.7857, 4);
+    expect(result.trades[1]?.entrySentSlippagePercent.available).toBe(false);
+    expect(result.trades[1]?.exitSentSlippagePercent.available).toBe(false);
+    // Only the one leg sent inside continuous trading reaches any average.
+    expect(result.summary.slippage.sent.value).toBeCloseTo(-1.7857, 4);
+    expect(result.summary.slippage.entrySent).toMatchObject({
+      available: false,
+      reason: 'sent-outside-continuous-trading',
+    });
+    expect(result.summary.slippage).toMatchObject({
+      entrySentCount: 0,
+      exitSentCount: 1,
+      sentOutsideContinuousCount: 3,
       legCount: 4,
     });
   });

@@ -370,6 +370,18 @@ describe('The Book page states', () => {
     expect(allocated()).toHaveTextContent('2.730');
   });
 
+  it('averages only the @sent slips of legs sent inside continuous trading', () => {
+    // The buy went out at 09:29:59, into the opening queue, so only the sell's
+    // (306 − 306,40) / 306,40 reaches the strip — the rows draw exactly that.
+    book.data = { ...emptyRead(), closedTrades: [makeClosedTrade()] };
+    renderBook();
+
+    const sent = within(document.querySelector('.book-stat-strip')!)
+      .getByText('slip @sent')
+      .closest('.book-stat')!;
+    expect(sent).toHaveTextContent('−0,13%');
+  });
+
   it('names how far the price history reaches when a drawn batch is past it', async () => {
     // An empty @intent column has two causes and the reader must tell them
     // apart: the rules withheld the figure, or the nightly cache is behind.

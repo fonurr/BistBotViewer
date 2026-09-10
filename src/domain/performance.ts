@@ -15,6 +15,7 @@ import {
   withinIntentTolerance,
 } from './intentPrice';
 import { toIstanbulDate } from './chains';
+import { sentSlipAllowed } from './orders';
 
 export const PERFORMANCE_WINDOW_DAYS = 90;
 
@@ -28,6 +29,7 @@ export type PerformanceUnavailableReason =
   | 'order-type-not-stored-on-closed-trades'
   | 'close-order-price-not-stored'
   | 'market-price-not-stored'
+  | 'sent-outside-continuous-trading'
   | 'intent-price-not-available'
   | 'final-seen-times-incomplete'
   | 'portfolio-balance-history-not-provided'
@@ -83,7 +85,8 @@ export interface PerformanceTrade {
    * - `*Sent` is against the **market price** the leg was decided against - the
    *   tape when the order went out. It carries no order-type guard (the fill
    *   against the tape is the real slippage of a market order) and is unavailable
-   *   only where the server stored no market price for that side.
+   *   where the server stored no market price for that side, and where the leg
+   *   was not sent inside continuous trading - see `sentSlipAllowed`.
    * - `*Intent` is against the tape at the instant the leg could **first have
    *   traded**, priced from BistData's minute history. It is unavailable wherever
    *   that instant cannot be priced, and deliberately withheld on an auction
@@ -148,6 +151,12 @@ export interface PerformanceSlippageSummary {
   readonly exitCreatedCount: number;
   readonly exitSentCount: number;
   readonly exitIntentCount: number;
+  /**
+   * Legs that carried a market price but were not sent inside continuous
+   * trading, so `@sent` withheld them. The rest of the `@sent` gap had no
+   * market price at all.
+   */
+  readonly sentOutsideContinuousCount: number;
   /** `trades.length * 2` - the legs a full grid would have measured. */
   readonly legCount: number;
 }
@@ -497,7 +506,12 @@ function normalizePerformanceTrade(
     grossPnl,
     grossReturnPercent,
     entryCreatedSlippagePercent: slipMetric(trade.openOrderPrice, trade.averageOpenPrice, 'entry'),
-    entrySentSlippagePercent: marketSlipMetric(trade.openMarketPrice, trade.averageOpenPrice),
+    entrySentSlippagePercent: marketSlipMetric(
+      trade.openMarketPrice,
+      trade.averageOpenPrice,
+      trade.openSentTime ?? null,
+      calendarDays,
+    ),
     entryIntentSlippagePercent: intentSlipMetric({
       intentTime: openIntentTime,
       orderTime: trade.openOrderTime,
@@ -508,7 +522,12 @@ function normalizePerformanceTrade(
       intentPrices,
     }),
     exitCreatedSlippagePercent: slipMetric(trade.closeOrderPrice, trade.averageClosePrice, 'exit'),
-    exitSentSlippagePercent: marketSlipMetric(trade.closeMarketPrice, trade.averageClosePrice),
+    exitSentSlippagePercent: marketSlipMetric(
+      trade.closeMarketPrice,
+      trade.averageClosePrice,
+      trade.closeSentTime ?? null,
+      calendarDays,
+    ),
     exitIntentSlippagePercent: intentSlipMetric({
       intentTime: closeIntentTime,
       orderTime: trade.closeOrderTime,
@@ -549,13 +568,17 @@ function slipMetric(
 /**
  * The same figure against the market price the leg was decided against. No
  * order-type guard - the fill against the decision-time tape is the real
- * slippage of a market order - so the only thing that withholds it is the
- * server having stored no market price for that side (a sale made outside this
- * server, or a row written before the field existed).
+ * slippage of a market order. It is withheld where the server stored no market
+ * price for that side (a sale made outside this server, or a row written before
+ * the field existed), and where the leg was not sent inside continuous trading,
+ * since its fill then never worked the tape it is measured against - the Book's
+ * `@sent/slip` column applies the same `sentSlipAllowed` rule.
  */
 function marketSlipMetric(
   marketPrice: number | null | undefined,
   averagePrice: number,
+  sentTime: number | null,
+  calendarDays: HolidayCalendar,
 ): PerformanceMetric {
   if (
     marketPrice === null ||
@@ -564,6 +587,9 @@ function marketSlipMetric(
     marketPrice <= 0
   ) {
     return unavailableMetric('market-price-not-stored', 0, 1);
+  }
+  if (!sentSlipAllowed(sentTime, calendarDays)) {
+    return unavailableMetric('sent-outside-continuous-trading', 0, 1);
   }
   if (!Number.isFinite(averagePrice)) return unavailableMetric('invalid-cost-basis', 0, 1);
   return availableMetric(((averagePrice - marketPrice) / marketPrice) * 100, 1);
@@ -764,21 +790,30 @@ function summarizeSlippage(trades: readonly PerformanceTrade[]): PerformanceSlip
   const exitCreated = availableValues(trades.map((trade) => trade.exitCreatedSlippagePercent));
   const exitSent = availableValues(trades.map((trade) => trade.exitSentSlippagePercent));
   const exitIntent = availableValues(trades.map((trade) => trade.exitIntentSlippagePercent));
+  const entrySentMetrics = trades.map((trade) => trade.entrySentSlippagePercent);
+  const exitSentMetrics = trades.map((trade) => trade.exitSentSlippagePercent);
+  const sentOutsideContinuousCount = [...entrySentMetrics, ...exitSentMetrics].filter(
+    (metric) => metric.reason === 'sent-outside-continuous-trading',
+  ).length;
   const legCount = trades.length * 2;
 
   return {
     entryCreated: meanMetric(entryCreated, trades.length, 'invalid-cost-basis'),
-    entrySent: meanMetric(entrySent, trades.length, 'market-price-not-stored'),
+    entrySent: meanMetric(entrySent, trades.length, sentGapReason(entrySentMetrics)),
     entryIntent: meanMetric(entryIntent, trades.length, 'intent-price-not-available'),
     exitCreated: meanMetric(exitCreated, trades.length, 'close-order-price-not-stored'),
-    exitSent: meanMetric(exitSent, trades.length, 'market-price-not-stored'),
+    exitSent: meanMetric(exitSent, trades.length, sentGapReason(exitSentMetrics)),
     exitIntent: meanMetric(exitIntent, trades.length, 'intent-price-not-available'),
     created: meanMetric(
       [...entryCreated, ...exitCreated],
       legCount,
       'close-order-price-not-stored',
     ),
-    sent: meanMetric([...entrySent, ...exitSent], legCount, 'market-price-not-stored'),
+    sent: meanMetric(
+      [...entrySent, ...exitSent],
+      legCount,
+      sentGapReason([...entrySentMetrics, ...exitSentMetrics]),
+    ),
     intent: meanMetric([...entryIntent, ...exitIntent], legCount, 'intent-price-not-available'),
     entryCreatedCount: entryCreated.length,
     entrySentCount: entrySent.length,
@@ -786,8 +821,16 @@ function summarizeSlippage(trades: readonly PerformanceTrade[]): PerformanceSlip
     exitCreatedCount: exitCreated.length,
     exitSentCount: exitSent.length,
     exitIntentCount: exitIntent.length,
+    sentOutsideContinuousCount,
     legCount,
   };
+}
+
+/** An empty `@sent` average names the send rule when that is what emptied it. */
+function sentGapReason(metrics: readonly PerformanceMetric[]): PerformanceUnavailableReason {
+  return metrics.some((metric) => metric.reason === 'sent-outside-continuous-trading')
+    ? 'sent-outside-continuous-trading'
+    : 'market-price-not-stored';
 }
 
 /**

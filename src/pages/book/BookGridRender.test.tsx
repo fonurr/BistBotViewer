@@ -34,6 +34,7 @@ function renderGrid(
     todayCalendarDate: '2026-08-25',
     closingBars: new Map<string, number>(),
     intentCells: new Map<string, BookIntentCell>(),
+    calendar: new Map(),
     writesHeldReason: null,
     showCanceled: false,
     openCanceledChains: new Set<string>(),
@@ -405,6 +406,19 @@ describe('BookGrid row vocabulary', () => {
   });
 
   it('splits a round trip"s market price per side, because it is two decisions', () => {
+    // Both sides sent inside continuous trading (10:30:01 and 10:59:59 Istanbul).
+    const trade = makeClosedTrade({ openSentTime: Date.parse('2026-08-25T07:30:01.000Z') });
+    renderGrid({}, { activeOrders: [], canceledOrders: [], positions: [], closedTrades: [trade] });
+
+    const markets = [...document.querySelectorAll('.book-row .book-market-price')].map(
+      (cell) => cell.textContent,
+    );
+    // Each side carries the fill's slip from its own tape price, in parentheses.
+    expect(markets).toEqual(['299,50 (+0,17%)', '306,40 (−0,13%)']);
+  });
+
+  it('keeps the market price but withholds its slip where the send was outside continuous trading', () => {
+    // The fixture's buy went out at 09:29:59, into the opening queue; its sell at 10:59:59.
     renderGrid(
       {},
       { activeOrders: [], canceledOrders: [], positions: [], closedTrades: [makeClosedTrade()] },
@@ -413,8 +427,7 @@ describe('BookGrid row vocabulary', () => {
     const markets = [...document.querySelectorAll('.book-row .book-market-price')].map(
       (cell) => cell.textContent,
     );
-    // Each side carries the fill's slip from its own tape price, in parentheses.
-    expect(markets).toEqual(['299,50 (+0,17%)', '306,40 (−0,13%)']);
+    expect(markets).toEqual(['299,50', '306,40 (−0,13%)']);
   });
 
   it('carries both facts on a cancel in flight and disables its actions with a reason', () => {

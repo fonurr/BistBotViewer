@@ -18,7 +18,10 @@ estimates.
   `marketPrice` it was decided against. `openOrderPrice` is always present, so `entry @created`
   exists for every trade; `closeOrderPrice` is `null` for a priceless market sell or a manual
   close, so `exit @created` then yields nothing rather than a zero. `@sent` yields nothing for a leg
-  the server stored no `marketPrice` for. The strip and the by-bot table carry the two legs pooled
+  the server stored no `marketPrice` for, and nothing for a leg **not sent inside continuous
+  trading** — the Book's `sentSlipAllowed` rule, `10:00:01`–`17:59:59` (`12:29:59` on a half day),
+  where a leg with no send stamp counts as outside (`sent-outside-continuous-trading`). The
+  section's foot counts those two apart. The strip and the by-bot table carry the two legs pooled
   per reference (`created`, `intent`, `sent`); each mixes buy and sell directions, so it sits near
   zero. The **limit/market split the reference shows is not derivable**: ClosedTrades stores prices
   but not order type, and the slippage section states that once.

@@ -1004,6 +1004,7 @@ function SlippageSection({ report }: { report: PerformanceReport }) {
     exitSentCount,
     entryIntentCount,
     exitIntentCount,
+    sentOutsideContinuousCount,
     legCount,
   } = report.summary.slippage;
   const cells: Array<{ label: string; metric: PerformanceMetric; sub: string }> = [
@@ -1038,7 +1039,15 @@ function SlippageSection({ report }: { report: PerformanceReport }) {
       sub: `${plural(exitSent.sampleSize, 'closing fill')} priced against the tape`,
     },
   ];
-  const marketPriceMissing = legCount - entrySentCount - exitSentCount;
+  const marketPriceMissing = legCount - entrySentCount - exitSentCount - sentOutsideContinuousCount;
+  const sentDrops = [
+    marketPriceMissing > 0
+      ? `${plural(marketPriceMissing, 'leg')} the server stored no market price for`
+      : null,
+    sentOutsideContinuousCount > 0
+      ? `${plural(sentOutsideContinuousCount, 'leg')} not sent inside continuous trading`
+      : null,
+  ].filter((drop): drop is string => drop !== null);
   const intentMissing = legCount - entryIntentCount - exitIntentCount;
   return (
     <section className="performance-section">
@@ -1067,9 +1076,7 @@ function SlippageSection({ report }: { report: PerformanceReport }) {
         No column splits into limit and market: ClosedTrades stores prices but not order type, so
         the {plural(report.summary.tradeCount, 'trade')} in this window cannot be sorted that way
         without inventing which prices were sent.
-        {marketPriceMissing > 0
-          ? ` @sent also drops ${plural(marketPriceMissing, 'leg')} the server stored no market price for.`
-          : ''}
+        {sentDrops.length > 0 ? ` @sent also drops ${sentDrops.join(', and ')}.` : ''}
         {/* @intent is the sparsest of the three by design, and saying why once
             here is what stops an empty column reading as a broken one. */}
         {intentMissing > 0

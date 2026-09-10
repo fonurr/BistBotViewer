@@ -168,6 +168,28 @@ export function firstTradeInstant(
   return nextTradingDay === null ? null : istanbulMinuteAt(nextTradingDay, OPENING_MATCH_MINUTE);
 }
 
+export interface ContinuousTrading {
+  /** The continuous open, 10:00. */
+  open: number;
+  /** The close: 18:00, or 12:30 on a half day. */
+  close: number;
+}
+
+/**
+ * Continuous trading on one day, as the instants of its two edges, or null when the exchange is
+ * shut. Whether an edge itself counts is the caller's call.
+ */
+export function continuousTradingOn(
+  day: string,
+  holidays: HolidayCalendar,
+): ContinuousTrading | null {
+  if (!isTradingDay(day, holidays)) return null;
+  return {
+    open: istanbulMinuteAt(day, CONTINUOUS_OPEN_MINUTE),
+    close: istanbulMinuteAt(day, closeMinuteOn(day, holidays)),
+  };
+}
+
 /**
  * The price window of one day, or null when the exchange is shut. A half day needs no branch of
  * its own: it only moves the close, and both boundaries are read off it.
