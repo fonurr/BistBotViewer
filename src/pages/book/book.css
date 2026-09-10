@@ -60,12 +60,23 @@
   background: transparent;
 }
 
-.book-time-value {
+.book-time-input {
+  width: calc(5ch + var(--space-4));
+  min-height: var(--space-8);
+  height: var(--space-8);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
   color: var(--color-text);
+  font-size: var(--font-meta);
   font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 
-.book-time-slider input {
+.book-time-input[aria-invalid='true'] {
+  border-color: var(--st-dead);
+}
+
+.book-time-slider input[type='range'] {
   width: 100%;
   height: var(--space-8);
   margin: 0;

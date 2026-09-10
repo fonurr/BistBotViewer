@@ -28,17 +28,25 @@ test.beforeEach(async ({ page, safeBridge }) => {
           order('AKBNK', stamp('09:30:00.000'), 101),
           makeActiveOrder({
             ...order('AKBNK', stamp('10:02:59.999'), 102),
+            scheduledTime: stamp('01:25:59.999'),
             clientOrderId: 'time-AKBNK-sell',
             matriksOrderId: 'time-AKBNK-sell-exchange',
             parentClientOrderId: 'time-AKBNK-buy',
             direction: 'sell',
           }),
-          order('THYAO', stamp('10:00:00.000'), 103),
+          makeActiveOrder({
+            ...order('THYAO', stamp('10:00:00.000'), 103),
+            scheduledTime: stamp('00:15:00.000'),
+          }),
           makeActiveOrder({
             ...order('GARAN', stamp('10:03:00.000'), 104),
+            scheduledTime: stamp('01:26:00.000'),
             sentTime: stamp('10:01:00.000'),
           }),
-          order('ISCTR', stamp('09:59:59.999'), 105),
+          makeActiveOrder({
+            ...order('ISCTR', stamp('09:59:59.999'), 105),
+            scheduledTime: stamp('00:14:59.999'),
+          }),
         ],
         canceledOrders: [],
         positions: [],
@@ -142,7 +150,7 @@ test('uses the requested clock steps and allows equal endpoints without crossing
   const end = popover.getByRole('slider', { name: 'End time', exact: true });
 
   await expectTime(start, 0);
-  await expectTime(end, 1440);
+  await expectTime(end, 1439);
   await start.press('ArrowRight');
   await expectTime(start, 60);
   await advance(start, 'ArrowRight', 8);
@@ -163,7 +171,13 @@ test('uses the requested clock steps and allows equal endpoints without crossing
   await end.press('ArrowRight');
   await expectTime(end, 1200);
   await end.press('End');
-  await expectTime(end, 1440);
+  await expectTime(end, 1439);
+  await end.press('ArrowLeft');
+  await expectTime(end, 1380);
+  await end.press('ArrowRight');
+  await expectTime(end, 1439);
+  await end.press('ArrowRight');
+  await expectTime(end, 1439);
 
   await start.press('Home');
   await end.press('Home');
@@ -223,8 +237,71 @@ test('range buttons update the kept chains without changing the chosen clock', a
   }
 });
 
+test('edits exact custom minutes and keeps matching chains through the entire end minute', async ({
+  page,
+}) => {
+  const control = page.locator('.book-time-filter');
+  await control.getByRole('button', { name: 'any time', exact: true }).click();
+  const popover = control.getByRole('dialog');
+  const startInput = popover.getByRole('textbox', { name: 'Start time', exact: true });
+  const endInput = popover.getByRole('textbox', { name: 'End time', exact: true });
+  const start = popover.getByRole('slider', { name: 'Start time', exact: true });
+  const end = popover.getByRole('slider', { name: 'End time', exact: true });
+
+  await expect(startInput).toBeDisabled();
+  await expect(endInput).toBeDisabled();
+  await popover.getByRole('checkbox', { name: 'filter', exact: true }).check();
+  await popover.getByRole('button', { name: 'none', exact: true }).click();
+  await popover.getByRole('checkbox', { name: 'sched', exact: true }).check();
+  await startInput.click();
+  await expectSelectedTime(startInput);
+  await startInput.pressSequentially('001');
+  await expect(startInput).toHaveValue('00:1');
+  await expect(start).toHaveAttribute('aria-valuetext', '00:00');
+  await startInput.pressSequentially('5abc9');
+  await expect(startInput).toHaveValue('00:15');
+  await expect(start).toHaveAttribute('aria-valuetext', '00:15');
+  await endInput.click();
+  await expectSelectedTime(endInput);
+  await endInput.pressSequentially('0125');
+  await expect(endInput).toHaveValue('01:25');
+  await expect(end).toHaveAttribute('aria-valuetext', '01:25');
+
+  await expect(page.getByRole('article')).toHaveCount(2);
+  await expect(page.getByRole('article', { name: 'THYAO chain', exact: true })).toBeVisible();
+  const retainedChain = page.getByRole('article', { name: 'AKBNK chain', exact: true });
+  await expect(retainedChain.locator('.book-row')).toHaveCount(2);
+  await expect(page.getByRole('article', { name: 'GARAN chain', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('article', { name: 'ISCTR chain', exact: true })).toHaveCount(0);
+
+  await startInput.click();
+  await expectSelectedTime(startInput);
+  await startInput.click();
+  await expect
+    .poll(() =>
+      startInput.evaluate((input: HTMLInputElement) => input.selectionStart === input.selectionEnd),
+    )
+    .toBe(true);
+  await popover.getByRole('button', { name: 'Start time one step later', exact: true }).click();
+  await expect(startInput).toHaveValue('01:00');
+  await expect(page.getByRole('article')).toHaveCount(1);
+  await expect(retainedChain).toBeVisible();
+  await end.press('ArrowLeft');
+  await expect(startInput).toHaveValue('01:00');
+  await expect(endInput).toHaveValue('01:00');
+  await expect(page.getByText('No chains match this filter.')).toBeVisible();
+});
+
 async function advance(slider: Locator, direction: 'ArrowLeft' | 'ArrowRight', count: number) {
   for (let index = 0; index < count; index += 1) await slider.press(direction);
+}
+
+async function expectSelectedTime(input: Locator) {
+  await expect
+    .poll(() =>
+      input.evaluate((element: HTMLInputElement) => [element.selectionStart, element.selectionEnd]),
+    )
+    .toEqual([0, 5]);
 }
 
 async function expectTime(slider: Locator, minute: number) {

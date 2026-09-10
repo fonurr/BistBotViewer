@@ -268,15 +268,27 @@ keeps stamps through `10:02:59.999`.
 
 `domain/bookTimeFilter.ts` owns both matching and the slider stops: hourly from `00:00` through
 `09:00`, then `09:50`, `09:55`, every minute through `18:05`, every five minutes through `19:00`,
-and hourly through the following midnight, shown as `00:00 +1`. That last stop can match the
-midnight minute at the end of a range. Both sliders use the same scale and clamp against the
-other endpoint, so they may meet but never cross. Equal endpoints select that entire minute.
+and hourly through `23:00`, followed by the final stop at `23:59`. That upper limit includes the
+whole final minute without wrapping to midnight. Both sliders use the same scale and clamp
+against the other endpoint, so they may meet but never cross. Equal endpoints select that entire
+minute.
+
+The clock beside each slider is editable. Focus selects the whole value; four digits acquire
+their colon automatically, and any minute can be entered, including one outside the usual slider
+stops (`0125` becomes `01:25`). A complete valid entry applies immediately. Hours must be `00–23`
+and minutes `00–60`; minute `60` carries into the next hour (`0160` becomes `02:00`), while `2360`
+is refused because it exceeds `23:59`. Incomplete or invalid drafts leave the applied range alone
+and return to the last valid value on blur or Enter. A typed start after the end moves the end to
+the same minute, and a typed end before the start moves the start with it. Manually entered
+endpoints join the shared slider stops while selected, so neither slider nor button rounds them
+away merely by rendering.
+
 Each slider has its own `− / +` buttons, and `‹ / ›` move both endpoints together. Like the batch
 range, the buttons step through the allowed stops rather than adding a fixed number of minutes:
 moving `09:00 → 09:55` one step later produces `09:50 → 09:56`. A step is disabled while the
 filter is off, at the day bounds, or when an individual endpoint would cross the other. On equal
 endpoints, the start's `+` and end's `−` are disabled; the whole-range buttons can still move that
-single minute. A whole-range move must fit in full and never shrinks against midnight.
+single minute. A whole-range move must fit in full and never shrinks against a day boundary.
 The filter participates in active chips, empty-result recovery, and clearing the other filters
 when focusing positions without a closing order.
 

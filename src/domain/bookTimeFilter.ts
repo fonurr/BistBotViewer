@@ -20,19 +20,41 @@ export const BOOK_TIME_STEPS: readonly number[] = (() => {
   minutes.push(590);
   for (let minute = 595; minute <= 1085; minute++) minutes.push(minute);
   for (let minute = 1090; minute <= 1140; minute += 5) minutes.push(minute);
-  for (let minute = 1200; minute <= 1440; minute += 60) minutes.push(minute);
+  for (let minute = 1200; minute <= 1380; minute += 60) minutes.push(minute);
+  minutes.push(1439);
   return minutes;
 })();
 
 export function formatBookTime(minute: number): string {
-  if (minute === 1440) return '00:00 +1';
   const hour = Math.floor(minute / 60);
   return `${String(hour).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
+}
+
+function isBookMinute(minute: number): boolean {
+  return Number.isInteger(minute) && minute >= 0 && minute <= 1439;
+}
+
+/** Four digits may name any minute; minute 60 carries into the next hour. */
+export function parseBookTimeInput(digits: string): number | null {
+  if (digits.length !== 4 || !/^\d{4}$/.test(digits)) return null;
+  const hour = Number(digits.slice(0, 2));
+  const minute = Number(digits.slice(2));
+  const clockMinute = hour * 60 + minute;
+  return hour <= 23 && minute <= 60 && isBookMinute(clockMinute) ? clockMinute : null;
 }
 
 export interface BookTimeRange {
   from: number;
   to: number;
+}
+
+/** Keep manually entered minutes on the same scale for both sliders and buttons. */
+export function bookTimeSliderSteps(range: BookTimeRange): readonly number[] {
+  if (!isBookMinute(range.from) || !isBookMinute(range.to)) return BOOK_TIME_STEPS;
+  if (BOOK_TIME_STEPS.includes(range.from) && BOOK_TIME_STEPS.includes(range.to)) {
+    return BOOK_TIME_STEPS;
+  }
+  return [...new Set([...BOOK_TIME_STEPS, range.from, range.to])].sort((a, b) => a - b);
 }
 
 export type BookTimeRangeEdge = 'from' | 'to' | 'both';
@@ -47,19 +69,21 @@ export function stepBookTimeRange(
   edge: BookTimeRangeEdge,
   by: 1 | -1,
 ): BookTimeRange | null {
-  const start = BOOK_TIME_STEPS.indexOf(range.from);
-  const end = BOOK_TIME_STEPS.indexOf(range.to);
+  if (!isBookMinute(range.from) || !isBookMinute(range.to)) return null;
+  const steps = bookTimeSliderSteps(range);
+  const start = steps.indexOf(range.from);
+  const end = steps.indexOf(range.to);
   if (start < 0 || end < 0 || start > end) return null;
   const from = edge === 'to' ? start : start + by;
   const to = edge === 'from' ? end : end + by;
-  if (from < 0 || to >= BOOK_TIME_STEPS.length || from > to) return null;
-  return { from: BOOK_TIME_STEPS[from]!, to: BOOK_TIME_STEPS[to]! };
+  if (from < 0 || to >= steps.length || from > to) return null;
+  return { from: steps[from]!, to: steps[to]! };
 }
 
 /**
  * Select whole chains by any chosen clock on any leg, including hidden canceled
  * legs. Dates stay the batch filter's concern. Both bounds include their whole
- * minute; the final midnight is also allowed to match the next day's 00:00.
+ * minute, including the final 23:59 minute without wrapping into midnight.
  */
 export function matchesBookTime(
   chain: BookChain,
@@ -67,7 +91,7 @@ export function matchesBookTime(
   from: number,
   to: number,
 ): boolean {
-  if (!Number.isFinite(from) || !Number.isFinite(to) || from > to) return false;
+  if (!isBookMinute(from) || !isBookMinute(to) || from > to) return false;
   return chain.rows.some((row) => {
     for (const field of fields) {
       const timestamp = row[field];
@@ -75,7 +99,6 @@ export function matchesBookTime(
       const [hour, minute] = formatTime(timestamp).split(':').map(Number);
       const clockMinute = hour! * 60 + minute!;
       if (clockMinute >= from && clockMinute <= to) return true;
-      if (clockMinute === 0 && to === 1440) return true;
     }
     return false;
   });

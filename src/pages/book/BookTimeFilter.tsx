@@ -4,12 +4,13 @@ import { useId } from 'react';
 import { FilterPopover } from '../../components/FilterPopover';
 import {
   BOOK_TIME_FIELDS,
-  BOOK_TIME_STEPS,
+  bookTimeSliderSteps,
   formatBookTime,
   stepBookTimeRange,
   type BookTimeField,
   type BookTimeRangeEdge,
 } from '../../domain/bookTimeFilter';
+import { BookTimeInput } from './BookTimeInput';
 import type { BookFilterState } from './types';
 
 interface BookTimeFilterProps {
@@ -22,6 +23,7 @@ interface BookTimeFilterProps {
 export function BookTimeFilter({ filters, onChange, open, setOpen }: BookTimeFilterProps) {
   const off = !filters.timeFilter;
   const range = { from: filters.timeFrom, to: filters.timeTo };
+  const sliderSteps = bookTimeSliderSteps(range);
   const nextStep = (edge: BookTimeRangeEdge, by: 1 | -1) =>
     off ? null : stepBookTimeRange(range, edge, by);
   const step = (edge: BookTimeRangeEdge, by: 1 | -1) => {
@@ -120,10 +122,14 @@ export function BookTimeFilter({ filters, onChange, open, setOpen }: BookTimeFil
         <TimeSlider
           label="Start time"
           minute={filters.timeFrom}
+          steps={sliderSteps}
           disabled={off}
           earlierDisabled={nextStep('from', -1) === null}
           laterDisabled={nextStep('from', 1) === null}
           onStep={(by) => step('from', by)}
+          onEdit={(minute) =>
+            onChange({ ...filters, timeFrom: minute, timeTo: Math.max(minute, filters.timeTo) })
+          }
           onChange={(minute) =>
             onChange({ ...filters, timeFrom: Math.min(minute, filters.timeTo) })
           }
@@ -131,10 +137,14 @@ export function BookTimeFilter({ filters, onChange, open, setOpen }: BookTimeFil
         <TimeSlider
           label="End time"
           minute={filters.timeTo}
+          steps={sliderSteps}
           disabled={off}
           earlierDisabled={nextStep('to', -1) === null}
           laterDisabled={nextStep('to', 1) === null}
           onStep={(by) => step('to', by)}
+          onEdit={(minute) =>
+            onChange({ ...filters, timeFrom: Math.min(minute, filters.timeFrom), timeTo: minute })
+          }
           onChange={(minute) =>
             onChange({ ...filters, timeTo: Math.max(minute, filters.timeFrom) })
           }
@@ -142,7 +152,7 @@ export function BookTimeFilter({ filters, onChange, open, setOpen }: BookTimeFil
       </div>
       <p className="filter-help">
         Istanbul time. Includes the entire end minute. Any selected time on any order keeps the
-        whole chain. +1 is midnight the next day.
+        whole chain.
       </p>
     </FilterPopover>
   );
@@ -151,18 +161,22 @@ export function BookTimeFilter({ filters, onChange, open, setOpen }: BookTimeFil
 function TimeSlider({
   label,
   minute,
+  steps,
   disabled,
   earlierDisabled,
   laterDisabled,
   onStep,
+  onEdit,
   onChange,
 }: {
   label: string;
   minute: number;
+  steps: readonly number[];
   disabled: boolean;
   earlierDisabled: boolean;
   laterDisabled: boolean;
   onStep: (by: 1 | -1) => void;
+  onEdit: (minute: number) => void;
   onChange: (minute: number) => void;
 }) {
   const id = useId();
@@ -180,7 +194,13 @@ function TimeSlider({
           >
             <Minus size={12} weight="bold" aria-hidden="true" />
           </button>
-          <span className="book-time-value">{formatBookTime(minute)}</span>
+          <BookTimeInput
+            id={id}
+            label={label}
+            minute={minute}
+            disabled={disabled}
+            onChange={onEdit}
+          />
           <button
             type="button"
             className="btn btn-secondary book-time-step"
@@ -193,16 +213,16 @@ function TimeSlider({
         </div>
       </div>
       <input
-        id={id}
+        id={`${id}-slider`}
         type="range"
         aria-label={label}
         aria-valuetext={formatBookTime(minute)}
         min={0}
-        max={BOOK_TIME_STEPS.length - 1}
+        max={steps.length - 1}
         step={1}
-        value={BOOK_TIME_STEPS.indexOf(minute)}
+        value={steps.indexOf(minute)}
         disabled={disabled}
-        onChange={(event) => onChange(BOOK_TIME_STEPS[Number(event.currentTarget.value)]!)}
+        onChange={(event) => onChange(steps[Number(event.currentTarget.value)]!)}
       />
     </div>
   );

@@ -9,8 +9,10 @@ import {
 import {
   BOOK_TIME_FIELDS,
   BOOK_TIME_STEPS,
+  bookTimeSliderSteps,
   formatBookTime,
   matchesBookTime,
+  parseBookTimeInput,
   stepBookTimeRange,
   type BookTimeField,
 } from './bookTimeFilter';
@@ -51,16 +53,62 @@ describe('the Book time slider stops', () => {
     );
     expect(BOOK_TIME_STEPS.filter((minute) => minute >= 1085)).toEqual([
       1085, 1090, 1095, 1100, 1105, 1110, 1115, 1120, 1125, 1130, 1135, 1140, 1200, 1260, 1320,
-      1380, 1440,
+      1380, 1439,
     ]);
     expect(new Set(BOOK_TIME_STEPS).size).toBe(BOOK_TIME_STEPS.length);
   });
 
-  it('distinguishes the two midnight endpoints', () => {
+  it('formats each endpoint as a padded time in the same day', () => {
     expect(formatBookTime(0)).toBe('00:00');
+    expect(formatBookTime(85)).toBe('01:25');
     expect(formatBookTime(590)).toBe('09:50');
     expect(formatBookTime(1085)).toBe('18:05');
-    expect(formatBookTime(1440)).toBe('00:00 +1');
+    expect(formatBookTime(1439)).toBe('23:59');
+  });
+
+  it('adds precise manual endpoints to the shared scale without duplicates', () => {
+    const steps = bookTimeSliderSteps({ from: 85, to: 95 });
+    expect(steps.filter((minute) => minute >= 60 && minute <= 120)).toEqual([60, 85, 95, 120]);
+    expect(steps).toHaveLength(BOOK_TIME_STEPS.length + 2);
+    expect(bookTimeSliderSteps({ from: 85, to: 85 })).toHaveLength(BOOK_TIME_STEPS.length + 1);
+    expect(bookTimeSliderSteps({ from: 60, to: 1439 })).toBe(BOOK_TIME_STEPS);
+  });
+
+  it('keeps invalid endpoints out of the slider scale', () => {
+    expect(bookTimeSliderSteps({ from: -1, to: 1439 })).toBe(BOOK_TIME_STEPS);
+    expect(bookTimeSliderSteps({ from: 0, to: 1440 })).toBe(BOOK_TIME_STEPS);
+    expect(bookTimeSliderSteps({ from: 85.5, to: 1439 })).toBe(BOOK_TIME_STEPS);
+  });
+});
+
+describe('manual Book time input', () => {
+  it.each([
+    ['0000', 0],
+    ['0125', 85],
+    ['0925', 565],
+    ['2359', 1439],
+    ['0060', 60],
+    ['0160', 120],
+    ['2260', 1380],
+  ])('accepts %s as minute %s without snapping to a slider stop', (digits, expected) => {
+    expect(parseBookTimeInput(digits)).toBe(expected);
+  });
+
+  it.each([
+    '',
+    '125',
+    '00125',
+    '01:25',
+    '01a5',
+    ' 125',
+    '-125',
+    '0125\n',
+    '2400',
+    '2500',
+    '0161',
+    '2360',
+  ])('rejects incomplete, nonnumeric, or out-of-day input %s', (digits) => {
+    expect(parseBookTimeInput(digits)).toBeNull();
   });
 });
 
@@ -92,19 +140,44 @@ describe('time range steps', () => {
 
   it('refuses out-of-day moves without shrinking the range', () => {
     expect(stepBookTimeRange({ from: 0, to: 595 }, 'both', -1)).toBeNull();
-    expect(stepBookTimeRange({ from: 1085, to: 1440 }, 'both', 1)).toBeNull();
-    expect(stepBookTimeRange({ from: 0, to: 1440 }, 'from', -1)).toBeNull();
-    expect(stepBookTimeRange({ from: 0, to: 1440 }, 'to', 1)).toBeNull();
+    expect(stepBookTimeRange({ from: 1085, to: 1439 }, 'both', 1)).toBeNull();
+    expect(stepBookTimeRange({ from: 0, to: 1439 }, 'from', -1)).toBeNull();
+    expect(stepBookTimeRange({ from: 0, to: 1439 }, 'to', 1)).toBeNull();
     expect(stepBookTimeRange({ from: 1380, to: 1380 }, 'both', 1)).toEqual({
-      from: 1440,
-      to: 1440,
+      from: 1439,
+      to: 1439,
     });
-    expect(stepBookTimeRange({ from: 1440, to: 1440 }, 'both', 1)).toBeNull();
+    expect(stepBookTimeRange({ from: 1439, to: 1439 }, 'both', 1)).toBeNull();
+    expect(stepBookTimeRange({ from: 1439, to: 1439 }, 'both', -1)).toEqual({
+      from: 1380,
+      to: 1380,
+    });
   });
 
-  it('refuses endpoints outside the allowed stops and inverted ranges', () => {
-    expect(stepBookTimeRange({ from: 550, to: 595 }, 'both', 1)).toBeNull();
-    expect(stepBookTimeRange({ from: 540, to: 585 }, 'both', 1)).toBeNull();
+  it('steps manual times to their adjacent shared stops and permits endpoints to meet', () => {
+    const range = { from: 85, to: 95 };
+    expect(stepBookTimeRange(range, 'from', -1)).toEqual({ from: 60, to: 95 });
+    expect(stepBookTimeRange(range, 'from', 1)).toEqual({ from: 95, to: 95 });
+    expect(stepBookTimeRange(range, 'to', -1)).toEqual({ from: 85, to: 85 });
+    expect(stepBookTimeRange(range, 'to', 1)).toEqual({ from: 85, to: 120 });
+    expect(stepBookTimeRange(range, 'both', 1)).toEqual({ from: 95, to: 120 });
+    expect(stepBookTimeRange(range, 'both', -1)).toEqual({ from: 60, to: 85 });
+  });
+
+  it('preserves collapsed ranges at manual times and disables individual crossings', () => {
+    const range = { from: 85, to: 85 };
+    expect(stepBookTimeRange(range, 'from', 1)).toBeNull();
+    expect(stepBookTimeRange(range, 'to', -1)).toBeNull();
+    expect(stepBookTimeRange(range, 'both', -1)).toEqual({ from: 60, to: 60 });
+    expect(stepBookTimeRange(range, 'both', 1)).toEqual({ from: 120, to: 120 });
+  });
+
+  it('refuses invalid minutes and inverted ranges', () => {
+    expect(stepBookTimeRange({ from: -1, to: 595 }, 'both', 1)).toBeNull();
+    expect(stepBookTimeRange({ from: 0, to: 1440 }, 'both', 1)).toBeNull();
+    expect(stepBookTimeRange({ from: 85.5, to: 595 }, 'both', 1)).toBeNull();
+    expect(stepBookTimeRange({ from: NaN, to: 595 }, 'both', 1)).toBeNull();
+    expect(stepBookTimeRange({ from: 0, to: Infinity }, 'both', 1)).toBeNull();
     expect(stepBookTimeRange({ from: 595, to: 590 }, 'both', -1)).toBeNull();
   });
 });
@@ -144,7 +217,7 @@ describe('whole-chain time matching', () => {
     );
     expect(matchesBookTime(chain, new Set(['orderTime', 'finalSeenTime']), 600, 602)).toBe(true);
     expect(matchesBookTime(chain, new Set(['orderTime', 'sentTime']), 600, 602)).toBe(false);
-    expect(matchesBookTime(chain, new Set(), 0, 1440)).toBe(false);
+    expect(matchesBookTime(chain, new Set(), 0, 1439)).toBe(false);
   });
 
   it('ignores missing, invalid and nonfinite timestamps without interpreting them as midnight', () => {
@@ -153,21 +226,30 @@ describe('whole-chain time matching', () => {
       { orderTime: NaN, sentTime: Infinity, createdTime: -Infinity },
       { finalSeenTime: 9e15 },
     );
-    expect(matchesBookTime(chain, allFields, 0, 1440)).toBe(false);
+    expect(matchesBookTime(chain, allFields, 0, 1439)).toBe(false);
   });
 
-  it('includes the next midnight minute at the last stop, without wrapping other times', () => {
+  it('includes the final 23:59 minute without wrapping into midnight', () => {
     const midnight = withClocks({ orderTime: stamp('00:00:59.999', '2026-09-11') });
     expect(matchesBookTime(midnight, allFields, 0, 0)).toBe(true);
-    expect(matchesBookTime(midnight, allFields, 1380, 1440)).toBe(true);
-    expect(matchesBookTime(midnight, allFields, 1440, 1440)).toBe(true);
+    expect(matchesBookTime(midnight, allFields, 1380, 1439)).toBe(false);
+    expect(matchesBookTime(midnight, allFields, 1439, 1439)).toBe(false);
     expect(matchesBookTime(midnight, allFields, 1380, 1380)).toBe(false);
     expect(
-      matchesBookTime(withClocks({ orderTime: stamp('00:01:00') }), allFields, 1380, 1440),
+      matchesBookTime(withClocks({ orderTime: stamp('00:01:00') }), allFields, 1380, 1439),
     ).toBe(false);
     expect(
-      matchesBookTime(withClocks({ orderTime: stamp('23:59:59.999') }), allFields, 1380, 1440),
+      matchesBookTime(withClocks({ orderTime: stamp('23:59:59.999') }), allFields, 1439, 1439),
     ).toBe(true);
+  });
+
+  it('matches precise manually entered minutes outside the base slider stops', () => {
+    expect(
+      matchesBookTime(withClocks({ orderTime: stamp('01:25:59.999') }), allFields, 85, 85),
+    ).toBe(true);
+    expect(matchesBookTime(withClocks({ orderTime: stamp('01:26:00') }), allFields, 85, 85)).toBe(
+      false,
+    );
   });
 
   it('rejects inverted and invalid bounds', () => {
@@ -175,6 +257,9 @@ describe('whole-chain time matching', () => {
     expect(matchesBookTime(chain, allFields, 602, 600)).toBe(false);
     expect(matchesBookTime(chain, allFields, NaN, 600)).toBe(false);
     expect(matchesBookTime(chain, allFields, 600, Infinity)).toBe(false);
+    expect(matchesBookTime(chain, allFields, -1, 1439)).toBe(false);
+    expect(matchesBookTime(chain, allFields, 0, 1440)).toBe(false);
+    expect(matchesBookTime(chain, allFields, 0, 602.5)).toBe(false);
   });
 
   const rows: readonly BookChainRow[] = buildBookChains({

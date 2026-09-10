@@ -57,7 +57,7 @@ export interface BookFilterState {
   /** Any chosen clock on any chain leg can satisfy this daily Istanbul range. */
   timeFilter: boolean;
   timeFields: ReadonlySet<BookTimeField>;
-  /** Inclusive whole-minute bounds; 1440 is the following midnight. */
+  /** Inclusive whole-minute bounds, from 00:00 (0) through 23:59 (1439). */
   timeFrom: number;
   timeTo: number;
   batchFrom: string | null;
@@ -85,7 +85,7 @@ export const defaultBookFilters: BookFilterState = {
   timeFilter: false,
   timeFields: new Set(BOOK_TIME_FIELDS.map(({ key }) => key)),
   timeFrom: 0,
-  timeTo: 1440,
+  timeTo: 1439,
   /* Null is not "every batch" but the moment before one has loaded;
      `DateRangeFilter` resolves it to every loaded batch as soon as one exists. */
   batchFrom: null,
