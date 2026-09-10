@@ -17,6 +17,9 @@ import { mkdirSync, renameSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
 const SCHEMA_VERSION = 1;
+/** Ten tries a quarter-second apart: long enough for a bounded read to finish. */
+const SWAP_ATTEMPTS = 10;
+const SWAP_RETRY_MS = 250;
 const SYMBOL_PATTERN = /^[A-Z0-9]{1,16}$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -330,8 +333,23 @@ function writeCache({ cachePath, rows, ranges, snapshotFor }) {
     database.close();
   }
 
-  // Atomic swap: a crashed run never leaves a half-built cache in place.
-  renameSync(temporaryPath, cachePath);
+  /*
+   * Atomic swap, so a crashed run never leaves a half-built cache in place.
+   * Windows refuses a rename while any process holds the target open, and the
+   * viewer that runs this scheduler is also the one serving reads from it — a
+   * bounded read lasts milliseconds, but 23:00 is not a quiet hour by contract.
+   * A short retry covers the overlap; anything longer is a real lock, and the
+   * scheduler's own hourly retry is the right place to wait it out.
+   */
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      renameSync(temporaryPath, cachePath);
+      return;
+    } catch (error) {
+      if (attempt >= SWAP_ATTEMPTS - 1) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, SWAP_RETRY_MS);
+    }
+  }
 }
 
 async function run(options) {

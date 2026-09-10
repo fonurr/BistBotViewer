@@ -1,14 +1,16 @@
 import { z } from 'zod';
 
 import { intentPriceKey } from '../domain/intentPrice';
-import { intentBarSchema, snapshotStatusSchema, type IntentBarKey } from './types';
+import { intentBarSchema, snapshotStatusSchema, type IntentBar, type IntentBarKey } from './types';
 
 const bridgeBase = '/bridge/hist';
 
 /**
- * The bridge refuses a larger batch. The Book asks for one key per drawn row and
- * Performance for two per round trip, so this is far above either page's needs;
- * it exists so a runaway selector cannot turn into an unbounded read.
+ * The most keys one bounded read may carry. It is a bound on a single request,
+ * not on what a page may want: the Book asks for every drawn row and Performance
+ * for both legs of every round trip, and a year of batches passes this easily —
+ * 1.129 keys on the current history alone. So `getIntentBars` splits rather than
+ * letting the bridge refuse, which would empty the column instead of one chunk.
  */
 export const MAX_INTENT_KEYS = 1_000;
 
@@ -65,13 +67,18 @@ export const histApi = {
         ]),
       ).values(),
     ];
-    if (unique.length === 0) return [];
-    const response = await fetch(`${bridgeBase}/bars/intent`, {
-      method: 'POST',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ keys: unique }),
-      signal: AbortSignal.timeout(15_000),
-    });
-    return parseResponse(response, z.array(intentBarSchema));
+    const bars: IntentBar[] = [];
+    // Sequential, not parallel: the worker bounds its own pending reads, and a
+    // historical minute is worth waiting a beat for.
+    for (let from = 0; from < unique.length; from += MAX_INTENT_KEYS) {
+      const response = await fetch(`${bridgeBase}/bars/intent`, {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keys: unique.slice(from, from + MAX_INTENT_KEYS) }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      bars.push(...(await parseResponse(response, z.array(intentBarSchema))));
+    }
+    return bars;
   },
 };

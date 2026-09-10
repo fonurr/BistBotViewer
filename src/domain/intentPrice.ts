@@ -39,7 +39,9 @@ export function intentPriceKey(symbol: string, ts: number): string {
  * - any other exact minute is the **previous** minute's close, because the minute
  *   the instant opens has not traded yet at its first tick;
  * - anything carrying seconds is not a minute the tape can be read at, so it
- *   yields nothing rather than a neighbouring approximation.
+ *   yields nothing rather than a neighbouring approximation. That refuses fewer
+ *   rows than it sounds like: `firstTradeInstant` folds every off-hours and
+ *   pre-open stamp onto an auction first, so most instants arrive whole.
  */
 export interface IntentBarLookup {
   ts: number;

@@ -149,14 +149,16 @@ captured price was never sent) and `@sent/slip` shows `(averagePrice − marketP
 — **drawn for a market order too**, since that is the one slippage a market order really has. The
 sign is the direction the price moved, never whether it helped; none of the three is ever inked.
 
-`@intent/slip` is the odd one out, and the sparsest by design. Its price is not stored anywhere by
+`@intent/slip` is the odd one out: its price is not stored anywhere by
 MatriksOrder: it is read from `../BistData`'s minute history through `src/histApi/`, whose nightly
 snapshot is the only thing that ever opens those DuckDB files. `domain/intentPrice.ts` decides which
 minute answers an instant — an auction print reads its own minute, the continuous open reads the
 10:00 bar's `open`, any other whole minute reads the **previous** minute's `close`, and an instant
-carrying seconds prices nothing rather than reaching for a neighbour. Since `firstTradeInstant`
-hands back the raw stamp during trading hours, and a `createdTime` never lands on a whole minute,
-in practice this column fills on **scheduled orders and off-hours-written ones**. Two further rules
+carrying seconds prices nothing rather than reaching for a neighbour. That last rule sounds
+narrower than it is: `firstTradeInstant` folds every off-hours and pre-open stamp forward onto an
+auction, so the seconds are gone by the time the lookup sees them and the column fills for most
+rows — 1.738 of 2.081 on the current history, landing on 09:55, 18:05 and 10:00 far more often
+than on a mid-session minute. Two further rules
 leave the price on screen but withhold the slip, and drop the row from the strip average with it:
 an **auction print** is a single match rather than a price the order could have been worked
 against, and an order that **registered more than ten seconds after** its instant was not competing
@@ -172,9 +174,14 @@ built, and nothing at all otherwise. The cells themselves stay empty either way;
 is empty here as everywhere.
 
 ⚠️ **Expect the newest batch to be the blank one.** BistData backfills, so its minute history
-trails the live sessions by a day or more, and the Book opens on the newest batch. The column
-fills as you walk back through the batches, not on the one being worked — which is the opposite
-of where a reader looks first, and the reason the strip says how far the history got.
+trails the live sessions, and the Book opens on the newest batch. The column fills as you walk
+back through the batches, not on the one being worked — which is the opposite of where a reader
+looks first, and the reason the strip says how far the history got.
+
+The read is **chunked** for the same reason it is bounded: `BookPage` asks for every row the
+filters kept, not only the batch that happens to be open, and a year of them passes the bridge's
+per-request cap. `histApi.getIntentBars` splits at that cap — one refusal would otherwise empty
+every cell on the page rather than one chunk of them.
 `marketPrice`
 is an **observation**, not an intent and not a fill; it is written once at the order's birth and
 never revised (an edit leaves it alone), and carried unchanged onto whatever the order becomes,

@@ -22,7 +22,7 @@ estimates.
   per reference (`created`, `intent`, `sent`); each mixes buy and sell directions, so it sits near
   zero. The **limit/market split the reference shows is not derivable**: ClosedTrades stores prices
   but not order type, and the slippage section states that once.
-- **`@intent` is deliberately the sparsest of the three.** Its price is not a stored field at all:
+- **`@intent` is the only one whose price is not a stored field.**
   each leg's `firstTradeInstant` is priced from `../BistData`'s minute history through
   `src/histApi/`, whose nightly snapshot is the only thing that opens those DuckDB files. The page
   builds the report twice for it, exactly as it does for the closing bars — once to learn which
