@@ -465,9 +465,6 @@ export function BookPage() {
           <button type="button" className="btn btn-ghost" onClick={clearFilters}>
             clear all
           </button>
-          <span className="muted">
-            the strip and chain counts follow the filter; the red count does not
-          </span>
         </div>
       ) : null}
       {snapshotAvailable && !genuineEmpty ? (
