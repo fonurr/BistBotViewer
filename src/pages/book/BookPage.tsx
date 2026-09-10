@@ -13,6 +13,7 @@ import { Modal } from '../../components/Modal';
 import { ResultList, type ActionResult } from '../../components/ResultList';
 import { accountIdentityKey } from '../../domain/accounts';
 import { formatBookTime, matchesBookTime } from '../../domain/bookTimeFilter';
+import { bookAllocation } from '../../domain/budget';
 import { holidayCalendar, previousTradingDate, sessionBatchDate } from '../../domain/calendar';
 import { intentBarLookup, intentPriceReference, intentSlipAllowed } from '../../domain/intentPrice';
 import { useIntentPrices } from '../../app/useIntentPrices';
@@ -28,7 +29,6 @@ import {
   toIstanbulDateKey,
 } from '../../domain/format';
 import {
-  committedAmount,
   deriveFilledPnlState,
   intentSlippagePercentage,
   marketSlippagePercentage,
@@ -162,8 +162,8 @@ export function BookPage() {
     [visibleChains],
   );
   const summary = useMemo(
-    () => summarize(visibleChains, priceFeed.prices, priceFeed.trustworthy, budgets.data, botById),
-    [botById, budgets.data, priceFeed.prices, priceFeed.trustworthy, visibleChains],
+    () => summarize(visibleChains, priceFeed.prices, priceFeed.trustworthy, botById),
+    [botById, priceFeed.prices, priceFeed.trustworthy, visibleChains],
   );
 
   // The `today` column reads each chain's P&L from the start of today's Istanbul calendar
@@ -875,10 +875,6 @@ function summarize(
   chains: readonly BookChain[],
   prices: ReturnType<typeof useFleetPrices>['prices'],
   pricesTrustworthy: boolean,
-  budgets: ReadonlyMap<
-    string,
-    ReturnType<typeof useBotBudgets>['data'] extends Map<string, infer B> ? B : never
-  >,
   botById: ReadonlyMap<string, ReturnType<typeof useBookData>['bots'][number]>,
 ) {
   const trades = new Map(
@@ -944,15 +940,6 @@ function summarize(
       }),
     )
     .filter((value): value is number => value !== null);
-  const visibleBots = new Set(chains.map((chain) => chain.botId));
-  const completeVisibleBots = [...visibleBots].filter((botId) => botById.get(botId)?.complete);
-  const botRecordsKnown = [...visibleBots].every((botId) => botById.has(botId));
-  const committedKnown =
-    botRecordsKnown && completeVisibleBots.every((botId) => budgets.has(botId));
-  const committed = committedKnown
-    ? completeVisibleBots.reduce((sum, botId) => sum + committedAmount(budgets.get(botId)!), 0)
-    : null;
-  const committedCompleteOnly = [...visibleBots].some((botId) => !botById.get(botId)?.complete);
   return {
     chains: chains.length,
     orders: chains.reduce(
@@ -968,8 +955,9 @@ function summarize(
     // The strip states the total against what the visible chains actually
     // cost, never against the portfolio (TOKENS 3).
     totalPercentage: hasEveryPrice ? pnlPercentage(realized + unrealized, costBasis) : null,
-    committed,
-    committedCompleteOnly,
+    // Held against the bots' limits by the visible chains alone, so the filters
+    // decide it as they decide every figure beside it.
+    allocated: bookAllocation(chains, botById),
     avgSlipCreated: createdSlips.length
       ? createdSlips.reduce((sum, value) => sum + value, 0) / createdSlips.length
       : null,
@@ -1040,12 +1028,10 @@ function StatStrip({
         className={trustClass}
       />
       <Stat
-        label="committed"
-        value={summary.committed === null ? 'not available' : formatNumber(summary.committed, 0)}
-        detail={
-          summary.committed !== null && summary.committedCompleteOnly ? 'complete bots only' : null
-        }
-        unavailable={summary.committed === null}
+        label="allocated"
+        value={summary.allocated === null ? 'not available' : formatNumber(summary.allocated, 0)}
+        unavailable={summary.allocated === null}
+        title={ALLOCATED_TITLE}
       />
       <Stat
         label="slip @created"
@@ -1069,6 +1055,10 @@ function StatStrip({
   );
 }
 
+const ALLOCATED_TITLE =
+  'Held positions: quantity × average cost, forbidden stocks excluded.\n' +
+  'Buys still to open, resting or scheduled: order quantity × order price, × 1.1 for a market buy.';
+
 function Stat({
   label,
   value,
@@ -1078,6 +1068,7 @@ function Stat({
   signed,
   unavailable = false,
   className = '',
+  title,
 }: {
   label: string;
   value: string;
@@ -1088,6 +1079,8 @@ function Stat({
   signed?: number;
   unavailable?: boolean;
   className?: string;
+  /** How the figure is counted, on hover over the whole stat. */
+  title?: string;
 }) {
   // TOKENS rule 9: a figure the viewer could not compute is warn ink, never a
   // plain-text absence that reads like an ordinary value.
@@ -1099,7 +1092,7 @@ function Stat({
         ? ' number-positive'
         : ' number-negative';
   return (
-    <div className="book-stat">
+    <div className="book-stat" title={title}>
       <span className={`kicker${accent ? ' accent-kicker' : ''}`}>{label}</span>
       <strong className={`${signedClass}${unavailable ? '' : className}`}>
         {value}

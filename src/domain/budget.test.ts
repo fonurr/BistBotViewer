@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ActiveOrder, CanceledOrder, ClosedTrade, Position } from '../bistApi/types';
-import { bookBudget, budgetShare, MARKET_BUY_BUDGET_BUFFER } from './budget';
+import { bookBudget, bookAllocation, budgetShare, MARKET_BUY_BUDGET_BUFFER } from './budget';
 import { buildBookChains } from './chains';
 
 const at = (iso: string): number => Date.parse(iso);
@@ -306,6 +306,139 @@ describe('bookBudget', () => {
         ],
       }),
     ).toEqual({ kind: 'unknown' });
+  });
+});
+
+describe('bookAllocation', () => {
+  const bots = new Map([
+    ['bot-a', { forbiddenStocks: [] as string[] }],
+    ['bot-b', { forbiddenStocks: ['GARAN'] }],
+  ]);
+
+  function commitmentOf(
+    input: { activeOrders?: ActiveOrder[]; positions?: Position[]; closedTrades?: ClosedTrade[] },
+    botById: ReadonlyMap<string, { forbiddenStocks: string[] }> = bots,
+  ) {
+    return bookAllocation(
+      buildBookChains({
+        activeOrders: input.activeOrders ?? [],
+        canceledOrders: [],
+        positions: input.positions ?? [],
+        closedTrades: input.closedTrades ?? [],
+      }),
+      botById,
+    );
+  }
+
+  it('adds held positions at their cost to every buy still to open at its reservation', () => {
+    expect(
+      commitmentOf({
+        positions: [position({ quantity: 100, averagePrice: 300.5 })],
+        activeOrders: [
+          active({
+            id: 2,
+            clientOrderId: 'buy-2',
+            matriksOrderId: 'mx-2',
+            chainId: 'buy-2',
+            symbol: 'ASELS',
+            orderQuantity: 50,
+            orderPrice: 100,
+            type: 'market',
+          }),
+          active({
+            id: 3,
+            clientOrderId: 'buy-3',
+            matriksOrderId: null,
+            chainId: 'buy-3',
+            symbol: 'KCHOL',
+            status: 'Scheduled',
+            orderQuantity: 10,
+            orderPrice: 200,
+            scheduledTime: at('2026-08-24T10:00:00.000Z'),
+          }),
+        ],
+      }),
+    ).toBeCloseTo(100 * 300.5 + 50 * 100 * MARKET_BUY_BUDGET_BUFFER + 10 * 200);
+  });
+
+  it("leaves out a position on its own bot's forbidden list", () => {
+    expect(
+      commitmentOf({
+        positions: [
+          position({ botId: 'bot-b', symbol: 'garan', quantity: 10, averagePrice: 100 }),
+          position({
+            id: 21,
+            botId: 'bot-b',
+            clientOrderId: 'buy-2',
+            chainId: 'buy-2',
+            symbol: 'THYAO',
+            quantity: 5,
+            averagePrice: 300,
+          }),
+          position({
+            id: 22,
+            clientOrderId: 'buy-3',
+            chainId: 'buy-3',
+            symbol: 'GARAN',
+            quantity: 2,
+            averagePrice: 100,
+          }),
+        ],
+      }),
+    ).toBe(5 * 300 + 2 * 100);
+  });
+
+  it('counts a partly filled buy in full and never a sell', () => {
+    expect(
+      commitmentOf({
+        activeOrders: [
+          active({ status: 'PartiallyFilled', filledQuantity: 40, averagePrice: 299 }),
+          active({
+            id: 2,
+            clientOrderId: 'sell-1',
+            chainId: 'sell-1',
+            direction: 'sell',
+            orderQuantity: 100,
+            orderPrice: 320,
+          }),
+        ],
+      }),
+    ).toBe(100 * 300);
+  });
+
+  it('does not count a buy twice while its fill lands as a position', () => {
+    expect(
+      commitmentOf({
+        activeOrders: [active({ status: 'Filled', filledQuantity: 100, averagePrice: 300.5 })],
+        positions: [position({ quantity: 100, averagePrice: 300.5 })],
+      }),
+    ).toBe(100 * 300.5);
+  });
+
+  it('keeps a retry that restates a chain its first attempt partly filled', () => {
+    expect(
+      commitmentOf({
+        activeOrders: [
+          active({
+            clientOrderId: 'buy-1-retry',
+            matriksOrderId: null,
+            status: 'Scheduled',
+            orderQuantity: 60,
+            scheduledTime: at('2026-08-24T10:00:00.000Z'),
+          }),
+        ],
+        positions: [position({ quantity: 40, averagePrice: 300 })],
+      }),
+    ).toBe(40 * 300 + 60 * 300);
+  });
+
+  it('withholds the figure when a buy cannot be priced or a bot record is missing', () => {
+    expect(commitmentOf({ activeOrders: [active({ orderPrice: null })] })).toBeNull();
+    expect(commitmentOf({ positions: [position()] }, new Map())).toBeNull();
+  });
+
+  it('owes nothing for an empty selection', () => {
+    expect(commitmentOf({})).toBe(0);
   });
 });
 

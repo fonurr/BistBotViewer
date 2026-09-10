@@ -1,4 +1,4 @@
-import type { ActiveOrder, CanceledOrder } from '../bistApi/types';
+import type { ActiveOrder, Bot, CanceledOrder, ClosedTrade, Position } from '../bistApi/types';
 import type { BookChain } from './chains';
 
 /**
@@ -65,6 +65,74 @@ export function bookBudget(chains: readonly BookChain[]): BookBudget {
   }
 
   return counted === 0 ? { kind: 'none' } : { kind: 'known', committed, spent, planned };
+}
+
+/**
+ * What the chains drawn hold against their bots' limits right now: the two terms
+ * MatriksOrder charges a bot's `limit` with (`../MatriksOrder/API.md` — "Budget
+ * and limits"), summed over the chains on screen rather than read back as
+ * `limit − remainingBotBudget`, which answers for a whole bot and is also bent
+ * by buying power and by the portfolio percentage.
+ *
+ * - Every Positions row at what it really cost, `quantity × averagePrice`, never
+ *   buffered — except a symbol on its bot's `forbiddenStocks`, which is left out.
+ * - Every buy still to open, resting or scheduled, at its reserved cost: the full
+ *   `orderQuantity × orderPrice`, `× 1.1` for a market buy. A partly filled buy
+ *   counts in full, as upstream counts it — its fills join Positions only once it
+ *   ends. A buy whose fill already landed as a position or a round trip is that
+ *   row's brief SSE overlap and is not counted twice.
+ *
+ * `null` when a buy cannot be priced or a position's bot record is not loaded to
+ * read its forbidden list: a total that silently drops a row reads as a smaller
+ * commitment than the bots actually made.
+ */
+export function bookAllocation(
+  chains: readonly BookChain[],
+  botById: ReadonlyMap<string, Pick<Bot, 'forbiddenStocks'>>,
+): number | null {
+  const positions = chains.flatMap((chain) => chain.sources.positions);
+  const closedTrades = chains.flatMap((chain) => chain.sources.closedTrades);
+  let committed = 0;
+
+  for (const position of positions) {
+    const bot = botById.get(position.botId);
+    if (!bot) return null;
+    const symbol = position.symbol.toUpperCase();
+    if (bot.forbiddenStocks.some((forbidden) => forbidden.toUpperCase() === symbol)) continue;
+    committed += position.quantity * position.averagePrice;
+  }
+
+  for (const order of chains.flatMap((chain) => chain.sources.activeOrders)) {
+    if (order.direction !== 'buy' || fillHasLanded(order, positions, closedTrades)) continue;
+    if (order.orderQuantity === null || order.orderPrice === null) return null;
+    committed +=
+      order.orderQuantity *
+      order.orderPrice *
+      (order.type === 'market' ? MARKET_BUY_BUDGET_BUFFER : 1);
+  }
+
+  return committed;
+}
+
+/** Matched on the order itself, never on its chain: a retry shares the chain it restates. */
+function fillHasLanded(
+  order: ActiveOrder,
+  positions: readonly Position[],
+  closedTrades: readonly ClosedTrade[],
+): boolean {
+  const names = (clientOrderId: string | null, matriksOrderId: string | null) =>
+    (order.clientOrderId.trim() !== '' && clientOrderId === order.clientOrderId) ||
+    (order.matriksOrderId !== null && matriksOrderId === order.matriksOrderId);
+  return (
+    positions.some(
+      (position) =>
+        position.botId === order.botId && names(position.clientOrderId, position.matriksOrderId),
+    ) ||
+    closedTrades.some(
+      (trade) =>
+        trade.botId === order.botId && names(trade.clientOpenOrderId, trade.matriksOpenOrderId),
+    )
+  );
 }
 
 /** One acquired parcel of the chain's opening buy, wherever it now lives. */

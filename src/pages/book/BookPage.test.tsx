@@ -340,6 +340,36 @@ describe('The Book page states', () => {
     expect(strip.querySelector('.number-untrusted')).not.toBeNull();
   });
 
+  it('allocates what the drawn chains hold and reserve, never a forbidden holding', () => {
+    // 100 x 301,50 held and 40 x 68,25 resting, whatever the bot's budget read says.
+    book.data = {
+      ...emptyRead(),
+      positions: [makePosition()],
+      activeOrders: [makeActiveOrder()],
+    };
+    const view = renderBook();
+    const allocated = () =>
+      within(document.querySelector('.book-stat-strip')!)
+        .getByText('allocated')
+        .closest('.book-stat')!;
+    expect(allocated()).toHaveTextContent('32.880');
+    expect(allocated()).not.toHaveTextContent('complete bots only');
+    expect(allocated()).toHaveAttribute(
+      'title',
+      expect.stringContaining('quantity × average cost'),
+    );
+
+    book.data = { ...book.data, bots: [makeBot({ forbiddenStocks: ['THYAO'] })] };
+    view.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter initialEntries={['/book']}>
+          <BookPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(allocated()).toHaveTextContent('2.730');
+  });
+
   it('names how far the price history reaches when a drawn batch is past it', async () => {
     // An empty @intent column has two causes and the reader must tell them
     // apart: the rules withheld the figure, or the nightly cache is behind.

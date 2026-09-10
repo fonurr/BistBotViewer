@@ -430,3 +430,14 @@ The **stat strip leads with `today`, left of `realized`**: every visible chain's
 started, summed against what those positions and closed-today sells are measured from, with a
 percentage. It is all-or-nothing like `unrealized` — one withheld row makes the whole figure `not
 available`.
+
+The strip's **`allocated` is what the visible chains hold against their bots' limits right now**,
+from `bookAllocation` in `domain/budget.ts`, so every filter and scope toggle decides it: each
+Positions row at what it cost, `quantity × averagePrice`, plus each buy still to open — resting or
+scheduled — at its reservation, the full `orderQuantity × orderPrice`, `× 1.1` for a market buy.
+Those are the two terms MatriksOrder charges a bot's `limit` with; the strip sums them itself rather
+than reading `limit − remainingBotBudget`, which answers for a whole bot, not the chains on screen,
+and is also bent by buying power and the portfolio percentage. A position in a symbol on its bot's
+`forbiddenStocks` is left out. A queued basket owns no order yet and reserves nothing. It is
+all-or-nothing: a buy with no price or quantity, or a position whose bot record has not loaded, makes
+it `not available`. Hovering the stat states both terms in its `title`.
