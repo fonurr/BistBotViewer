@@ -197,6 +197,48 @@ test('uses the requested clock steps and allows equal endpoints without crossing
   await expect(page.getByRole('article', { name: 'THYAO chain', exact: true })).toBeVisible();
 });
 
+test('reads the range against only the leg sides left ticked', async ({ page }) => {
+  const control = page.locator('.book-time-filter');
+  await control.getByRole('button', { name: 'any time', exact: true }).click();
+  const popover = control.getByRole('dialog');
+  const buys = popover.getByRole('checkbox', { name: 'buys', exact: true });
+  const sells = popover.getByRole('checkbox', { name: 'sells', exact: true });
+  const canceled = popover.getByRole('checkbox', { name: 'include canceled', exact: true });
+
+  for (const box of [buys, sells, canceled]) await expect(box).toBeDisabled();
+  await popover.getByRole('checkbox', { name: 'filter', exact: true }).check();
+  await expect(buys).toBeChecked();
+  await expect(sells).toBeChecked();
+  await expect(canceled).not.toBeChecked();
+
+  const start = popover.getByRole('slider', { name: 'Start time', exact: true });
+  const end = popover.getByRole('slider', { name: 'End time', exact: true });
+  await end.press('Home');
+  await advance(end, 'ArrowRight', BOOK_TIME_STEPS.indexOf(602));
+  await advance(start, 'ArrowRight', BOOK_TIME_STEPS.indexOf(600));
+  await popover.getByRole('button', { name: 'none', exact: true }).click();
+  await popover.getByRole('checkbox', { name: 'created', exact: true }).check();
+  // AKBNK by its sell leg (created 10:02:59.999), THYAO by its buy (created 10:00).
+  await expect(page.getByRole('article')).toHaveCount(2);
+
+  await buys.uncheck();
+  await expect(page.getByRole('article')).toHaveCount(1);
+  await expect(page.getByRole('article', { name: 'AKBNK chain', exact: true })).toBeVisible();
+
+  await sells.uncheck();
+  await expect(page.getByText('No chains match this filter.')).toBeVisible();
+
+  await buys.check();
+  await expect(page.getByRole('article')).toHaveCount(1);
+  await expect(page.getByRole('article', { name: 'THYAO chain', exact: true })).toBeVisible();
+
+  // `all` / `none` never touch the sides.
+  await popover.getByRole('button', { name: 'all', exact: true }).click();
+  await popover.getByRole('button', { name: 'none', exact: true }).click();
+  await expect(buys).toBeChecked();
+  await expect(sells).not.toBeChecked();
+});
+
 test('range buttons update the kept chains without changing the chosen clock', async ({ page }) => {
   const control = page.locator('.book-time-filter');
   await control.getByRole('button', { name: 'any time', exact: true }).click();

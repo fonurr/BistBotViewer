@@ -191,4 +191,21 @@ describe('the reason a filter emptied the Book', () => {
     expect(reason!.clear(filters).timeFields).toEqual(defaultBookFilters.timeFields);
     expect(narrowingsThatEmptiedTheBook(chains, reason!.clear(filters), noAccount)).toEqual([]);
   });
+
+  it('names an empty side selection and restores both sides when cleared', () => {
+    const filters = {
+      ...defaultBookFilters,
+      timeFilter: true,
+      timeBuys: false,
+      timeSells: false,
+    };
+    const [reason] = narrowingsThatEmptiedTheBook(chains, filters, noAccount);
+    expect(reason!.sentence).toBe('Neither buys nor sells is selected.');
+    expect(reason!.restored).toBe(2);
+    const cleared = reason!.clear(filters);
+    expect(cleared.timeFilter).toBe(false);
+    expect(cleared.timeBuys).toBe(true);
+    expect(cleared.timeSells).toBe(true);
+    expect(cleared.timeIncludeCanceled).toBe(false);
+  });
 });

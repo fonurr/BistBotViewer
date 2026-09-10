@@ -15,6 +15,27 @@
   font-size: var(--font-leg);
 }
 
+/* Wide enough for the side column ("include canceled") to sit on one line
+   across from the first clock checkboxes. */
+.book-time-filter .filter-popover {
+  width: 340px;
+}
+
+.book-time-fields {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-6);
+}
+
+.book-time-clocks {
+  flex: 0 0 auto;
+}
+
+.book-time-sides {
+  flex: 1;
+  min-width: 0;
+}
+
 .book-time-range {
   display: grid;
   gap: var(--space-4);

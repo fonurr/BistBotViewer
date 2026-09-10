@@ -270,11 +270,20 @@ The **time filter** uses the six clocks drawn in the grid, in column order: `cre
 `intent`, `sent`, `order`, and `final`. Its popover starts with `filter`, `all`, and `none`, followed
 by the clock checkboxes and two sliders. It starts off, with every clock selected and the full
 day selected. `all` and `none` change only the clocks; switching the filter off restores all clock
-checkboxes and preserves the range. A chain qualifies where any of its orders has any selected
-clock within the range, and is drawn whole. Missing clocks cannot match, and queued baskets have
-no order clock, so they drop out while this filter is on. Clock comparison uses Istanbul time of
-day independently of the batch date, including the entire selected end minute: `10:00 → 10:02`
-keeps stamps through `10:02:59.999`.
+checkboxes **and the leg-side defaults below**, and preserves the range. A chain qualifies where
+any of its orders has any selected clock within the range, and is drawn whole. Missing clocks
+cannot match, and queued baskets have no order clock, so they drop out while this filter is on.
+Clock comparison uses Istanbul time of day independently of the batch date, including the entire
+selected end minute: `10:00 → 10:02` keeps stamps through `10:02:59.999`.
+
+Across from the first clock checkboxes sit three **leg-side toggles** — `buys`, `sells`, and
+`include canceled` — that decide which legs the range is read against. `all` / `none` never touch
+them; only switching the filter off restores their defaults. `buys` and `sells` (both on by
+default) are an **OR**: a chain matches on any leg whose side is still ticked, and with neither
+ticked nothing matches. `include canceled` (off by default) is an **AND** laid over both: a
+canceled leg is read only while it is on and that leg's own side is ticked too. So a collapsed
+canceled tail no longer keeps a chain in the time search unless `include canceled` asks for it.
+`domain/bookTimeFilter.ts` (`BookTimeSides`, `matchesBookTime`) owns the rule.
 
 `domain/bookTimeFilter.ts` owns both matching and the slider stops: hourly from `00:00` through
 `09:00`, then `09:50`, `09:55`, every minute through `18:05`, every five minutes through `19:00`,
@@ -296,7 +305,7 @@ away merely by rendering.
 Once active, the toolbar trigger is deliberately compact: it carries only `hh:mm-hh:mm`. The time
 range heading stays on the left of its popover; `‹`, `›`, and `reset` sit together on the right.
 `reset` changes only the two clock endpoints, restoring `00:00` through `23:59` without changing
-whether time filtering is on or which clock columns are selected.
+whether time filtering is on, which clock columns are selected, or the leg-side toggles.
 
 Each slider has its own `− / +` buttons, and `‹ / ›` move both endpoints together. Like the batch
 range, the buttons step through the allowed stops rather than adding a fixed number of minutes:
@@ -305,7 +314,9 @@ filter is off, at the day bounds, or when an individual endpoint would cross the
 endpoints, the start's `+` and end's `−` are disabled; the whole-range buttons can still move that
 single minute. A whole-range move must fit in full and never shrinks against a day boundary.
 The filter participates in active chips, empty-result recovery, and clearing the other filters
-when focusing positions without a closing order.
+when focusing positions without a closing order. Its chip names the range and then any way the
+leg sides depart from their default — `buys only`, `sells only`, `no side`, `with canceled` — and
+the empty-Book reason calls out an empty side selection the way it calls out an empty clock one.
 
 The **canceled-status filter** lists every status the loaded canceled orders carry, in the display
 form the status cells print (`By user`, not `CanceledByUser`), so raw wire values that share a

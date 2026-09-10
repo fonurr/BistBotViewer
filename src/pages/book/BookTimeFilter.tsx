@@ -4,6 +4,7 @@ import { useId } from 'react';
 import { FilterPopover } from '../../components/FilterPopover';
 import {
   BOOK_TIME_FIELDS,
+  BOOK_TIME_SIDES_DEFAULT,
   bookTimeSliderSteps,
   formatBookTime,
   stepBookTimeRange,
@@ -12,6 +13,18 @@ import {
 } from '../../domain/bookTimeFilter';
 import { BookTimeInput } from './BookTimeInput';
 import type { BookFilterState } from './types';
+
+type BookTimeSideKey = 'timeBuys' | 'timeSells' | 'timeIncludeCanceled';
+
+/**
+ * The side toggles sit across from the first clock checkboxes. `all` / `none`
+ * leave them alone; only switching the filter off restores their defaults.
+ */
+const BOOK_TIME_SIDES: readonly { key: BookTimeSideKey; label: string }[] = [
+  { key: 'timeBuys', label: 'buys' },
+  { key: 'timeSells', label: 'sells' },
+  { key: 'timeIncludeCanceled', label: 'include canceled' },
+];
 
 interface BookTimeFilterProps {
   filters: BookFilterState;
@@ -36,6 +49,7 @@ export function BookTimeFilter({ filters, onChange, open, setOpen }: BookTimeFil
     else timeFields.add(field);
     onChange({ ...filters, timeFields });
   };
+  const toggleSide = (key: BookTimeSideKey) => onChange({ ...filters, [key]: !filters[key] });
 
   return (
     <FilterPopover
@@ -57,6 +71,9 @@ export function BookTimeFilter({ filters, onChange, open, setOpen }: BookTimeFil
                 ...filters,
                 timeFilter: off,
                 timeFields: new Set(BOOK_TIME_FIELDS.map(({ key }) => key)),
+                timeBuys: BOOK_TIME_SIDES_DEFAULT.buys,
+                timeSells: BOOK_TIME_SIDES_DEFAULT.sells,
+                timeIncludeCanceled: BOOK_TIME_SIDES_DEFAULT.includeCanceled,
               })
             }
           />
@@ -84,17 +101,34 @@ export function BookTimeFilter({ filters, onChange, open, setOpen }: BookTimeFil
           none
         </button>
       </div>
-      {BOOK_TIME_FIELDS.map(({ key, label }) => (
-        <label className={`filter-option${off ? ' filter-option-off' : ''}`} key={key}>
-          <input
-            type="checkbox"
-            disabled={off}
-            checked={filters.timeFields.has(key)}
-            onChange={() => toggleField(key)}
-          />
-          <span>{label}</span>
-        </label>
-      ))}
+      <div className="book-time-fields">
+        <div className="book-time-clocks">
+          {BOOK_TIME_FIELDS.map(({ key, label }) => (
+            <label className={`filter-option${off ? ' filter-option-off' : ''}`} key={key}>
+              <input
+                type="checkbox"
+                disabled={off}
+                checked={filters.timeFields.has(key)}
+                onChange={() => toggleField(key)}
+              />
+              <span>{label}</span>
+            </label>
+          ))}
+        </div>
+        <div className="book-time-sides">
+          {BOOK_TIME_SIDES.map(({ key, label }) => (
+            <label className={`filter-option${off ? ' filter-option-off' : ''}`} key={key}>
+              <input
+                type="checkbox"
+                disabled={off}
+                checked={filters[key]}
+                onChange={() => toggleSide(key)}
+              />
+              <span>{label}</span>
+            </label>
+          ))}
+        </div>
+      </div>
       <div className="book-time-range">
         <div className="book-time-shift">
           <span>Time range</span>
@@ -160,8 +194,8 @@ export function BookTimeFilter({ filters, onChange, open, setOpen }: BookTimeFil
         />
       </div>
       <p className="filter-help">
-        Istanbul time. Includes the entire end minute. Any selected time on any order keeps the
-        whole chain.
+        Istanbul time. Includes the entire end minute. A selected time on any buy or sell leg you
+        keep ticked keeps the whole chain; canceled legs count only with <em>include canceled</em>.
       </p>
     </FilterPopover>
   );

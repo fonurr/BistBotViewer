@@ -826,7 +826,6 @@ describe('the time filter', () => {
     expect(chainsInGrid()).toEqual(['AKBNK', 'GARAN']);
     expect(screen.getByRole('region', { name: 'Queued order baskets' })).toBeVisible();
 
-    // Collapsing a canceled tail must not remove it from the time search.
     await user.click(document.querySelector('.canceled-global')!);
     await user.click(screen.getByRole('button', { name: 'any time' }));
     await user.click(screen.getByRole('checkbox', { name: 'filter' }));
@@ -839,12 +838,19 @@ describe('the time filter', () => {
       target: { value: BOOK_TIME_STEPS.indexOf(602) },
     });
 
+    // The only leg AKBNK has in range is its collapsed canceled one, so it
+    // stays out until 'include canceled' asks for it, then draws whole.
+    expect(chainsInGrid()).toEqual([]);
+    await user.click(screen.getByRole('checkbox', { name: 'include canceled' }));
+
     expect(chainsInGrid()).toEqual(['AKBNK']);
     expect(screen.queryByRole('region', { name: 'Queued order baskets' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'time 10:00 → 10:02 ×' })).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'time 10:00 → 10:02 · with canceled ×' }),
+    ).toBeVisible();
 
     await user.click(screen.getByRole('button', { name: 'Close filter' }));
-    await user.click(screen.getByRole('button', { name: 'time 10:00 → 10:02 ×' }));
+    await user.click(screen.getByRole('button', { name: 'time 10:00 → 10:02 · with canceled ×' }));
     expect(chainsInGrid()).toEqual(['AKBNK', 'GARAN']);
     expect(screen.getByRole('region', { name: 'Queued order baskets' })).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'any time' }));
@@ -857,5 +863,8 @@ describe('the time filter', () => {
       '10:02',
     );
     expect(screen.getByRole('checkbox', { name: 'order' })).toBeChecked();
+    // Clearing the filter also puts the leg sides back to their defaults.
+    expect(screen.getByRole('checkbox', { name: 'buys' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'include canceled' })).not.toBeChecked();
   });
 });

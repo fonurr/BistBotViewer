@@ -1,5 +1,9 @@
 import type { BookScope } from '../../domain/chains';
-import { BOOK_TIME_FIELDS, type BookTimeField } from '../../domain/bookTimeFilter';
+import {
+  BOOK_TIME_FIELDS,
+  BOOK_TIME_SIDES_DEFAULT,
+  type BookTimeField,
+} from '../../domain/bookTimeFilter';
 
 /**
  * One row's `@intent/slip` cell, resolved on the page so the grid stays a
@@ -57,6 +61,16 @@ export interface BookFilterState {
   /** Any chosen clock on any chain leg can satisfy this daily Istanbul range. */
   timeFilter: boolean;
   timeFields: ReadonlySet<BookTimeField>;
+  /**
+   * Which legs the time filter reads. `timeBuys` / `timeSells` are an OR over the
+   * chain's legs; `timeIncludeCanceled` is an AND laid over both. They sit beside
+   * the clock checkboxes and `all` / `none` never touch them, so switching the
+   * filter off is the only thing that restores their defaults (both sides on,
+   * canceled legs out).
+   */
+  timeBuys: boolean;
+  timeSells: boolean;
+  timeIncludeCanceled: boolean;
   /** Inclusive whole-minute bounds, from 00:00 (0) through 23:59 (1439). */
   timeFrom: number;
   timeTo: number;
@@ -84,6 +98,9 @@ export const defaultBookFilters: BookFilterState = {
   origins: null,
   timeFilter: false,
   timeFields: new Set(BOOK_TIME_FIELDS.map(({ key }) => key)),
+  timeBuys: BOOK_TIME_SIDES_DEFAULT.buys,
+  timeSells: BOOK_TIME_SIDES_DEFAULT.sells,
+  timeIncludeCanceled: BOOK_TIME_SIDES_DEFAULT.includeCanceled,
   timeFrom: 0,
   timeTo: 1439,
   /* Null is not "every batch" but the moment before one has loaded;

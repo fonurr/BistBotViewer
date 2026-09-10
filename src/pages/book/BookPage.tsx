@@ -757,11 +757,16 @@ export function narrowingsThatEmptiedTheBook(
       sentence:
         filters.timeFields.size === 0
           ? 'No time column is selected.'
-          : 'No chain owns an order with a selected time inside the time range.',
+          : !filters.timeBuys && !filters.timeSells
+            ? 'Neither buys nor sells is selected.'
+            : 'No chain owns an order with a selected time inside the time range.',
       clear: (current) => ({
         ...current,
         timeFilter: false,
         timeFields: defaultBookFilters.timeFields,
+        timeBuys: defaultBookFilters.timeBuys,
+        timeSells: defaultBookFilters.timeSells,
+        timeIncludeCanceled: defaultBookFilters.timeIncludeCanceled,
       }),
     });
   }
@@ -813,7 +818,11 @@ function chainMatches(
   if (filters.originFilter && !matchesOrigin(chain, filters.origins)) return false;
   if (
     filters.timeFilter &&
-    !matchesBookTime(chain, filters.timeFields, filters.timeFrom, filters.timeTo)
+    !matchesBookTime(chain, filters.timeFields, filters.timeFrom, filters.timeTo, {
+      buys: filters.timeBuys,
+      sells: filters.timeSells,
+      includeCanceled: filters.timeIncludeCanceled,
+    })
   )
     return false;
   if (chain.batchDate !== null && filters.batchFrom && chain.batchDate < filters.batchFrom)
@@ -1614,16 +1623,28 @@ function filterChips(
         filters.origins === null ? 'with a named origin' : plural(filters.origins.size, 'origin'),
       clear: (current) => ({ ...current, originFilter: false, origins: null }),
     });
-  if (filters.timeFilter)
+  if (filters.timeFilter) {
+    // The chip names the range, then any way the side toggles depart from
+    // "both sides, canceled legs out" — the state the filter comes up in.
+    const sideNotes = [
+      filters.timeBuys === filters.timeSells ? null : filters.timeBuys ? 'buys only' : 'sells only',
+      !filters.timeBuys && !filters.timeSells ? 'no side' : null,
+      filters.timeIncludeCanceled ? 'with canceled' : null,
+    ].filter((note): note is string => note !== null);
+    const range = `time ${formatBookTime(filters.timeFrom)} → ${formatBookTime(filters.timeTo)}`;
     chips.push({
       key: 'time',
-      label: `time ${formatBookTime(filters.timeFrom)} → ${formatBookTime(filters.timeTo)}`,
+      label: sideNotes.length > 0 ? `${range} · ${sideNotes.join(' · ')}` : range,
       clear: (current) => ({
         ...current,
         timeFilter: false,
         timeFields: defaultBookFilters.timeFields,
+        timeBuys: defaultBookFilters.timeBuys,
+        timeSells: defaultBookFilters.timeSells,
+        timeIncludeCanceled: defaultBookFilters.timeIncludeCanceled,
       }),
     });
+  }
   // The range is always set — every loaded batch is the default — so the chip
   // appears only where it is narrower than the loaded batches, and names the
   // days it kept rather than the fact that a range exists.

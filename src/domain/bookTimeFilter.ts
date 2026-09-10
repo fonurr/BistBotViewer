@@ -66,6 +66,25 @@ export function bookTimeSliderSteps(range: BookTimeRange): readonly number[] {
 export type BookTimeRangeEdge = 'from' | 'to' | 'both';
 
 /**
+ * Which of a chain's legs the time filter reads. `buys` and `sells` are an OR —
+ * a chain matches on any leg whose side is still ticked — while `includeCanceled`
+ * is an AND laid over both: a canceled leg is read only when it is on and its own
+ * side is ticked too. All three are their own controls; `all` / `none` never
+ * touch them. Default is both sides on and canceled legs left out.
+ */
+export interface BookTimeSides {
+  buys: boolean;
+  sells: boolean;
+  includeCanceled: boolean;
+}
+
+export const BOOK_TIME_SIDES_DEFAULT: BookTimeSides = {
+  buys: true,
+  sells: true,
+  includeCanceled: false,
+};
+
+/**
  * Like the batch range, walk positions in the allowed stops. A whole-window
  * step keeps its width in stops; a step past either bound or the other edge
  * is unavailable, so its button is disabled rather than shortening the step.
@@ -87,18 +106,24 @@ export function stepBookTimeRange(
 }
 
 /**
- * Select whole chains by any chosen clock on any leg, including hidden canceled
- * legs. Dates stay the batch filter's concern. Both bounds include their whole
- * minute, including the final 23:59 minute without wrapping into midnight.
+ * Select whole chains by any chosen clock on any leg. `sides` narrows which legs
+ * count: a buy leg only while `buys` is on, a sell leg only while `sells` is on,
+ * and a canceled leg only while `includeCanceled` is on and its own side is too.
+ * Dates stay the batch filter's concern. Both bounds include their whole minute,
+ * including the final 23:59 minute without wrapping into midnight.
  */
 export function matchesBookTime(
   chain: BookChain,
   fields: ReadonlySet<BookTimeField>,
   from: number,
   to: number,
+  sides: BookTimeSides,
 ): boolean {
   if (!isBookMinute(from) || !isBookMinute(to) || from > to) return false;
+  if (!sides.buys && !sides.sells) return false;
   return chain.rows.some((row) => {
+    if (row.source === 'canceled' && !sides.includeCanceled) return false;
+    if (row.direction === 'buy' ? !sides.buys : !sides.sells) return false;
     for (const field of fields) {
       const timestamp = row[field];
       if (timestamp === null || !Number.isFinite(new Date(timestamp).getTime())) continue;
