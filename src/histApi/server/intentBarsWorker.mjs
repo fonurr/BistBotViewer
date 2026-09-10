@@ -13,7 +13,10 @@ function openDatabase(databasePath) {
   const database = new DatabaseSync(databasePath, { readOnly: true, timeout: 5_000 });
   database.exec('PRAGMA query_only = ON');
   const names = new Set(
-    database.prepare('PRAGMA table_info(intent_bar)').all().map((column) => String(column.name)),
+    database
+      .prepare('PRAGMA table_info(intent_bar)')
+      .all()
+      .map((column) => String(column.name)),
   );
   for (const required of REQUIRED_COLUMNS) {
     if (!names.has(required)) {
@@ -55,11 +58,19 @@ function queryStatus(databasePath) {
   try {
     const row = database.prepare('SELECT snapshot_for, built_at, bar_rows FROM meta').get();
     if (!row) return [];
+    /*
+     * How far the bars actually reach, which is not the same question as when
+     * the snapshot ran. BistData backfills, so its minute history trails the
+     * live sessions by a day or more — and it is the sessions past this date
+     * that can never be priced, however recently the job succeeded.
+     */
+    const covers = database.prepare('SELECT MAX(session_date) AS d FROM intent_bar').get();
     return [
       {
         snapshotFor: row.snapshot_for === undefined ? null : String(row.snapshot_for),
         builtAt: row.built_at === null || row.built_at === undefined ? null : Number(row.built_at),
         barRows: row.bar_rows === null || row.bar_rows === undefined ? null : Number(row.bar_rows),
+        coversThrough: covers?.d === null || covers?.d === undefined ? null : String(covers.d),
       },
     ];
   } finally {

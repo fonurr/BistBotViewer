@@ -84,10 +84,10 @@ the close.
 
 Both are loopback and same-origin only, and both are refused outright under fixtures.
 
-| Route                           | Body                                 | Answers                                                   |
-| ------------------------------- | ------------------------------------ | --------------------------------------------------------- |
-| `GET /bridge/hist/status`       | —                                    | `available`, `snapshotFor`, `builtAt`, `barRows`, `stale` |
-| `POST /bridge/hist/bars/intent` | `{ keys: [{ symbol, ts }] }`, ≤ 1000 | the matching `intent_bar` rows                            |
+| Route                           | Body                                 | Answers                                                                    |
+| ------------------------------- | ------------------------------------ | -------------------------------------------------------------------------- |
+| `GET /bridge/hist/status`       | —                                    | `available`, `snapshotFor`, `coversThrough`, `builtAt`, `barRows`, `stale` |
+| `POST /bridge/hist/bars/intent` | `{ keys: [{ symbol, ts }] }`, ≤ 1000 | the matching `intent_bar` rows                                             |
 
 `ts` is epoch milliseconds and must already be the **exact minute wanted**: which minute answers an
 intent instant is `domain/intentPrice`'s rule, not a database's. A missing minute comes back absent
@@ -100,7 +100,12 @@ a `finally`, exactly as `priceApi`'s bars worker does.
 ## Degraded states
 
 A cache that has never been built is the ordinary first-run state, not an error: `status` reports
-`available: false`, the bar read returns 503, and every intent cell stays empty. `stale` is
-`snapshotFor` failing to be the current snapshot day — the page says the intent prices are out of
-date rather than dropping them, since a day-old minute bar from 2026-08-25 is still the right answer
-for an instant on 2026-08-25.
+`available: false`, the bar read returns 503, and every intent cell stays empty.
+
+⚠️ **`coversThrough`, not `snapshotFor`, is what a page should read.** They answer different
+questions, and only one of them is the reader's: `snapshotFor` says when the job last ran,
+`coversThrough` says how far the bars actually reach. BistData backfills, so its minute history
+trails the live sessions by a day or more — which means a snapshot that ran perfectly on time
+still cannot price today's or yesterday's orders. Since the Book opens on the **newest batch**,
+that is normally the one batch the column is blank for, and a status that reported itself fresh
+would be asserting a currency the data does not have.

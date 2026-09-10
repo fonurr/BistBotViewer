@@ -115,15 +115,18 @@ export class SnapshotScheduler {
 
   private runOnce(snapshotFor: string): Promise<{ barRows: number; symbols: number }> {
     return new Promise((resolve, reject) => {
-      const worker = new Worker(path.resolve(process.cwd(), 'src/histApi/server/snapshotWorker.mjs'), {
-        workerData: {
-          orderDbPath: this.options.orderDbPath,
-          minuteDbPath: this.options.minuteDbPath,
-          scaleDbPath: this.options.scaleDbPath,
-          cachePath: this.options.cachePath,
-          snapshotFor,
+      const worker = new Worker(
+        path.resolve(process.cwd(), 'src/histApi/server/snapshotWorker.mjs'),
+        {
+          workerData: {
+            orderDbPath: this.options.orderDbPath,
+            minuteDbPath: this.options.minuteDbPath,
+            scaleDbPath: this.options.scaleDbPath,
+            cachePath: this.options.cachePath,
+            snapshotFor,
+          },
         },
-      });
+      );
       let settled = false;
       const finish = (run: () => void) => {
         if (settled) return;

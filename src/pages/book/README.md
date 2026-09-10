@@ -165,11 +165,16 @@ scaled bar more than **23%** from the price the row already carries is refused o
 instrument and same session means that gap is a mis-scaled bar rather than a market that moved.
 
 An empty `@intent` cell has two causes a reader must be able to tell apart — the rules withheld the
-figure, or the nightly cache is simply behind and holds no minute for the newest sessions — so the
-strip's `slip @intent` names the second on its detail line: `intent prices 24.08.26` for the
-snapshot day it does hold, `intent prices unavailable` where none was ever built, and nothing at
-all while it is current or while no drawn row named a minute for it to answer. The cells
-themselves stay empty either way; an empty value is empty here as everywhere.
+figure, or the price history does not reach that session — so the strip's `slip @intent` names the
+second on its detail line: `intent prices 08.09.26` for the last session the bars do reach, drawn
+whenever a batch on screen is past it, `intent prices unavailable` where no snapshot was ever
+built, and nothing at all otherwise. The cells themselves stay empty either way; an empty value
+is empty here as everywhere.
+
+⚠️ **Expect the newest batch to be the blank one.** BistData backfills, so its minute history
+trails the live sessions by a day or more, and the Book opens on the newest batch. The column
+fills as you walk back through the batches, not on the one being worked — which is the opposite
+of where a reader looks first, and the reason the strip says how far the history got.
 `marketPrice`
 is an **observation**, not an intent and not a fill; it is written once at the order's birth and
 never revised (an edit leaves it alone), and carried unchanged onto whatever the order becomes,

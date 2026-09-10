@@ -29,8 +29,12 @@ export interface ResolvedIntentPrices {
   /** True once a snapshot exists but is not the current one. */
   stale: boolean;
   available: boolean;
-  /** The snapshot day the cache holds, for saying which one a stale figure is from. */
-  snapshotFor: string | null;
+  /**
+   * The newest session the bars reach. Not the same as when the snapshot ran:
+   * BistData backfills, so its minute history trails the live sessions, and a
+   * job that succeeded on time still cannot price a session it never received.
+   */
+  coversThrough: string | null;
   /** Whether any drawn row named a minute at all — without one the cache is not why. */
   asked: boolean;
   /**
@@ -109,7 +113,7 @@ export function useIntentPrices(
       },
       stale: status.data ? status.data.stale : false,
       available: status.data ? status.data.available : false,
-      snapshotFor: status.data?.snapshotFor ?? null,
+      coversThrough: status.data?.coversThrough ?? null,
       asked: wanted.size > 0,
       statusSettled: !enabled || settled,
     };

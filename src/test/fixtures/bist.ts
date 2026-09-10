@@ -372,6 +372,7 @@ export function makeHistReadFixture(overrides: Partial<HistReadFixture> = {}): H
       snapshotFor: '2026-08-24',
       builtAt: FIXTURE_NOW_MS - 12 * 60 * 60 * 1_000,
       barRows: 0,
+      coversThrough: null,
       stale: false,
     },
     intentBars: [],

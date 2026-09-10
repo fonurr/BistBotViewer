@@ -8,6 +8,7 @@ export interface CacheStamp {
   snapshotFor: string | null;
   builtAt: number | null;
   barRows: number | null;
+  coversThrough: string | null;
 }
 
 type IntentRow = IntentBar | CacheStamp;

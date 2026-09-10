@@ -40,6 +40,8 @@ export const snapshotStatusSchema = z.object({
   snapshotFor: z.string().nullable(),
   builtAt: z.number().int().nullable(),
   barRows: z.number().int().nullable(),
+  /** The newest session the bars reach — the sessions past it cannot be priced. */
+  coversThrough: z.string().nullable(),
   stale: z.boolean(),
 });
 

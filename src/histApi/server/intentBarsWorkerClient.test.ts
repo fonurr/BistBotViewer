@@ -86,13 +86,16 @@ describe('IntentBarsWorkerClient', () => {
     }
   });
 
-  it('reports the snapshot day the cache was built for', async () => {
+  it('reports both when it was built and how far its bars reach', async () => {
     const client = new IntentBarsWorkerClient(databasePath);
     try {
       await expect(client.queryStamp()).resolves.toEqual({
         snapshotFor: '2026-08-24',
         builtAt: 1777000000000,
         barRows: 2,
+        // The two are different questions: the run day, and the newest session
+        // the bars actually reach. Only the second says what can be priced.
+        coversThrough: '2026-08-25',
       });
     } finally {
       await client.close();

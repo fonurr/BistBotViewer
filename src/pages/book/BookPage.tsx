@@ -266,14 +266,27 @@ export function BookPage() {
    * nightly cache is behind and simply has no minute for the newest sessions.
    * Only the second is worth a word, and only once a row actually asked for one.
    */
-  const intentCacheNote =
-    !intentPrices.asked ||
-    !intentPrices.statusSettled ||
-    (intentPrices.available && !intentPrices.stale)
-      ? null
-      : intentPrices.available && intentPrices.snapshotFor !== null
-        ? `intent prices ${formatDate(Date.parse(`${intentPrices.snapshotFor}T00:00:00+03:00`))}`
-        : 'intent prices unavailable';
+  /*
+   * An empty `@intent` column has two very different causes, and the reader has
+   * to be able to tell them apart: the rules withheld every figure, or the
+   * history simply does not reach these sessions yet. BistData backfills, so it
+   * trails the live sessions by a day or more — which means the newest batch,
+   * the one being worked, is usually the one it cannot price. Naming the last
+   * session it does reach is the only way that reads as a gap rather than a
+   * fault. Said only once a drawn row actually asked for a minute.
+   */
+  const intentCacheNote = useMemo(() => {
+    if (!intentPrices.asked || !intentPrices.statusSettled) return null;
+    if (!intentPrices.available || intentPrices.coversThrough === null) {
+      return 'intent prices unavailable';
+    }
+    const beyond = visibleChains.some(
+      (chain) => chain.batchDate !== null && chain.batchDate > intentPrices.coversThrough!,
+    );
+    return beyond
+      ? `intent prices ${formatDate(Date.parse(`${intentPrices.coversThrough}T00:00:00+03:00`))}`
+      : null;
+  }, [intentPrices, visibleChains]);
   const todaySummary = useMemo(
     () =>
       summarizeBookToday(

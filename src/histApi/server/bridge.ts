@@ -79,6 +79,7 @@ export function createHistBridgePlugin(options: HistBridgeOptions): Plugin {
           snapshotFor: stamp?.snapshotFor ?? null,
           builtAt: stamp?.builtAt ?? null,
           barRows: stamp?.barRows ?? null,
+          coversThrough: stamp?.coversThrough ?? null,
           stale: stamp === null || stamp.snapshotFor !== snapshotDayFor(Date.now()),
         });
       } catch {
@@ -89,6 +90,7 @@ export function createHistBridgePlugin(options: HistBridgeOptions): Plugin {
           snapshotFor: null,
           builtAt: null,
           barRows: null,
+          coversThrough: null,
           stale: true,
         });
       }

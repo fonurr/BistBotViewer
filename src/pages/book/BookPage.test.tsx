@@ -99,6 +99,7 @@ beforeEach(() => {
     snapshotFor: '2026-08-24',
     builtAt: 1,
     barRows: 1,
+    coversThrough: '2026-08-25',
     stale: false,
   });
   histApiMock.getIntentBars.mockReset();
@@ -338,7 +339,7 @@ describe('The Book page states', () => {
     expect(strip.querySelector('.number-untrusted')).not.toBeNull();
   });
 
-  it('names a behind or missing intent cache on the strip, never in a cell', async () => {
+  it('names how far the price history reaches when a drawn batch is past it', async () => {
     // An empty @intent column has two causes and the reader must tell them
     // apart: the rules withheld the figure, or the nightly cache is behind.
     // The fixture order's intent instant is a whole minute, so a row does ask.
@@ -351,6 +352,7 @@ describe('The Book page states', () => {
       snapshotFor: '2026-08-24',
       builtAt: 1,
       barRows: 1,
+      coversThrough: '2026-08-24',
       stale: true,
     });
     renderBook();
@@ -361,7 +363,7 @@ describe('The Book page states', () => {
     expect(document.querySelector('.book-row .book-intent-price')!.textContent).toBe('');
   });
 
-  it('says nothing about the cache when it is current', async () => {
+  it('says nothing when the history reaches every batch on screen', async () => {
     book.data = {
       ...emptyRead(),
       activeOrders: [makeActiveOrder({ createdTime: Date.parse('2026-08-25T11:30:00+03:00') })],
