@@ -23,6 +23,19 @@ session. Nothing is persisted.
   A type with no row in the chosen range is not offered as a chip at all — a count within the
   range is what makes a chip a filter worth pressing — but a type the user has already selected
   stays, so the control they just pressed never vanishes under them.
+- The wire log filters by `operation` and the API log by `path`, through the shared
+  `MultiSelectFilter` in the toolbar. Like the type chips, the filter is applied by the database —
+  totals and older pages follow it — and each tab keeps its own selection. `null` asks for every
+  value, and the `none` shortcut is the deliberate empty list, which matches no row. The options are
+  every value counted in the range, most frequent first up to 200, sorted by name for display, plus
+  any value already ticked. Their counts ignore every selection, types included, and are kept per
+  tab by range, so ticking a box — which reloads the page — never empties the list the next box is
+  picked from. A range holding more than 200 distinct values says so in the popover.
+- Both grouping and filtering ignore everything from `?` on: the quotes producer's `operation`
+  carries its query string (`/api/quotes?symbols=...`), one call per distinct symbol set, so
+  without this every symbol list would be its own filter option. `/api/quotes` is one option
+  however many symbol lists it was called with, and ticking it matches every row whose value
+  starts with it.
 - Search is client-side over loaded rows only. Its label and result copy state that scope; it
   never pretends to search rows that have not been loaded.
 - Empty unfiltered ranges resolve the nearest stored day. The newer side is found with bounded
@@ -44,8 +57,8 @@ the active display order.
 ## Modal behavior
 
 Opening captures the invoking element, moves focus to Close, traps Tab inside the drawer, and
-restores focus on close. Escape closes the range popover first and the drawer second. Backdrop
-interaction follows the same top-layer rule. The native date inputs use the real per-log MIN/MAX
+restores focus on close. Escape closes an open range or operation/path popover first and the drawer
+second. Backdrop interaction follows the same top-layer rule. The native date inputs use the real per-log MIN/MAX
 extent and crossing one bound moves the other with an announced explanation.
 
 ## Safety boundary

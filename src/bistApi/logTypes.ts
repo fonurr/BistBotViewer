@@ -20,9 +20,23 @@ export type LogSource = z.infer<typeof logSourceSchema>;
 export type TrafficLogType = z.infer<typeof trafficLogTypeSchema>;
 export type StoredErrorType = z.infer<typeof storedErrorTypeSchema>;
 
+/**
+ * The most distinct wire operations or API paths one read counts. A range
+ * holding more says so with `complete: false` rather than dropping the rest in
+ * silence.
+ */
+export const LOG_VALUE_COUNT_LIMIT = 200;
+/**
+ * The most values one operation or path filter may name. It is larger than the
+ * count limit because a narrowed selection keeps values an earlier range listed.
+ */
+export const LOG_VALUE_FILTER_LIMIT = 500;
+
 const safeUnsignedIntegerSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const positiveSafeIntegerSchema = safeUnsignedIntegerSchema.min(1);
 const pageLimitSchema = positiveSafeIntegerSchema.max(200).default(100);
+/** An empty list is the deliberate none: it matches no row, and the counts still come back. */
+const logValueFilterSchema = z.array(z.string()).max(LOG_VALUE_FILTER_LIMIT);
 
 const queryWindowShape = {
   fromMs: safeUnsignedIntegerSchema,
@@ -44,6 +58,7 @@ const wireLogQuerySchema = z
     source: z.literal('wire'),
     ...queryWindowShape,
     types: z.array(trafficLogTypeSchema).min(1).max(trafficLogTypes.length).optional(),
+    operations: logValueFilterSchema.optional(),
   })
   .strict();
 
@@ -52,6 +67,7 @@ const apiLogQuerySchema = z
     source: z.literal('api'),
     ...queryWindowShape,
     types: z.array(trafficLogTypeSchema).min(1).max(trafficLogTypes.length).optional(),
+    paths: logValueFilterSchema.optional(),
   })
   .strict();
 
@@ -70,6 +86,15 @@ export const logQuerySchema = z
         code: 'custom',
         path: ['types'],
         message: 'Log types must not be repeated.',
+      });
+    }
+    const values =
+      query.source === 'wire' ? query.operations : query.source === 'api' ? query.paths : undefined;
+    if (values && new Set(values).size !== values.length) {
+      context.addIssue({
+        code: 'custom',
+        path: [query.source === 'wire' ? 'operations' : 'paths'],
+        message: 'Filter values must not be repeated.',
       });
     }
   });
@@ -196,6 +221,21 @@ const trafficLogCountsSchema = z
   })
   .strict();
 
+/**
+ * Rows per distinct wire operation or API path in the range, most frequent
+ * first. Like the type counts, they ignore every selection.
+ */
+const logValueCountsSchema = z
+  .object({
+    values: z
+      .array(z.object({ value: z.string(), count: safeUnsignedIntegerSchema }).strict())
+      .max(LOG_VALUE_COUNT_LIMIT),
+    complete: z.boolean(),
+  })
+  .strict();
+
+export type LogValueCounts = z.infer<typeof logValueCountsSchema>;
+
 const resultMetadataShape = {
   total: safeUnsignedIntegerSchema,
   extent: logExtentSchema,
@@ -215,6 +255,7 @@ const wireLogQueryResultSchema = z
     source: z.literal('wire'),
     rows: z.array(wireLogRowSchema).max(200),
     countsByType: trafficLogCountsSchema,
+    operationCounts: logValueCountsSchema,
     ...resultMetadataShape,
   })
   .strict();
@@ -224,6 +265,7 @@ const apiLogQueryResultSchema = z
     source: z.literal('api'),
     rows: z.array(apiLogRowSchema).max(200),
     countsByType: trafficLogCountsSchema,
+    pathCounts: logValueCountsSchema,
     ...resultMetadataShape,
   })
   .strict();

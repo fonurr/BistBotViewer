@@ -93,6 +93,7 @@ export function makeLogReadFixture(): LogReadFixture {
     ],
     total: 1,
     countsByType: trafficCounts,
+    operationCounts: { values: [{ value: 'GetBots', count: 1 }], complete: true },
     extent: extents.wire,
   };
 
@@ -118,6 +119,7 @@ export function makeLogReadFixture(): LogReadFixture {
     ],
     total: 1,
     countsByType: trafficCounts,
+    pathCounts: { values: [{ value: '/api/GetBots', count: 1 }], complete: true },
     extent: extents.api,
   };
 

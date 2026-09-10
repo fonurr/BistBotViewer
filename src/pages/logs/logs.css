@@ -200,6 +200,26 @@
   color: var(--st-warn);
 }
 
+.logs-value-filter {
+  flex: none;
+}
+
+/* Forty operations do not fit under the toolbar, and the drawer clips what
+   runs past its foot, so the popover scrolls instead. */
+.logs-value-filter .filter-popover {
+  max-height: min(480px, 70vh);
+  overflow-y: auto;
+}
+
+.logs-value-filter .filter-popover > * {
+  flex: none;
+}
+
+.logs-value-filter .filter-option > span:not(.filter-count) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .logs-search-label {
   flex: none;
 }

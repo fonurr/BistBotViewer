@@ -4,12 +4,21 @@ import type {
   LogExtent,
   LogExtents,
   LogSource,
+  LogValueCounts,
   StoredErrorType,
   TrafficLogType,
   WireLogRow,
 } from '../../bistApi/logTypes';
 
 export type LogsTab = LogSource;
+/** The tabs with a column worth a multi-select filter: wire operation, API path. */
+export type ValueFilterTab = Exclude<LogsTab, 'errors'>;
+
+export const VALUE_FILTER_NOUNS: Readonly<Record<ValueFilterTab, { one: string; many: string }>> = {
+  wire: { one: 'operation', many: 'operations' },
+  api: { one: 'path', many: 'paths' },
+};
+
 export type SortDirection = 'ascending' | 'descending';
 
 export interface LogRange {
@@ -267,6 +276,27 @@ export function nearestExtentDay(range: LogRange, extent: LogExtent): string | n
   if (range.to < bounds.min) return bounds.min;
   if (range.from > bounds.max) return bounds.max;
   return null;
+}
+
+/**
+ * One option per value counted in the range, plus every value already ticked
+ * — the same rule as the type chips, so a box never vanishes under the hand
+ * that ticked it. `counts` is null while the range has not been counted, and
+ * then no option claims a count.
+ */
+export function valueFilterOptions(
+  counts: LogValueCounts | null,
+  selected: ReadonlySet<string> | null,
+): { key: string; label: string; count?: number }[] {
+  const byValue = new Map(counts?.values.map((entry) => [entry.value, entry.count]));
+  const values = new Set([...byValue.keys(), ...(selected ?? [])]);
+  return [...values]
+    .sort((left, right) => numericCollator.compare(left, right))
+    .map((value) => ({
+      key: value,
+      label: value,
+      count: counts ? (byValue.get(value) ?? 0) : undefined,
+    }));
 }
 
 export function searchableText(entry: LogEnvelope): string {

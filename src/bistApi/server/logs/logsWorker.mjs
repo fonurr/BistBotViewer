@@ -13,12 +13,16 @@ const ERROR_TYPES = [
   'OrderAccountMismatch',
 ];
 const TRAFFIC_TYPES = ['routine', 'action', 'unexpected', 'error'];
+// Mirrors LOG_VALUE_COUNT_LIMIT and LOG_VALUE_FILTER_LIMIT in bistApi/logTypes.ts.
+const VALUE_COUNT_LIMIT = 200;
+const VALUE_FILTER_LIMIT = 500;
 
 const SOURCE_CONFIG = {
   errors: {
     table: 'Errors',
     timeColumn: 'time',
     types: ERROR_TYPES,
+    valueFilter: null,
     columns: [
       ['id', 'INTEGER', 0, 1],
       ['time', 'INTEGER', 1, 0],
@@ -33,6 +37,7 @@ const SOURCE_CONFIG = {
     table: 'WireLog',
     timeColumn: 'at',
     types: TRAFFIC_TYPES,
+    valueFilter: { column: 'operation', queryKey: 'operations', resultKey: 'operationCounts' },
     columns: [
       ['id', 'INTEGER', 0, 1],
       ['at', 'INTEGER', 1, 0],
@@ -59,6 +64,7 @@ const SOURCE_CONFIG = {
     table: 'ApiLog',
     timeColumn: 'at',
     types: TRAFFIC_TYPES,
+    valueFilter: { column: 'path', queryKey: 'paths', resultKey: 'pathCounts' },
     columns: [
       ['id', 'INTEGER', 0, 1],
       ['at', 'INTEGER', 1, 0],
@@ -122,7 +128,16 @@ function validateDatabasePaths(value) {
 const databasePaths = validateDatabasePaths(workerData?.databasePaths);
 
 function validateQuery(value) {
-  const keys = new Set(['source', 'fromMs', 'untilMs', 'types', 'limit', 'beforeId']);
+  const keys = new Set([
+    'source',
+    'fromMs',
+    'untilMs',
+    'types',
+    'operations',
+    'paths',
+    'limit',
+    'beforeId',
+  ]);
   if (!isRecord(value) || !hasOnlyKeys(value, keys)) {
     throw new WorkerRequestError(
       'INVALID_INPUT',
@@ -158,6 +173,21 @@ function validateQuery(value) {
       value.types.some((type) => !config.types.includes(type))
     ) {
       throw new WorkerRequestError('INVALID_INPUT', 'The selected log types are invalid.');
+    }
+  }
+  for (const key of ['operations', 'paths']) {
+    const values = value[key];
+    if (values === undefined) continue;
+    if (config.valueFilter?.queryKey !== key) {
+      throw new WorkerRequestError('INVALID_INPUT', `This log cannot be filtered by ${key}.`);
+    }
+    if (
+      !Array.isArray(values) ||
+      values.length > VALUE_FILTER_LIMIT ||
+      values.some((item) => typeof item !== 'string') ||
+      new Set(values).size !== values.length
+    ) {
+      throw new WorkerRequestError('INVALID_INPUT', `The selected log ${key} are invalid.`);
     }
   }
   return value;
@@ -289,6 +319,41 @@ function readExtent(database, config) {
   return { minMs, maxMs };
 }
 
+/**
+ * The quotes producer's path carries its query string in `operation`
+ * (`/api/quotes?symbols=...`) — one call per distinct symbol set, which would
+ * otherwise turn a handful of endpoints into hundreds of one-off filter
+ * options. Grouping and filtering both key on the part before `?`, so
+ * `/api/quotes` is one option however many symbol lists it was called with.
+ */
+function valueGroupExpression(column) {
+  const quoted = quoteIdentifier(column);
+  return `CASE WHEN instr(${quoted}, '?') > 0 THEN substr(${quoted}, 1, instr(${quoted}, '?') - 1) ELSE ${quoted} END`;
+}
+
+function readValueCounts(database, config, clauses, params) {
+  const table = quoteIdentifier(config.table);
+  const group = valueGroupExpression(config.valueFilter.column);
+  const label = `${config.table}.${config.valueFilter.column}`;
+  const rows = database
+    .prepare(
+      `SELECT ${group} AS value, COUNT(*) AS count
+         FROM ${table}
+        WHERE ${clauses.join(' AND ')}
+        GROUP BY ${group}
+        ORDER BY COUNT(*) DESC, ${group}
+        LIMIT ?`,
+    )
+    .all(...params, VALUE_COUNT_LIMIT + 1);
+  const values = rows.slice(0, VALUE_COUNT_LIMIT).map((row) => {
+    if (typeof row.value !== 'string') {
+      throw new WorkerRequestError('SCHEMA_MISMATCH', `${label} holds a value that is not text.`);
+    }
+    return { value: row.value, count: readCount(row.count, `${label} count`) };
+  });
+  return { values, complete: rows.length <= VALUE_COUNT_LIMIT };
+}
+
 function querySource(query) {
   const config = SOURCE_CONFIG[query.source];
   const database = openDatabase(query.source);
@@ -307,6 +372,18 @@ function querySource(query) {
           `${quoteIdentifier('type')} IN (${query.types.map(() => '?').join(', ')})`,
         );
         matchingParams.push(...query.types);
+      }
+
+      const { valueFilter } = config;
+      const selectedValues = valueFilter ? query[valueFilter.queryKey] : undefined;
+      if (selectedValues !== undefined) {
+        // An empty selection is the deliberate none: no row matches it.
+        matchingClauses.push(
+          selectedValues.length === 0
+            ? '0'
+            : `${valueGroupExpression(valueFilter.column)} IN (${selectedValues.map(() => '?').join(', ')})`,
+        );
+        matchingParams.push(...selectedValues);
       }
 
       const pageClauses = [...matchingClauses];
@@ -355,9 +432,18 @@ function querySource(query) {
         countsByType[row.type] = readCount(row.count, `${config.table} type count`);
       }
 
-      const extent = readExtent(database, config);
+      const result = { source: query.source, rows, total, countsByType };
+      if (valueFilter) {
+        result[valueFilter.resultKey] = readValueCounts(
+          database,
+          config,
+          rangeClauses,
+          rangeParams,
+        );
+      }
+      result.extent = readExtent(database, config);
       database.exec('COMMIT');
-      return { source: query.source, rows, total, countsByType, extent };
+      return result;
     } catch (error) {
       try {
         database.exec('ROLLBACK');

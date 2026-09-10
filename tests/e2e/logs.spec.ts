@@ -40,6 +40,46 @@ test('closes the Logs range layer before the drawer and returns focus to its tri
   await expect(trigger).toBeFocused();
 });
 
+test('narrows the wire log by operation inside the drawer and closes that layer first', async ({
+  page,
+  safeBridge,
+}) => {
+  safeBridge.useScenario(makeBrowserScenario());
+  await page.clock.setFixedTime(new Date(FIXTURE_NOW_MS));
+  await page.goto('/bots');
+  await safeBridge.stream.open();
+
+  const drawer = page.getByRole('dialog', { name: 'Logs', exact: true });
+  await page.getByRole('button', { name: 'Logs' }).click();
+  await drawer.getByRole('tab', { name: 'Wire log' }).click();
+
+  const trigger = drawer.getByRole('button', { name: '1 operation', exact: true });
+  await trigger.click();
+  const popover = page.getByRole('dialog', { name: '1 operation filter' });
+  await expect(popover).toBeVisible();
+
+  // The drawer clips what runs past its edges, so the popover has to open inside them.
+  const drawerBox = (await drawer.boundingBox())!;
+  const popoverBox = (await popover.boundingBox())!;
+  expect(popoverBox.x).toBeGreaterThanOrEqual(drawerBox.x);
+  expect(popoverBox.x + popoverBox.width).toBeLessThanOrEqual(drawerBox.x + drawerBox.width);
+
+  await popover.getByRole('button', { name: 'none', exact: true }).click();
+  await expect
+    .poll(() =>
+      safeBridge.requests
+        .filter((request) => request.path === '/bridge/bist/logs/query')
+        .map((request) => (request.body as { operations?: unknown }).operations)
+        .at(-1),
+    )
+    .toEqual([]);
+
+  await page.keyboard.press('Escape');
+  await expect(popover).toHaveCount(0);
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByRole('button', { name: '0 operations', exact: true })).toBeFocused();
+});
+
 test('mouse wheel over the log grid scrolls the drawer body', async ({ page, safeBridge }) => {
   const base = makeLogReadFixture();
   const wireRows = Array.from({ length: 120 }, (_, index) => {
@@ -70,6 +110,10 @@ test('mouse wheel over the log grid scrolls the drawer body', async ({ page, saf
     source: 'wire',
     rows: wireRows,
     countsByType: { routine: wireRows.length, action: 0, unexpected: 0, error: 0 },
+    operationCounts: {
+      values: wireRows.map((row) => ({ value: row.operation, count: 1 })),
+      complete: true,
+    },
     total: wireRows.length,
     extent: {
       minMs: wireRows[wireRows.length - 1]!.at,

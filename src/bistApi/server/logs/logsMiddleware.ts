@@ -105,7 +105,8 @@ export function createLogsMiddleware(options: LogsBridgeOptions): LogsMiddleware
             errorEnvelope('BadRequest', 'The log query route only accepts POST.'),
           );
         }
-        const { value } = await readJsonBody(request, 16_384);
+        // Room for a narrowed operation or path list, which names every ticked value.
+        const { value } = await readJsonBody(request, 65_536);
         const parsed = logQuerySchema.safeParse(value);
         if (!parsed.success) {
           throw new HttpInputError(400, 'The bounded log query is invalid.');

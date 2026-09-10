@@ -9,21 +9,26 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 
+import { MultiSelectFilter, type FilterSelection } from '../../components/EntityFilters';
+import { PopoverScrim } from '../../components/FilterPopover';
 import { plural } from '../../domain/format';
 import { logClient } from '../../bistApi/logClient';
-import type {
-  LogExtent,
-  LogExtents,
-  LogQueryResult,
-  LogSource,
-  StoredErrorType,
-  TrafficLogType,
+import {
+  LOG_VALUE_COUNT_LIMIT,
+  type LogExtent,
+  type LogExtents,
+  type LogQueryResult,
+  type LogSource,
+  type LogValueCounts,
+  type StoredErrorType,
+  type TrafficLogType,
 } from '../../bistApi/logTypes';
 import { LogsTable } from './LogsTable';
 import {
   ERROR_TYPES,
   LOG_TABS,
   TRAFFIC_TYPES,
+  VALUE_FILTER_NOUNS,
   clampRangeToExtent,
   columnsFor,
   daysBetween,
@@ -40,10 +45,12 @@ import {
   sourceLogName,
   timestampOf,
   todayInIstanbul,
+  valueFilterOptions,
   type LogEnvelope,
   type LogRange,
   type LogsTab,
   type SortDirection,
+  type ValueFilterTab,
 } from './logsModel';
 
 import './logs.css';
@@ -58,9 +65,20 @@ interface SourcePage {
   rows: LogEnvelope[];
   total: number;
   countsByType: Record<string, number>;
+  /** Operation (wire) or path (API) counts; the error log has no such column. */
+  valueCounts: LogValueCounts | null;
   extent: LogExtent;
   exhausted: boolean;
 }
+
+/** What one server read is narrowed by. Search is not here: it never leaves the browser. */
+interface PageFilter {
+  types: readonly string[];
+  /** `null` asks for every operation or path; an empty list for none. */
+  values: readonly string[] | null;
+}
+
+const NO_FILTER: PageFilter = { types: [], values: null };
 
 interface ViewState {
   signature: string;
@@ -77,9 +95,20 @@ type TypeSelections = {
   api: TrafficLogType[];
 };
 
+type ValueSelections = Record<ValueFilterTab, FilterSelection>;
+
+/**
+ * The last operation or path counts per tab, kept by the range they counted.
+ * They ignore the selection, so ticking a box — which reloads the page — does
+ * not empty the list the next box is being picked from.
+ */
+type RangeValueCounts = Record<ValueFilterTab, { rangeKey: string; counts: LogValueCounts } | null>;
+
 type SortByTab = Record<LogsTab, { key: string; direction: SortDirection }>;
 
 const PAGE_SIZE = 100;
+/** `all` sits beside it; `none` is how one picks two operations out of forty. */
+const VALUE_FILTER_PICKS = [{ label: 'none', select: new Set<string>() }];
 const EMPTY_EXTENTS: LogExtents = {
   errors: { minMs: null, maxMs: null },
   wire: { minMs: null, maxMs: null },
@@ -137,21 +166,25 @@ function errorMessage(error: unknown): string {
 
 function toPage(result: LogQueryResult): SourcePage {
   let rows: LogEnvelope[];
+  let valueCounts: LogValueCounts | null = null;
   if (result.source === 'errors') {
     const errorRows = result.rows;
     rows = errorRows.map((row) => ({ source: 'errors', row }));
   } else if (result.source === 'wire') {
     const wireRows = result.rows;
     rows = wireRows.map((row) => ({ source: 'wire', row }));
+    valueCounts = result.operationCounts;
   } else {
     const apiRows = result.rows;
     rows = apiRows.map((row) => ({ source: 'api', row }));
+    valueCounts = result.pathCounts;
   }
   return {
     source: result.source,
     rows,
     total: result.total,
     countsByType: { ...result.countsByType },
+    valueCounts,
     extent: result.extent,
     exhausted: rows.length < PAGE_SIZE || rows.length >= result.total,
   };
@@ -160,7 +193,7 @@ function toPage(result: LogQueryResult): SourcePage {
 async function readPage(
   source: LogSource,
   range: LogRange,
-  types: readonly string[],
+  { types, values }: PageFilter,
   beforeId?: number,
   limit = PAGE_SIZE,
 ): Promise<SourcePage> {
@@ -177,12 +210,14 @@ async function readPage(
     );
   }
   const trafficTypes = types.length > 0 ? (types as TrafficLogType[]) : undefined;
+  const selectedValues = values === null ? undefined : [...values];
   if (source === 'wire') {
     return toPage(
       await logClient.query({
         source,
         ...window,
         types: trafficTypes,
+        operations: selectedValues,
         beforeId,
         limit,
       }),
@@ -193,6 +228,7 @@ async function readPage(
       source,
       ...window,
       types: trafficTypes,
+      paths: selectedValues,
       beforeId,
       limit,
     }),
@@ -212,7 +248,13 @@ async function nearestDayForSource(
   const candidates: string[] = [];
   const dayBefore = shiftDateKey(range.from, -1);
   if (bounds.min <= dayBefore) {
-    const before = await readPage(source, { from: bounds.min, to: dayBefore }, [], undefined, 1);
+    const before = await readPage(
+      source,
+      { from: bounds.min, to: dayBefore },
+      NO_FILTER,
+      undefined,
+      1,
+    );
     const nearestBefore = before.rows[0];
     if (nearestBefore) {
       candidates.push(todayInIstanbul(timestampOf(nearestBefore)));
@@ -224,7 +266,7 @@ async function nearestDayForSource(
   if (low <= high) {
     while (low < high) {
       const middle = shiftDateKey(low, Math.floor(daysBetween(low, high) / 2));
-      const prefix = await readPage(source, { from: low, to: middle }, [], undefined, 1);
+      const prefix = await readPage(source, { from: low, to: middle }, NO_FILTER, undefined, 1);
       if (prefix.total > 0) high = middle;
       else low = shiftDateKey(middle, 1);
     }
@@ -241,12 +283,24 @@ async function nearestDayForSource(
   })[0]!;
 }
 
-function selectedTypesFor(
+function selectedFilterFor(
   source: LogSource,
   activeTab: LogsTab,
-  selections: TypeSelections,
-): readonly string[] {
-  return activeTab === source ? selections[source] : [];
+  types: TypeSelections,
+  values: ValueSelections,
+): PageFilter {
+  if (activeTab !== source) return NO_FILTER;
+  const selection = source === 'errors' ? null : values[source];
+  return { types: types[source], values: selectionList(selection) };
+}
+
+/** Sorted, so one selection always makes the same request and the same signature. */
+function selectionList(selection: FilterSelection): string[] | null {
+  return selection === null ? null : [...selection].sort();
+}
+
+function rangeKeyOf(range: LogRange): string {
+  return `${range.from}:${range.to}`;
 }
 
 function copyWithFallback(text: string): Promise<void> {
@@ -282,6 +336,15 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
     wire: [],
     api: [],
   });
+  const [valueSelections, setValueSelections] = useState<ValueSelections>({
+    wire: null,
+    api: null,
+  });
+  const [rangeValueCounts, setRangeValueCounts] = useState<RangeValueCounts>({
+    wire: null,
+    api: null,
+  });
+  const [openFilter, setOpenFilter] = useState<string | null>(null);
   const [sorts, setSorts] = useState<SortByTab>(INITIAL_SORTS);
   const [widths, setWidths] = useState<Record<LogsTab, Record<string, number>>>({
     errors: {},
@@ -329,7 +392,10 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
       ? typeSelections[activeTab]
       : [];
   const typeSignature = activeTypes.join(',');
-  const viewSignature = `${activeTab}:${currentRange.from}:${currentRange.to}:${typeSignature}:${queryReload}`;
+  const valueTab: ValueFilterTab | null = activeTab === 'errors' ? null : activeTab;
+  const activeValueSelection = valueTab === null ? null : valueSelections[valueTab];
+  const valueSignature = JSON.stringify(selectionList(activeValueSelection));
+  const viewSignature = `${activeTab}:${currentRange.from}:${currentRange.to}:${typeSignature}:${valueSignature}:${queryReload}`;
 
   useEffect(() => {
     if (!open) return;
@@ -366,11 +432,28 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
     });
     void Promise.all(
       sources.map((source) =>
-        readPage(source, currentRange, selectedTypesFor(source, activeTab, typeSelections)),
+        readPage(
+          source,
+          currentRange,
+          selectedFilterFor(source, activeTab, typeSelections, valueSelections),
+        ),
       ),
     )
       .then((pages) => {
         if (generation !== queryGeneration.current) return;
+        const counted = pages.filter(
+          (page): page is SourcePage & { source: ValueFilterTab; valueCounts: LogValueCounts } =>
+            page.source !== 'errors' && page.valueCounts !== null,
+        );
+        if (counted.length > 0) {
+          setRangeValueCounts((current) => {
+            const next = { ...current };
+            for (const page of counted) {
+              next[page.source] = { rangeKey: rangeKeyOf(currentRange), counts: page.valueCounts };
+            }
+            return next;
+          });
+        }
         setView({
           signature: viewSignature,
           pages: Object.fromEntries(pages.map((page) => [page.source, page])) as Partial<
@@ -402,6 +485,7 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
     open,
     queryReload,
     typeSignature,
+    valueSignature,
   ]);
 
   useEffect(() => {
@@ -423,12 +507,17 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
   useEffect(() => {
     if (!open) {
       setRangeOpen(false);
+      setOpenFilter(null);
       return;
     }
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        if (rangeOpen) {
+        /* The filter popover closes itself, and returns focus, while focus is
+           inside it; this catches an Escape pressed after focus left it. */
+        if (openFilter) {
+          setOpenFilter(null);
+        } else if (rangeOpen) {
           setRangeOpen(false);
           requestAnimationFrame(() => rangeButtonRef.current?.focus());
         } else {
@@ -453,7 +542,7 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, open, rangeOpen]);
+  }, [onClose, open, openFilter, rangeOpen]);
 
   useEffect(() => {
     if (!open || !rangeOpen) return;
@@ -593,7 +682,7 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
           readPage(
             page.source,
             currentRange,
-            selectedTypesFor(page.source, activeTab, typeSelections),
+            selectedFilterFor(page.source, activeTab, typeSelections, valueSelections),
             idOf(page.rows[page.rows.length - 1]!),
           ),
         ),
@@ -638,6 +727,7 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
     currentRange,
     scopeSources,
     typeSelections,
+    valueSelections,
     view.loadingMore,
     view.pages,
     view.signature,
@@ -646,7 +736,13 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
   const switchTab = (tab: LogsTab) => {
     setActiveTab(tab);
     setRangeOpen(false);
+    setOpenFilter(null);
     setExpandedCell(null);
+  };
+
+  const openFilterPopover = (name: string | null) => {
+    setOpenFilter(name);
+    if (name !== null) setRangeOpen(false);
   };
 
   const updateRange = (range: LogRange, notice = '') => {
@@ -716,6 +812,7 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
   };
 
   const toggleRange = () => {
+    setOpenFilter(null);
     setRangeOpen((current) => {
       const next = !current;
       if (next) requestAnimationFrame(() => fromDateRef.current?.focus());
@@ -819,6 +916,10 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
     currentRange.to === lastSevenRange.to &&
     !exactTodayRange;
   const activeLogName = sourceLogName(activeTab);
+  const cachedValueCounts = valueTab === null ? null : rangeValueCounts[valueTab];
+  const knownValueCounts =
+    cachedValueCounts?.rangeKey === rangeKeyOf(currentRange) ? cachedValueCounts.counts : null;
+  const valueNouns = valueTab === null ? null : VALUE_FILTER_NOUNS[valueTab];
 
   return (
     <div className="logs-backdrop" onPointerDown={backdropPointerDown}>
@@ -869,6 +970,36 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
           </div>
 
           <div className="logs-toolbar-spacer" />
+
+          {/* Offered once the range is counted, or while a selection needs a
+              way back to `all`. */}
+          {valueTab !== null &&
+            valueNouns !== null &&
+            (knownValueCounts !== null || activeValueSelection !== null) && (
+              <div className="logs-value-filter">
+                <MultiSelectFilter
+                  name="values"
+                  open={openFilter === 'values'}
+                  setOpen={openFilterPopover}
+                  heading={`${valueNouns.many} in these days`}
+                  help="Counted across these days whatever the type chips keep. Unlike search, this asks the log itself, so totals and older pages follow it."
+                  note={
+                    knownValueCounts && !knownValueCounts.complete
+                      ? `These days hold more than ${LOG_VALUE_COUNT_LIMIT} ${valueNouns.many}; only the most frequent are listed, and a narrowed selection keeps only the ticked ones.`
+                      : undefined
+                  }
+                  options={valueFilterOptions(knownValueCounts, activeValueSelection)}
+                  picks={VALUE_FILTER_PICKS}
+                  selected={activeValueSelection}
+                  onChange={(selection) =>
+                    setValueSelections((current) => ({ ...current, [valueTab]: selection }))
+                  }
+                  one={valueNouns.one}
+                  many={valueNouns.many}
+                  align="right"
+                />
+              </div>
+            )}
 
           <div className="logs-range-wrap">
             <button
@@ -1084,6 +1215,11 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
                       totalCount={totalCount}
                       unfilteredRangeCount={unfilteredRangeCount}
                       hasTypeFilter={activeTypes.length > 0}
+                      valueFilter={
+                        valueNouns !== null && activeValueSelection !== null
+                          ? { ...valueNouns, none: activeValueSelection.size === 0 }
+                          : null
+                      }
                       range={currentRange}
                       extent={activeExtent}
                       nearestDay={
@@ -1134,6 +1270,7 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
             </>
           )}
         </main>
+        {openFilter ? <PopoverScrim onClose={() => setOpenFilter(null)} /> : null}
       </div>
     </div>
   );
@@ -1174,6 +1311,7 @@ function EmptyLogState({
   totalCount,
   unfilteredRangeCount,
   hasTypeFilter,
+  valueFilter,
   range,
   extent,
   nearestDay,
@@ -1184,6 +1322,8 @@ function EmptyLogState({
   totalCount: number;
   unfilteredRangeCount: number;
   hasTypeFilter: boolean;
+  /** The operation or path selection, when one narrows the read. */
+  valueFilter: { one: string; many: string; none: boolean } | null;
   range: LogRange;
   extent: LogExtent;
   nearestDay: string | null;
@@ -1194,6 +1334,17 @@ function EmptyLogState({
       <p className="logs-empty" role="status">
         No loaded row matches “{search.trim()}”. Search checks the {plural(loadedCount, 'row')}{' '}
         loaded in these days.
+      </p>
+    );
+  }
+  if (valueFilter && totalCount === 0 && unfilteredRangeCount > 0) {
+    return (
+      <p className="logs-empty" role="status">
+        {valueFilter.none
+          ? `No ${valueFilter.one} is ticked, so no row in ${formatRange(range)} is shown.`
+          : `No row in ${formatRange(range)} matches the ticked ${valueFilter.many}${
+              hasTypeFilter ? ' and the selected types' : ''
+            }. The counts show what these days hold.`}
       </p>
     );
   }

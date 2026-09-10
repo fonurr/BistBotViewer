@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -88,6 +88,7 @@ function wireResult(): WireLogQueryResult {
     ],
     total: 1,
     countsByType: TRAFFIC_COUNTS,
+    operationCounts: { values: [{ value: 'GetOrders', count: 1 }], complete: true },
     extent: extents.wire,
   };
 }
@@ -115,6 +116,7 @@ function apiResult(): ApiLogQueryResult {
     ],
     total: 1,
     countsByType: TRAFFIC_COUNTS,
+    pathCounts: { values: [{ value: '/api/GetBots', count: 1 }], complete: true },
     extent: extents.api,
   };
 }
@@ -336,6 +338,121 @@ describe('LogsDrawer', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     rerender(<LogsDrawer open={false} onClose={onClose} />);
     expect(trigger).toHaveFocus();
+  });
+
+  it('filters the wire log by operation on the server and keeps the list while boxes are ticked', async () => {
+    const operations = [
+      { value: 'Heartbeat', count: 5 },
+      { value: 'GetOrders', count: 3 },
+      { value: 'SendOrder', count: 1 },
+    ];
+    vi.mocked(logClient.query).mockImplementation(async (rawInput) => {
+      const input = rawInput as LogQueryInput;
+      if (input.source === 'errors') return errorResult() as LogQueryResult;
+      if (input.source === 'api') return apiResult() as LogQueryResult;
+      const base = wireResult();
+      const kept = operations.filter(
+        (entry) => !input.operations || input.operations.includes(entry.value),
+      );
+      return {
+        ...base,
+        rows: kept.map((entry, index) => ({
+          ...base.rows[0]!,
+          id: 10 + index,
+          operation: entry.value,
+        })),
+        total: kept.reduce((total, entry) => total + entry.count, 0),
+        countsByType: { ...TRAFFIC_COUNTS, routine: 9 },
+        operationCounts: { values: operations, complete: true },
+      } as LogQueryResult;
+    });
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(<LogsDrawer open onClose={onClose} />);
+    await screen.findByText(`1 of 1 in ${formatToday()} · newest first`);
+    expect(screen.queryByRole('button', { name: /operation/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: 'Wire log' }));
+    const trigger = await screen.findByRole('button', { name: '3 operations' });
+    await user.click(trigger);
+    const popover = screen.getByRole('dialog', { name: '3 operations filter' });
+    expect(
+      within(popover)
+        .getAllByRole('checkbox')
+        .map((box) => box.closest('label')?.textContent),
+    ).toEqual(['GetOrders3', 'Heartbeat5', 'SendOrder1']);
+
+    await user.click(within(popover).getByRole('button', { name: 'none' }));
+    expect(
+      await screen.findByText(`No operation is ticked, so no row in ${formatToday()} is shown.`),
+    ).toBeInTheDocument();
+    expect(logClient.query).toHaveBeenLastCalledWith(
+      expect.objectContaining({ source: 'wire', operations: [] }),
+    );
+
+    // The list is the range's, not the page's, so it survives each reload.
+    await user.click(within(popover).getByRole('checkbox', { name: /^SendOrder/ }));
+    await screen.findByText(`1 of 1 in ${formatToday()} · newest first`);
+    await user.click(within(popover).getByRole('checkbox', { name: /^GetOrders/ }));
+    await screen.findByText(`2 of 4 in ${formatToday()} · newest first`);
+    expect(logClient.query).toHaveBeenLastCalledWith(
+      expect.objectContaining({ source: 'wire', operations: ['GetOrders', 'SendOrder'] }),
+    );
+    expect(screen.getByRole('button', { name: '2 operations' })).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: /operations filter/ })).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByRole('button', { name: '2 operations' })).toHaveFocus());
+
+    // Each tab keeps its own selection: the API log asks for every path.
+    await user.click(screen.getByRole('tab', { name: 'API log' }));
+    await screen.findByRole('button', { name: '1 path' });
+    expect(logClient.query).toHaveBeenLastCalledWith(
+      expect.not.objectContaining({ paths: expect.anything() }),
+    );
+  });
+
+  it('filters the API log by path and names the empty result', async () => {
+    vi.mocked(logClient.query).mockImplementation(async (rawInput) => {
+      const input = rawInput as LogQueryInput;
+      if (input.source === 'errors') return errorResult() as LogQueryResult;
+      if (input.source === 'wire') return wireResult() as LogQueryResult;
+      const base = apiResult();
+      const matching = !input.paths || input.paths.includes('/api/GetBots');
+      return {
+        ...base,
+        rows: matching ? base.rows : [],
+        total: matching ? 1 : 0,
+        pathCounts: {
+          values: [
+            { value: '/api/GetBots', count: 1 },
+            { value: '/api/SendOrders', count: 0 },
+          ],
+          complete: false,
+        },
+      } as LogQueryResult;
+    });
+    const user = userEvent.setup();
+    render(<LogsDrawer open onClose={vi.fn()} />);
+    await user.click(screen.getByRole('tab', { name: 'API log' }));
+    await user.click(await screen.findByRole('button', { name: '2 paths' }));
+    const popover = screen.getByRole('dialog', { name: '2 paths filter' });
+    expect(popover).toHaveTextContent('These days hold more than 200 paths');
+
+    await user.click(within(popover).getByRole('checkbox', { name: /^\/api\/GetBots/ }));
+    expect(logClient.query).toHaveBeenLastCalledWith(
+      expect.objectContaining({ source: 'api', paths: ['/api/SendOrders'] }),
+    );
+    expect(
+      await screen.findByText(
+        `No row in ${formatToday()} matches the ticked paths. The counts show what these days hold.`,
+      ),
+    ).toBeInTheDocument();
+
+    await user.click(within(popover).getByRole('button', { name: 'all' }));
+    await screen.findByText(`1 of 1 in ${formatToday()} · newest first`);
+    expect(screen.getByRole('button', { name: '2 paths' })).toBeInTheDocument();
   });
 });
 
