@@ -7,6 +7,32 @@ High-risk rules—chain identity, sellable quantity, status vocabulary, trust-aw
 caps, date/session handling, and write-result state—must have direct unit tests. Preserve unknown
 values as `null`; never coerce them to zero or a successful status.
 
+## Session hours
+
+`sessionHours.ts` is the one place BIST's hours are written down, in Istanbul minutes past
+midnight. Never write one as a literal anywhere else — import it, or better, go through the
+`calendar.ts` helper that turns it into an instant on a given day:
+
+| anchor                    | full day | half day | constant                                 |
+| ------------------------- | -------- | -------- | ---------------------------------------- |
+| opening auction match     | 09:55    | 09:55    | `OPENING_MATCH_MINUTE`                   |
+| continuous trading opens  | 10:00    | 10:00    | `CONTINUOUS_OPEN_MINUTE`                 |
+| continuous trading closes | 18:00    | 12:30    | `CLOSE_MINUTE` / `HALF_DAY_CLOSE_MINUTE` |
+| closing auction match     | 18:05    | 12:35    | close + `CLOSING_MATCH_OFFSET_MINUTES`   |
+| session stops taking work | 18:10    | 12:40    | close + `SESSION_GRACE_MINUTES`          |
+
+A half day only moves the close; everything read off the close moves with it. The first three
+anchors are confirmed against both MatriksOrder's `API.md` ("Which session an order belongs to")
+and its `src/orders/schedule.ts`; the steps past the close are that `API.md` section's table,
+which `firstTradeInstant` implements. ⚠️ MatriksOrder's own `sessionDay` rolls a batch five
+minutes past the close rather than ten; the viewer follows `API.md`, which outranks the sibling's
+code here. The file imports nothing so the nightly snapshot worker in `histApi/server` can be
+handed the same values by its scheduler rather than keep a copy. Two neighbouring clocks are
+deliberately not here: DailyDataAggregator's producer schedule (up from 09:35, gone fifteen
+minutes past the close) stays in `calendar.ts`, and MatriksOrder's own send times for a scheduled
+order (09:00, and thirty seconds past the opening match or the close) stay in `schedule.ts`,
+since neither is the exchange's.
+
 `priceRules.ts` owns the buy-only `openPrice`/`closePrice` rules end to end: reading the JSON the
 server echoes back, saying it out loud, and turning the Book's form draft into a request. It draws
 an absent rule apart from one it cannot re-express — display collapses both to nothing, but a write

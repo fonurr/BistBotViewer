@@ -78,7 +78,9 @@ BistData always writes its synthetic closing print at **18:05**, including on a 
 close is 12:30. `domain/calendar` puts the closing-auction instant at close + 5. The snapshot
 therefore **re-stamps** the closing auction row to that session's own close + 5, so the domain can
 do one point lookup on both kinds of day. The opening print stays at 09:55 — a half day only moves
-the close.
+the close. The worker is plain Node and keeps no copy of those hours: the scheduler hands it
+`src/domain/sessionHours.ts`'s values in `workerData.sessionHours`, so the snapshot and the
+domain can never disagree about where a session's auctions fall.
 
 ## Routes
 

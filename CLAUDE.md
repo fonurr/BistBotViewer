@@ -99,6 +99,10 @@ separate backend process. Consequences:
   09:35–close+15 (18:15, or 12:45 on a half day) and a live price is owed only from 10:00. Outside
   that the stream is not opened and nothing is polled — upstream refuses everything — and prices come
   from `bars.db`.
+- BIST's session hours (09:55 match, 10:00–18:00 continuous, 12:30 half-day close, the closing
+  match and grace past it) are written once, in `src/domain/sessionHours.ts`, and confirmed against
+  MatriksOrder's `API.md`. Never hard-code an exchange time elsewhere; read it from there or through
+  `calendar.ts`. See the [domain README](src/domain/README.md#session-hours).
 - `dataHooks` define the lazy per-page reads and price polling; `liveUpdates` applies validated
   SSE write events to every matching cached selector.
 - `queryKeys` encodes the bot selector (`'*'` / one id / a sorted id list) into the key, and

@@ -1,14 +1,20 @@
 import type { Holiday } from '../bistApi/types';
+import {
+  CLOSE_MINUTE,
+  CLOSING_MATCH_OFFSET_MINUTES,
+  CONTINUOUS_OPEN_MINUTE,
+  HALF_DAY_CLOSE_MINUTE,
+  OPENING_MATCH_MINUTE,
+  POST_MATCH_RESUME_OFFSET_MINUTES,
+  SESSION_GRACE_MINUTES,
+} from './sessionHours';
 
 const DAY_MS = 86_400_000;
 const MAX_DAYS_AHEAD = 366;
-/** The close: 18:00, or 12:30 on a half day, which only moves the close. */
-const CLOSE_MINUTE = 18 * 60;
-const HALF_DAY_CLOSE_MINUTE = 12 * 60 + 30;
-/** The opening auction match — the first moment anything trades on a session. */
-const OPENING_MATCH_MINUTE = 9 * 60 + 55;
-/** A session keeps the work written for it until ten minutes past its close. */
-const SESSION_GRACE_MINUTES = 10;
+/*
+ * The exchange's own hours live in `sessionHours.ts`. The two below are DailyDataAggregator's
+ * producer schedule, so they stay with the only rules that read them.
+ */
 /**
  * The closing auction runs for fifteen minutes past the close (18:15, or 12:45 on a half day) and
  * DailyDataAggregator's producer exits with it, so this is the last minute a price can be live.
@@ -16,8 +22,6 @@ const SESSION_GRACE_MINUTES = 10;
 const AUCTION_TAIL_MINUTES = 15;
 /** The producer's scheduled start; it answers before its first tick, saying the feed is starting. */
 const PRODUCER_START_MINUTE = 9 * 60 + 35;
-/** Continuous auction. Before it there is nothing to tick, so silence is not a fault. */
-const CONTINUOUS_OPEN_MINUTE = 10 * 60;
 
 export interface SessionWindow {
   /** The first moment DailyDataAggregator is expected to answer at all. */
@@ -144,16 +148,16 @@ export function firstTradeInstant(
     const match = istanbulMinuteAt(day, OPENING_MATCH_MINUTE);
     const open = istanbulMinuteAt(day, CONTINUOUS_OPEN_MINUTE);
     const close = istanbulMinuteAt(day, closeMinute);
-    const closePlus5 = istanbulMinuteAt(day, closeMinute + 5);
-    const closePlus8 = istanbulMinuteAt(day, closeMinute + 8);
-    const closePlus10 = istanbulMinuteAt(day, closeMinute + 10);
+    const closingMatch = istanbulMinuteAt(day, closeMinute + CLOSING_MATCH_OFFSET_MINUTES);
+    const resume = istanbulMinuteAt(day, closeMinute + POST_MATCH_RESUME_OFFSET_MINUTES);
+    const sessionEnd = istanbulMinuteAt(day, closeMinute + SESSION_GRACE_MINUTES);
 
     if (timestamp < match) return match; // before the auction → today's own match
     if (timestamp < open) return open; // in the auction → the continuous open
     if (timestamp < close) return timestamp; // trading hours → its own instant
-    if (timestamp < closePlus5) return closePlus5; // just past the close → the closing auction
-    if (timestamp < closePlus8) return closePlus8;
-    if (timestamp < closePlus10) return timestamp;
+    if (timestamp < closingMatch) return closingMatch; // just past the close → the closing auction
+    if (timestamp < resume) return resume;
+    if (timestamp < sessionEnd) return timestamp;
     // T ≥ close+10 min → the next trading day's match, handled below.
   }
 

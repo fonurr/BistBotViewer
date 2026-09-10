@@ -1,14 +1,14 @@
 import { closeMinuteOn, istanbulDay, istanbulMinuteAt, type HolidayCalendar } from './calendar';
-
-/**
- * The exchange's own auction and continuous-open minutes, matching the ones
- * `firstTradeInstant` folds an off-hours stamp forward onto. A half day only
- * moves the close, so it opens like any other trading day.
+/*
+ * The same auction and continuous-open minutes `firstTradeInstant` folds an
+ * off-hours stamp forward onto; `firstTradeInstant` puts a stamp just past the
+ * close on the closing match.
  */
-const OPENING_MATCH_MINUTE = 9 * 60 + 55;
-const CONTINUOUS_OPEN_MINUTE = 10 * 60;
-/** `firstTradeInstant` puts a stamp just past the close on close + 5. */
-const CLOSING_AUCTION_OFFSET = 5;
+import {
+  CLOSING_MATCH_OFFSET_MINUTES,
+  CONTINUOUS_OPEN_MINUTE,
+  OPENING_MATCH_MINUTE,
+} from './sessionHours';
 
 /**
  * A stored bar is only as good as the scale it was put on. Where the bulletin
@@ -66,7 +66,7 @@ export function intentBarLookup(
   const minute = offset / 60_000;
 
   const closeMinute = closeMinuteOn(day, holidays);
-  if (minute === OPENING_MATCH_MINUTE || minute === closeMinute + CLOSING_AUCTION_OFFSET) {
+  if (minute === OPENING_MATCH_MINUTE || minute === closeMinute + CLOSING_MATCH_OFFSET_MINUTES) {
     return { ts: intentTime, field: 'close', isAuction: true };
   }
   if (minute === CONTINUOUS_OPEN_MINUTE) {

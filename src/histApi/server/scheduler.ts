@@ -1,6 +1,13 @@
 import path from 'node:path';
 import { Worker } from 'node:worker_threads';
 
+import {
+  CLOSE_MINUTE,
+  CLOSING_MATCH_OFFSET_MINUTES,
+  HALF_DAY_CLOSE_MINUTE,
+  OPENING_MATCH_MINUTE,
+} from '../../domain/sessionHours.ts';
+
 /** Turkey has been on permanent UTC+3 since 2016, so a fixed offset is exact here. */
 const ISTANBUL_OFFSET_MS = 3 * 60 * 60 * 1000;
 /** The nightly pull is aimed at 23:00 Istanbul. */
@@ -124,6 +131,13 @@ export class SnapshotScheduler {
             scaleDbPath: this.options.scaleDbPath,
             cachePath: this.options.cachePath,
             snapshotFor,
+            // The worker is plain Node and keeps no copy of the exchange's hours.
+            sessionHours: {
+              openingMatchMinute: OPENING_MATCH_MINUTE,
+              closeMinute: CLOSE_MINUTE,
+              halfDayCloseMinute: HALF_DAY_CLOSE_MINUTE,
+              closingMatchOffsetMinutes: CLOSING_MATCH_OFFSET_MINUTES,
+            },
           },
         },
       );

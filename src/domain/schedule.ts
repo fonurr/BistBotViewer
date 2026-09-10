@@ -1,9 +1,18 @@
 import type { Holiday, ScheduleType } from '../bistApi/types';
 import { closeMinuteOn, holidayCalendar, istanbulMinuteAt, rollToTradingDay } from './calendar';
+import { CONTINUOUS_OPEN_MINUTE, OPENING_MATCH_MINUTE } from './sessionHours';
 
 const DAY_MS = 86_400_000;
 const MAX_DAYS_AHEAD = 366;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+/*
+ * MatriksOrder's own send times rather than exchange hours (its `src/orders/schedule.ts`):
+ * `OpeningAuction` goes out at 09:00, the day's earliest legal send, and `AtOpen` and
+ * `ClosingAuction` thirty seconds past the opening match and the close respectively.
+ */
+const PRE_OPEN_SEND_MINUTE = 9 * 60;
+const POST_OPENING_MATCH_DELAY_MS = 30_000;
+const CLOSING_AUCTION_DELAY_MS = 30_000;
 
 export interface ScheduleInput {
   day: string;
@@ -44,25 +53,25 @@ export function resolveSchedule(
 
   switch (input.type) {
     case 'OpeningAuction':
-      fireTime = istanbulMinuteAt(resolvedDay, 9 * 60);
+      fireTime = istanbulMinuteAt(resolvedDay, PRE_OPEN_SEND_MINUTE);
       break;
     case 'AtOpen':
-      fireTime = istanbulMinuteAt(resolvedDay, 9 * 60 + 55) + 30_000;
+      fireTime = istanbulMinuteAt(resolvedDay, OPENING_MATCH_MINUTE) + POST_OPENING_MATCH_DELAY_MS;
       break;
     case 'AfterOpen':
-      fireTime = istanbulMinuteAt(resolvedDay, 10 * 60 + input.diff!);
+      fireTime = istanbulMinuteAt(resolvedDay, CONTINUOUS_OPEN_MINUTE + input.diff!);
       if (fireTime >= closeAt) {
         return invalid(`The resolved time is not before the ${resolvedDay} session close.`);
       }
       break;
     case 'BeforeClose':
       fireTime = istanbulMinuteAt(resolvedDay, closeMinute - input.diff!);
-      if (fireTime < istanbulMinuteAt(resolvedDay, 9 * 60)) {
+      if (fireTime < istanbulMinuteAt(resolvedDay, PRE_OPEN_SEND_MINUTE)) {
         return invalid(`The resolved time is before 09:00 on ${resolvedDay}.`);
       }
       break;
     case 'ClosingAuction':
-      fireTime = closeAt + 30_000;
+      fireTime = closeAt + CLOSING_AUCTION_DELAY_MS;
       break;
   }
 

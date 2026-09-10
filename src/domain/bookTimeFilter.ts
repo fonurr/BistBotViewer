@@ -1,5 +1,6 @@
 import type { BookChain } from './chains';
 import { formatTime } from './format';
+import { CLOSE_MINUTE, CLOSING_MATCH_OFFSET_MINUTES, OPENING_MATCH_MINUTE } from './sessionHours';
 
 /** The same clocks, in the same order, as the Book's time columns. */
 export const BOOK_TIME_FIELDS = [
@@ -13,13 +14,18 @@ export const BOOK_TIME_FIELDS = [
 
 export type BookTimeField = (typeof BOOK_TIME_FIELDS)[number]['key'];
 
-/** Slider positions index this list so the session gets finer clock steps. */
+/**
+ * Slider positions index this list so the session gets finer clock steps: every minute from the
+ * opening match through the closing match (09:55 → 18:05).
+ */
 export const BOOK_TIME_STEPS: readonly number[] = (() => {
+  const sessionFrom = OPENING_MATCH_MINUTE;
+  const sessionTo = CLOSE_MINUTE + CLOSING_MATCH_OFFSET_MINUTES;
   const minutes: number[] = [];
   for (let minute = 0; minute <= 540; minute += 60) minutes.push(minute);
-  minutes.push(590);
-  for (let minute = 595; minute <= 1085; minute++) minutes.push(minute);
-  for (let minute = 1090; minute <= 1140; minute += 5) minutes.push(minute);
+  minutes.push(sessionFrom - 5);
+  for (let minute = sessionFrom; minute <= sessionTo; minute++) minutes.push(minute);
+  for (let minute = sessionTo + 5; minute <= 1140; minute += 5) minutes.push(minute);
   for (let minute = 1200; minute <= 1380; minute += 60) minutes.push(minute);
   minutes.push(1439);
   return minutes;

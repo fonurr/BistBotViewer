@@ -25,11 +25,17 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Turkey has been on permanent UTC+3 since 2016, so a fixed offset is exact here. */
 const ISTANBUL_OFFSET_MS = 3 * 60 * 60 * 1000;
-const OPENING_AUCTION_MINUTE = 9 * 60 + 55;
-const CLOSE_MINUTE = 18 * 60;
-const HALF_DAY_CLOSE_MINUTE = 12 * 60 + 30;
-/** `firstTradeInstant` folds a stamp just past the close onto close + 5. */
-const CLOSING_AUCTION_OFFSET = 5;
+/**
+ * The exchange's hours, handed over by the scheduler from `src/domain/sessionHours.ts` so this
+ * worker keeps no copy of its own. `firstTradeInstant` folds a stamp just past the close onto
+ * the closing match, `closingMatchOffsetMinutes` past it.
+ */
+const {
+  openingMatchMinute: OPENING_AUCTION_MINUTE,
+  closeMinute: CLOSE_MINUTE,
+  halfDayCloseMinute: HALF_DAY_CLOSE_MINUTE,
+  closingMatchOffsetMinutes: CLOSING_AUCTION_OFFSET,
+} = workerData.sessionHours;
 
 function istanbulDay(epochMs) {
   return new Date(epochMs + ISTANBUL_OFFSET_MS).toISOString().slice(0, 10);
