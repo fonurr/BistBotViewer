@@ -41,9 +41,7 @@ export function BookTimeFilter({ filters, onChange, open, setOpen }: BookTimeFil
     <FilterPopover
       name="time"
       label={
-        off
-          ? 'any time'
-          : `time ${formatBookTime(filters.timeFrom)} → ${formatBookTime(filters.timeTo)}`
+        off ? 'any time' : `${formatBookTime(filters.timeFrom)}-${formatBookTime(filters.timeTo)}`
       }
       open={open}
       setOpen={setOpen}
@@ -99,25 +97,36 @@ export function BookTimeFilter({ filters, onChange, open, setOpen }: BookTimeFil
       ))}
       <div className="book-time-range">
         <div className="book-time-shift">
-          <button
-            type="button"
-            className="btn btn-secondary book-time-step"
-            aria-label="Whole time range one step earlier"
-            disabled={nextStep('both', -1) === null}
-            onClick={() => step('both', -1)}
-          >
-            <CaretLeft size={12} weight="bold" aria-hidden="true" />
-          </button>
           <span>Time range</span>
-          <button
-            type="button"
-            className="btn btn-secondary book-time-step"
-            aria-label="Whole time range one step later"
-            disabled={nextStep('both', 1) === null}
-            onClick={() => step('both', 1)}
-          >
-            <CaretRight size={12} weight="bold" aria-hidden="true" />
-          </button>
+          <div className="book-time-shift-actions">
+            <button
+              type="button"
+              className="btn btn-secondary book-time-step"
+              aria-label="Whole time range one step earlier"
+              disabled={nextStep('both', -1) === null}
+              onClick={() => step('both', -1)}
+            >
+              <CaretLeft size={12} weight="bold" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary book-time-step"
+              aria-label="Whole time range one step later"
+              disabled={nextStep('both', 1) === null}
+              onClick={() => step('both', 1)}
+            >
+              <CaretRight size={12} weight="bold" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost book-time-reset"
+              aria-label="Reset time range"
+              disabled={filters.timeFrom === 0 && filters.timeTo === 1439}
+              onClick={() => onChange({ ...filters, timeFrom: 0, timeTo: 1439 })}
+            >
+              reset
+            </button>
+          </div>
         </div>
         <TimeSlider
           label="Start time"

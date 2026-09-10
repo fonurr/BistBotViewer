@@ -283,6 +283,11 @@ the same minute, and a typed end before the start moves the start with it. Manua
 endpoints join the shared slider stops while selected, so neither slider nor button rounds them
 away merely by rendering.
 
+Once active, the toolbar trigger is deliberately compact: it carries only `hh:mm-hh:mm`. The time
+range heading stays on the left of its popover; `‹`, `›`, and `reset` sit together on the right.
+`reset` changes only the two clock endpoints, restoring `00:00` through `23:59` without changing
+whether time filtering is on or which clock columns are selected.
+
 Each slider has its own `− / +` buttons, and `‹ / ›` move both endpoints together. Like the batch
 range, the buttons step through the allowed stops rather than adding a fixed number of minutes:
 moving `09:00 → 09:55` one step later produces `09:50 → 09:56`. A step is disabled while the

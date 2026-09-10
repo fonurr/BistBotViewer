@@ -121,7 +121,7 @@ test('keeps whole chains through the final millisecond of a picked minute and co
   await expect(popover).toHaveCount(0);
   await expect(
     control.getByRole('button', {
-      name: `time ${formatBookTime(600)} → ${formatBookTime(602)}`,
+      name: `${formatBookTime(600)}-${formatBookTime(602)}`,
       exact: true,
     }),
   ).toBeFocused();

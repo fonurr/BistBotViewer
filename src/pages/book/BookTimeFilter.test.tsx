@@ -7,6 +7,21 @@ import { BookTimeFilter } from './BookTimeFilter';
 import { defaultBookFilters, type BookFilterState } from './types';
 
 describe('BookTimeFilter range buttons', () => {
+  it('shows the compact active range label and resets only the two times', async () => {
+    const user = userEvent.setup();
+    renderControl({ timeFrom: 85, timeTo: 602, timeFields: new Set(['createdTime']) });
+
+    expect(screen.getByRole('button', { name: '01:25-10:02' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Reset time range' }));
+
+    expectRange('00:00', '23:59');
+    expect(screen.getByRole('checkbox', { name: 'created' })).toBeChecked();
+    for (const field of ['sched', 'intent', 'sent', 'order', 'final']) {
+      expect(screen.getByRole('checkbox', { name: field })).not.toBeChecked();
+    }
+    expect(screen.getByRole('button', { name: 'Reset time range' })).toBeDisabled();
+  });
+
   it('disables every range button while off and the outward steps at the day bounds', async () => {
     const user = userEvent.setup();
     renderControl({ timeFilter: false });
@@ -14,6 +29,7 @@ describe('BookTimeFilter range buttons', () => {
     const buttons = screen.getAllByRole('button', { name: /one step/ });
     expect(buttons).toHaveLength(6);
     for (const button of buttons) expect(button).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Reset time range' })).toBeDisabled();
     for (const input of screen.getAllByRole('textbox')) expect(input).toBeDisabled();
 
     await user.click(screen.getByRole('checkbox', { name: 'filter' }));
