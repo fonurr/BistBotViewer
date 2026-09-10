@@ -117,14 +117,17 @@ export function BookTimeFilter({ filters, onChange, open, setOpen }: BookTimeFil
         </div>
         <div className="book-time-sides">
           {BOOK_TIME_SIDES.map(({ key, label }) => (
-            <label className={`filter-option${off ? ' filter-option-off' : ''}`} key={key}>
+            <label
+              className={`filter-option book-time-side${off ? ' filter-option-off' : ''}`}
+              key={key}
+            >
+              <span>{label}</span>
               <input
                 type="checkbox"
                 disabled={off}
                 checked={filters[key]}
                 onChange={() => toggleSide(key)}
               />
-              <span>{label}</span>
             </label>
           ))}
         </div>

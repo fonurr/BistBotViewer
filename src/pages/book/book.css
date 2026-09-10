@@ -36,6 +36,12 @@
   min-width: 0;
 }
 
+/* Pushed to the popover's right edge, with the label ahead of the box. */
+.book-time-side {
+  grid-template-columns: auto auto;
+  justify-content: end;
+}
+
 .book-time-range {
   display: grid;
   gap: var(--space-4);
