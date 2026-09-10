@@ -55,7 +55,9 @@ after `sent`. `final` is slow, once the order had registered (`orderTime` presen
 notice carries some lag), only when it trailed **both** the order's `intent` and its own `sent` by
 more than two minutes. On a row that never registered — a scheduled order skipped before it fired
 — `intent` is all there is, and ten seconds past it is slow. A stamp missing on either side, or an
-anchor that sits after the stamp, never colours a cell. Every column carries its seconds: the
+anchor that sits after the stamp, never colours a cell. `domain/bookRowFlags.ts` owns all three
+rules and the `@created`/`@sent` slips, and the slippage filter selects by the same functions the
+cells draw from. Every column carries its seconds: the
 minute is what a reader scans, so
 `formatRowTimeParts` hands the seconds back separately and the cell draws them — their colon with
 them — at about a quarter opacity.
@@ -235,7 +237,7 @@ runs one way only: switching the scope back off leaves the toggle where the read
 by then they may be reading canceled legs on chains that traded.
 
 `BookFilters` owns the batch-range control, additive scopes, and the bot, account, symbol,
-time, origin, canceled-status, source, and reason controls — the batch range leads the toolbar row, then
+time, slippage, origin, canceled-status, source, and reason controls — the batch range leads the toolbar row, then
 the scopes, then the popover triggers in that order. The
 bot, account and symbol controls are `components/EntityFilters` and the batch range is
 `components/DateRangeFilter`, which the Bots and Performance
@@ -321,6 +323,29 @@ The filter participates in active chips, empty-result recovery, and clearing the
 when focusing positions without a closing order. Its chip names the range and then any way the
 leg sides depart from their default — `buys only`, `sells only`, `no side`, `with canceled` — and
 the empty-Book reason calls out an empty side selection the way it calls out an empty clock one.
+
+The **slippage filter**, beside it, is the same popover head over what the grid **flags** rather than
+over a clock range: `filter`, `all` and `none`, then six columns on the left in grid order —
+`created price`, `intent price` and `sent price` match a leg whose `@created`, `@intent` or `@sent`
+cell draws a slip, and `sent time`, `order time` and `final time` match a leg whose clock is drawn red
+or orange. Across from them sit `buys` and `sells`, an **OR** like the time filter's, which `all` /
+`none` never touch; there is no canceled opt-in, so a canceled leg counts like any other — it is where
+a skipped schedule's orange `final` lives. The match is **not** read off the colours: every column
+asks the function its cell draws from (`domain/bookRowFlags.ts`), and `domain/bookSlippageFilter.ts`
+(`matchesBookSlippage`) maps each column to one. A chain qualifies where any leg on a ticked side
+flags any ticked column, and is drawn whole. It starts off with every column and both sides ticked,
+and switching it either way restores those; while on, the trigger counts the ticked columns (`6
+slips`, `1 slip`). A chain nothing flags cannot match, so switching it on narrows the Book even with
+every column ticked, and a queued basket drops out with it. Its chip reads `slippage`, then the ticked
+columns when not all are, then `buys only` / `sells only` / `no side`; the empty-Book reason names an
+empty column or side selection.
+
+⚠️ The `@intent` slip comes from the minute history, read for the chains on screen. So the slippage
+filter is applied **last**, to the chains every other filter kept: those are the chains `BookPage`
+resolves intent prices for, and the `intent price` column is read off exactly the slips their cells
+draw. The strip's `slip @intent` averages over the chains the slippage filter kept, as the other two
+averages always have. A chain outside the other filters has no resolved `@intent` slip, so when the
+empty-Book reason weighs clearing some other filter, only the five other columns can bring it back.
 
 The **canceled-status filter** lists every status the loaded canceled orders carry, in the display
 form the status cells print (`By user`, not `CanceledByUser`), so raw wire values that share a

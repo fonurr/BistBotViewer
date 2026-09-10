@@ -21,23 +21,25 @@
   width: 340px;
 }
 
-.book-time-fields {
+/* The time and slippage popovers share one head: field checkboxes on the left,
+   the leg-side toggles across from them on the right (`BookFilterChecks`). */
+.book-filter-fields {
   display: flex;
   align-items: flex-start;
   gap: var(--space-6);
 }
 
-.book-time-clocks {
+.book-filter-checks {
   flex: 0 0 auto;
 }
 
-.book-time-sides {
+.book-filter-sides {
   flex: 1;
   min-width: 0;
 }
 
 /* Pushed to the popover's right edge, with the label ahead of the box. */
-.book-time-side {
+.book-filter-side {
   grid-template-columns: auto auto;
   justify-content: end;
 }

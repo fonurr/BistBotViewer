@@ -15,6 +15,7 @@ import { accountIdentityKey } from '../../domain/accounts';
 import { rowReasons, type BookChain, type BookScope } from '../../domain/chains';
 import { plural } from '../../domain/format';
 import { displayStatus } from '../../domain/status';
+import { BookSlippageFilter } from './BookSlippageFilter';
 import { BookTimeFilter } from './BookTimeFilter';
 import { defaultBookFilters, scopeLabels, type BookFilterState } from './types';
 
@@ -100,6 +101,10 @@ export function BookFilters(props: BookFiltersProps) {
       timeFields: defaultBookFilters.timeFields,
       timeFrom: defaultBookFilters.timeFrom,
       timeTo: defaultBookFilters.timeTo,
+      slippageFilter: false,
+      slippageFields: defaultBookFilters.slippageFields,
+      slippageBuys: defaultBookFilters.slippageBuys,
+      slippageSells: defaultBookFilters.slippageSells,
       /* The widest range, stated outright: leaving it unset would send the
          range control back to its default and clear this filter with it. */
       batchFrom: props.batchDates[0] ?? null,
@@ -212,6 +217,12 @@ export function BookFilters(props: BookFiltersProps) {
           filters={filters}
           onChange={(next) => onChange({ ...next, noClosingOrder: false })}
           open={open === 'time'}
+          setOpen={setOpen}
+        />
+        <BookSlippageFilter
+          filters={filters}
+          onChange={(next) => onChange({ ...next, noClosingOrder: false })}
+          open={open === 'slippage'}
           setOpen={setOpen}
         />
         {origins.length > 0 ? (

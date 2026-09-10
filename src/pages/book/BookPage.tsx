@@ -12,6 +12,12 @@ import { priceApi } from '../../priceApi/client';
 import { Modal } from '../../components/Modal';
 import { ResultList, type ActionResult } from '../../components/ResultList';
 import { accountIdentityKey } from '../../domain/accounts';
+import { bookRowCreatedSlip, bookRowSentSlip } from '../../domain/bookRowFlags';
+import {
+  BOOK_SLIPPAGE_FIELDS,
+  matchesBookSlippage,
+  type BookRowFlagContext,
+} from '../../domain/bookSlippageFilter';
 import { formatBookTime, matchesBookTime } from '../../domain/bookTimeFilter';
 import { bookAllocation } from '../../domain/budget';
 import {
@@ -36,11 +42,8 @@ import {
 import {
   deriveFilledPnlState,
   intentSlippagePercentage,
-  marketSlippagePercentage,
   pnlPercentage,
   realizedPnl,
-  sentSlipAllowed,
-  slippagePercentage,
   unrealizedPnl,
 } from '../../domain/orders';
 import { displayStatus } from '../../domain/status';
@@ -118,18 +121,75 @@ export function BookPage() {
   const noClosingOrderCount = chains.filter((chain) => chain.hasNoClosingOrder).length;
   const mismatchRows = data.errors.filter((row) => row.type === 'OrderAccountMismatch');
 
-  const visibleChains = useMemo(
+  const calendar = useMemo(() => holidayCalendar(data.holidays), [data.holidays]);
+  /*
+   * Every filter but the slippage one. Its `@intent` field reads the prices the
+   * page resolves below, and those are read for exactly these chains — so the
+   * slippage filter is the last narrowing, applied to what the rest kept.
+   */
+  const filteredChains = useMemo(
     () =>
       chains.filter((chain) =>
         chainMatches(chain, filters, accountKeyForBot(botById.get(chain.botId))),
       ),
     [botById, chains, filters],
   );
+  /*
+   * The `@intent/slip` column. Every drawn row names the minute it wants — most
+   * name none, since an intent instant during trading hours carries seconds —
+   * and the resolved prices come back from the nightly BistData cache. The scale
+   * guard is applied per row rather than per bar, because two rows can hold the
+   * same minute against different recorded prices.
+   */
+  const intentRequests = useMemo(
+    () =>
+      filteredChains.flatMap((chain) =>
+        chain.rows.map((row) => ({
+          symbol: row.symbol,
+          intentTime: row.intentTime,
+          reference: intentPriceReference(row),
+        })),
+      ),
+    [filteredChains],
+  );
+  const intentPrices = useIntentPrices(intentRequests, calendar, snapshotAvailable);
+  const intentCells = useMemo(() => {
+    const cells = new Map<string, BookIntentCell>();
+    for (const chain of filteredChains) {
+      for (const row of chain.rows) {
+        const price = intentPrices.priceFor({
+          symbol: row.symbol,
+          intentTime: row.intentTime,
+          reference: intentPriceReference(row),
+        });
+        if (price === null || row.intentTime === null) continue;
+        const lookup = intentBarLookup(row.intentTime, calendar);
+        const slip =
+          lookup !== null &&
+          row.averagePrice !== null &&
+          intentSlipAllowed(lookup, row.intentTime, row.orderTime)
+            ? intentSlippagePercentage({ intentPrice: price, averagePrice: row.averagePrice })
+            : null;
+        cells.set(row.key, { price, slip });
+      }
+    }
+    return cells;
+  }, [calendar, intentPrices, filteredChains]);
+  // What the slippage filter reads a row's flags against: the same calendar and
+  // the same resolved `@intent` slip the grid draws.
+  const rowFlags = useMemo<BookRowFlagContext>(
+    () => ({ calendar, intentSlip: (row) => intentCells.get(row.key)?.slip ?? null }),
+    [calendar, intentCells],
+  );
+  const visibleChains = useMemo(
+    () => filteredChains.filter((chain) => chainMatchesSlippage(chain, filters, rowFlags)),
+    [filteredChains, filters, rowFlags],
+  );
   const visiblePending = useMemo(
     () =>
       /* A queued basket has no order yet, so it owns no canceled leg, no
-         recorded reason, no origin, no order clocks and nobody who ended it:
-         nothing in it can match those filters, and it drops
+         recorded reason, no origin, no order clocks, no slip and nobody who
+         ended it: nothing in it can match those filters, and it drops
          with the chains that cannot match. */
       filters.noClosingOrder ||
       filters.canceledStatusFilter ||
@@ -137,6 +197,7 @@ export function BookPage() {
       filters.sourceFilter ||
       filters.originFilter ||
       filters.timeFilter ||
+      filters.slippageFilter ||
       !filters.scopes.has('waiting')
         ? []
         : data.pendingRequests.filter((request) => {
@@ -167,7 +228,6 @@ export function BookPage() {
     () => visibleChains.reduce((count, chain) => count + chain.canceledRows.length, 0),
     [visibleChains],
   );
-  const calendar = useMemo(() => holidayCalendar(data.holidays), [data.holidays]);
   const summary = useMemo(
     () => summarize(visibleChains, priceFeed.prices, priceFeed.trustworthy, botById, calendar),
     [botById, calendar, priceFeed.prices, priceFeed.trustworthy, visibleChains],
@@ -219,55 +279,18 @@ export function BookPage() {
       ),
     [closingBarsQuery.data],
   );
-  /*
-   * The `@intent/slip` column. Every drawn row names the minute it wants — most
-   * name none, since an intent instant during trading hours carries seconds —
-   * and the resolved prices come back from the nightly BistData cache. The scale
-   * guard is applied per row rather than per bar, because two rows can hold the
-   * same minute against different recorded prices.
-   */
-  const intentRequests = useMemo(
-    () =>
-      visibleChains.flatMap((chain) =>
-        chain.rows.map((row) => ({
-          symbol: row.symbol,
-          intentTime: row.intentTime,
-          reference: intentPriceReference(row),
-        })),
-      ),
-    [visibleChains],
-  );
-  const intentPrices = useIntentPrices(intentRequests, calendar, snapshotAvailable);
-  const intentCells = useMemo(() => {
-    const cells = new Map<string, BookIntentCell>();
-    for (const chain of visibleChains) {
-      for (const row of chain.rows) {
-        const price = intentPrices.priceFor({
-          symbol: row.symbol,
-          intentTime: row.intentTime,
-          reference: intentPriceReference(row),
-        });
-        if (price === null || row.intentTime === null) continue;
-        const lookup = intentBarLookup(row.intentTime, calendar);
-        const slip =
-          lookup !== null &&
-          row.averagePrice !== null &&
-          intentSlipAllowed(lookup, row.intentTime, row.orderTime)
-            ? intentSlippagePercentage({ intentPrice: price, averagePrice: row.averagePrice })
-            : null;
-        cells.set(row.key, { price, slip });
-      }
-    }
-    return cells;
-  }, [calendar, intentPrices, visibleChains]);
   // The strip averages exactly the slips the rows drew, so a withheld one — an
-  // auction print, a late registration, an unpriced instant — is absent here too.
+  // auction print, a late registration, an unpriced instant — is absent here too,
+  // and so is every row the slippage filter set aside.
   const avgSlipIntent = useMemo(() => {
-    const slips = [...intentCells.values()].flatMap((cell) =>
-      cell.slip === null ? [] : [cell.slip],
+    const slips = visibleChains.flatMap((chain) =>
+      chain.rows.flatMap((row) => {
+        const slip = rowFlags.intentSlip(row);
+        return slip === null ? [] : [slip];
+      }),
     );
     return slips.length ? slips.reduce((sum, value) => sum + value, 0) / slips.length : null;
-  }, [intentCells]);
+  }, [rowFlags, visibleChains]);
   /*
    * An empty `@intent` column has two very different causes, and the reader has
    * to be able to tell them apart: the rules withheld every figure, or the
@@ -316,11 +339,14 @@ export function BookPage() {
   const emptyCulprits = useMemo(
     () =>
       filteredEmpty
-        ? narrowingsThatEmptiedTheBook(chains, filters, (chain) =>
-            accountKeyForBot(botById.get(chain.botId)),
+        ? narrowingsThatEmptiedTheBook(
+            chains,
+            filters,
+            (chain) => accountKeyForBot(botById.get(chain.botId)),
+            rowFlags,
           )
         : [],
-    [botById, chains, filters, filteredEmpty],
+    [botById, chains, filters, filteredEmpty, rowFlags],
   );
   const resolvedOpenChain = useMemo(() => resolveOpenChain(chains, openChain), [chains, openChain]);
 
@@ -658,6 +684,7 @@ export function narrowingsThatEmptiedTheBook(
   chains: readonly BookChain[],
   filters: BookFilterState,
   accountKeyFor: (chain: BookChain) => string | null,
+  rowFlags: BookRowFlagContext,
 ): BookNarrowing[] {
   const candidates: Array<Omit<BookNarrowing, 'restored'>> = [];
   if (filters.scopes.size > 0 && filters.scopes.size < 4) {
@@ -770,6 +797,19 @@ export function narrowingsThatEmptiedTheBook(
       }),
     });
   }
+  if (filters.slippageFilter) {
+    candidates.push({
+      key: 'slippage',
+      phrase: 'the slippage filter',
+      sentence:
+        filters.slippageFields.size === 0
+          ? 'No slippage column is selected.'
+          : !filters.slippageBuys && !filters.slippageSells
+            ? 'Neither buys nor sells is selected.'
+            : 'No chain owns an order flagged in a selected column.',
+      clear: clearSlippageFilter,
+    });
+  }
   const loadedBatches = [
     ...new Set(chains.flatMap((chain) => (chain.batchDate ? [chain.batchDate] : []))),
   ].sort();
@@ -793,11 +833,46 @@ export function narrowingsThatEmptiedTheBook(
 
   return candidates.flatMap((candidate) => {
     const relaxed = candidate.clear(filters);
-    const restored = chains.filter((chain) =>
-      chainMatches(chain, relaxed, accountKeyFor(chain)),
+    const restored = chains.filter(
+      (chain) =>
+        chainMatches(chain, relaxed, accountKeyFor(chain)) &&
+        chainMatchesSlippage(chain, relaxed, rowFlags),
     ).length;
     return restored > 0 ? [{ ...candidate, restored }] : [];
   });
+}
+
+/** Off, with every field and both sides back — the state the filter comes up in. */
+function clearSlippageFilter(current: BookFilterState): BookFilterState {
+  return {
+    ...current,
+    slippageFilter: false,
+    slippageFields: defaultBookFilters.slippageFields,
+    slippageBuys: defaultBookFilters.slippageBuys,
+    slippageSells: defaultBookFilters.slippageSells,
+  };
+}
+
+/**
+ * The slippage filter, kept apart from `chainMatches` because its `@intent`
+ * field reads prices resolved for the chains every other filter kept. A chain
+ * outside those has no resolved `@intent` slip, exactly as its cell would be
+ * empty, so only the other five fields can bring it back.
+ */
+function chainMatchesSlippage(
+  chain: BookChain,
+  filters: BookFilterState,
+  rowFlags: BookRowFlagContext,
+): boolean {
+  return (
+    !filters.slippageFilter ||
+    matchesBookSlippage(
+      chain,
+      filters.slippageFields,
+      { buys: filters.slippageBuys, sells: filters.slippageSells },
+      rowFlags,
+    )
+  );
 }
 
 function chainMatches(
@@ -937,28 +1012,14 @@ function summarize(
     if (marketPrice === null || marketPrice === undefined) hasEveryPrice = false;
     else unrealized += unrealizedPnl(exposure, marketPrice);
   }
-  const filledRows = chains
-    .flatMap((chain) => chain.rows)
-    .filter((row) => row.averagePrice !== null);
-  const createdSlips = filledRows
-    .map((row) =>
-      slippagePercentage({
-        orderPrice: row.orderPrice,
-        averagePrice: row.averagePrice as number,
-        type: row.orderType,
-      }),
-    )
+  // Exactly the slips the rows drew: a send outside continuous trading withholds
+  // the row's `@sent` slip, so it leaves that average too.
+  const rows = chains.flatMap((chain) => chain.rows);
+  const createdSlips = rows
+    .map((row) => bookRowCreatedSlip(row))
     .filter((value): value is number => value !== null);
-  // Exactly the `@sent` slips the rows drew: a send outside continuous trading
-  // withholds the row's slip, so it leaves the average too.
-  const sentSlips = filledRows
-    .filter((row) => sentSlipAllowed(row.sentTime, calendar))
-    .map((row) =>
-      marketSlippagePercentage({
-        marketPrice: row.marketPrice,
-        averagePrice: row.averagePrice as number,
-      }),
-    )
+  const sentSlips = rows
+    .map((row) => bookRowSentSlip(row, calendar))
     .filter((value): value is number => value !== null);
   return {
     chains: chains.length,
@@ -1643,6 +1704,31 @@ function filterChips(
         timeSells: defaultBookFilters.timeSells,
         timeIncludeCanceled: defaultBookFilters.timeIncludeCanceled,
       }),
+    });
+  }
+  if (filters.slippageFilter) {
+    // Every column ticked is the plain word; a narrower pick names its columns,
+    // then the chip says how the sides depart from "both".
+    const fields =
+      filters.slippageFields.size === BOOK_SLIPPAGE_FIELDS.length
+        ? null
+        : filters.slippageFields.size === 0
+          ? 'no column'
+          : BOOK_SLIPPAGE_FIELDS.filter(({ key }) => filters.slippageFields.has(key))
+              .map(({ label }) => label)
+              .join(', ');
+    const sides =
+      filters.slippageBuys === filters.slippageSells
+        ? filters.slippageBuys
+          ? null
+          : 'no side'
+        : filters.slippageBuys
+          ? 'buys only'
+          : 'sells only';
+    chips.push({
+      key: 'slippage',
+      label: ['slippage', fields, sides].filter((part) => part !== null).join(' · '),
+      clear: clearSlippageFilter,
     });
   }
   // The range is always set — every loaded batch is the default — so the chip

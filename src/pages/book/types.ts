@@ -1,5 +1,10 @@
 import type { BookScope } from '../../domain/chains';
 import {
+  BOOK_SLIPPAGE_FIELDS,
+  BOOK_SLIPPAGE_SIDES_DEFAULT,
+  type BookSlippageField,
+} from '../../domain/bookSlippageFilter';
+import {
   BOOK_TIME_FIELDS,
   BOOK_TIME_SIDES_DEFAULT,
   type BookTimeField,
@@ -74,6 +79,21 @@ export interface BookFilterState {
   /** Inclusive whole-minute bounds, from 00:00 (0) through 23:59 (1439). */
   timeFrom: number;
   timeTo: number;
+  /**
+   * Whether the slippage filter applies at all. Off by default for the same
+   * cause as the status filters above: a chain qualifies only by owning a leg
+   * the grid flags — a slip drawn in `@created`, `@intent` or `@sent`, a red
+   * `sent`, an orange `order` or `final` — so switching it on narrows the Book
+   * even with every field ticked.
+   */
+  slippageFilter: boolean;
+  slippageFields: ReadonlySet<BookSlippageField>;
+  /**
+   * Which legs it reads, an OR over the chain's legs like the time filter's.
+   * `all` / `none` never touch them; switching the filter off restores both.
+   */
+  slippageBuys: boolean;
+  slippageSells: boolean;
   batchFrom: string | null;
   batchTo: string | null;
   noClosingOrder: boolean;
@@ -103,6 +123,10 @@ export const defaultBookFilters: BookFilterState = {
   timeIncludeCanceled: BOOK_TIME_SIDES_DEFAULT.includeCanceled,
   timeFrom: 0,
   timeTo: 1439,
+  slippageFilter: false,
+  slippageFields: new Set(BOOK_SLIPPAGE_FIELDS.map(({ key }) => key)),
+  slippageBuys: BOOK_SLIPPAGE_SIDES_DEFAULT.buys,
+  slippageSells: BOOK_SLIPPAGE_SIDES_DEFAULT.sells,
   /* Null is not "every batch" but the moment before one has loaded;
      `DateRangeFilter` resolves it to every loaded batch as soon as one exists. */
   batchFrom: null,

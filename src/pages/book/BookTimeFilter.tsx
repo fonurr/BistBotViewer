@@ -8,9 +8,9 @@ import {
   bookTimeSliderSteps,
   formatBookTime,
   stepBookTimeRange,
-  type BookTimeField,
   type BookTimeRangeEdge,
 } from '../../domain/bookTimeFilter';
+import { BookFilterChecks } from './BookFilterChecks';
 import { BookTimeInput } from './BookTimeInput';
 import type { BookFilterState } from './types';
 
@@ -43,14 +43,6 @@ export function BookTimeFilter({ filters, onChange, open, setOpen }: BookTimeFil
     const next = nextStep(edge, by);
     if (next) onChange({ ...filters, timeFrom: next.from, timeTo: next.to });
   };
-  const toggleField = (field: BookTimeField) => {
-    const timeFields = new Set(filters.timeFields);
-    if (timeFields.has(field)) timeFields.delete(field);
-    else timeFields.add(field);
-    onChange({ ...filters, timeFields });
-  };
-  const toggleSide = (key: BookTimeSideKey) => onChange({ ...filters, [key]: !filters[key] });
-
   return (
     <FilterPopover
       name="time"
@@ -61,77 +53,28 @@ export function BookTimeFilter({ filters, onChange, open, setOpen }: BookTimeFil
       setOpen={setOpen}
       className={`book-time-filter${off ? ' filter-unset' : ''}`}
     >
-      <div className="filter-picks">
-        <label className="filter-switch">
-          <input
-            type="checkbox"
-            checked={filters.timeFilter}
-            onChange={() =>
-              onChange({
-                ...filters,
-                timeFilter: off,
-                timeFields: new Set(BOOK_TIME_FIELDS.map(({ key }) => key)),
-                timeBuys: BOOK_TIME_SIDES_DEFAULT.buys,
-                timeSells: BOOK_TIME_SIDES_DEFAULT.sells,
-                timeIncludeCanceled: BOOK_TIME_SIDES_DEFAULT.includeCanceled,
-              })
-            }
-          />
-          <span>filter</span>
-        </label>
-        <button
-          type="button"
-          className="btn btn-ghost"
-          disabled={off}
-          onClick={() =>
-            onChange({
-              ...filters,
-              timeFields: new Set(BOOK_TIME_FIELDS.map(({ key }) => key)),
-            })
-          }
-        >
-          all
-        </button>
-        <button
-          type="button"
-          className="btn btn-ghost"
-          disabled={off}
-          onClick={() => onChange({ ...filters, timeFields: new Set<BookTimeField>() })}
-        >
-          none
-        </button>
-      </div>
-      <div className="book-time-fields">
-        <div className="book-time-clocks">
-          {BOOK_TIME_FIELDS.map(({ key, label }) => (
-            <label className={`filter-option${off ? ' filter-option-off' : ''}`} key={key}>
-              <input
-                type="checkbox"
-                disabled={off}
-                checked={filters.timeFields.has(key)}
-                onChange={() => toggleField(key)}
-              />
-              <span>{label}</span>
-            </label>
-          ))}
-        </div>
-        <div className="book-time-sides">
-          {BOOK_TIME_SIDES.map(({ key, label }) => (
-            <label
-              className={`filter-option book-time-side${off ? ' filter-option-off' : ''}`}
-              key={key}
-            >
-              <span>{label}</span>
-              <input
-                type="checkbox"
-                disabled={off}
-                checked={filters[key]}
-                onChange={() => toggleSide(key)}
-              />
-            </label>
-          ))}
-        </div>
-      </div>
+      <BookFilterChecks
+        active={filters.timeFilter}
+        onActiveChange={() =>
+          onChange({
+            ...filters,
+            timeFilter: off,
+            timeFields: new Set(BOOK_TIME_FIELDS.map(({ key }) => key)),
+            timeBuys: BOOK_TIME_SIDES_DEFAULT.buys,
+            timeSells: BOOK_TIME_SIDES_DEFAULT.sells,
+            timeIncludeCanceled: BOOK_TIME_SIDES_DEFAULT.includeCanceled,
+          })
+        }
+        fields={BOOK_TIME_FIELDS}
+        selected={filters.timeFields}
+        onSelectedChange={(timeFields) => onChange({ ...filters, timeFields })}
+        sides={BOOK_TIME_SIDES.map(({ key, label }) => ({
+          key,
+          label,
+          checked: filters[key],
+          onToggle: () => onChange({ ...filters, [key]: !filters[key] }),
+        }))}
+      />
       <div className="book-time-range">
         <div className="book-time-shift">
           <span>Time range</span>

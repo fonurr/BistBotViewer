@@ -61,7 +61,7 @@ interface BookChainRowBase {
    * `intent` column) can lag the batch the chain is filed under: an evening buy's
    * reversing sell planned for the next close intends a later day than the buy
    * that anchors it. The `sent`, `order` and `final` cells colour when a stamp
-   * trails this and its neighbours by more than a threshold — see `BookGrid`.
+   * trails this and its neighbours by more than a threshold — see `bookRowFlags`.
    */
   readonly intentTime: number | null;
   readonly status: BookRowStatus;

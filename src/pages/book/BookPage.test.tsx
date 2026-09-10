@@ -868,3 +868,102 @@ describe('the time filter', () => {
     expect(screen.getByRole('checkbox', { name: 'include canceled' })).not.toBeChecked();
   });
 });
+
+describe('the slippage filter', () => {
+  const chainsInGrid = () =>
+    [...document.querySelectorAll('.book-chain')]
+      .map((chain) => chain.getAttribute('aria-label')?.replace(' chain', '') ?? '')
+      .sort();
+  const sent = Date.parse('2026-08-25T07:30:00.000Z');
+
+  it('keeps a chain by the flag its cell draws, hides queued baskets, and names itself', async () => {
+    const user = userEvent.setup();
+    book.data = {
+      ...emptyRead(),
+      activeOrders: [
+        // Registered twenty seconds after the send: the orange `order` cell.
+        makeActiveOrder({
+          id: 1,
+          clientOrderId: 'a',
+          chainId: 'a',
+          symbol: 'AKBNK',
+          createdTime: sent - 1_000,
+          sentTime: sent,
+          orderTime: sent + 20_000,
+        }),
+        makeActiveOrder({ id: 2, clientOrderId: 'b', chainId: 'b', symbol: 'GARAN' }),
+      ],
+      pendingRequests: [makePendingOrderRequest()],
+    };
+    renderBook();
+    expect(chainsInGrid()).toEqual(['AKBNK', 'GARAN']);
+
+    await user.click(screen.getByRole('button', { name: 'any slippage' }));
+    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    expect(chainsInGrid()).toEqual(['AKBNK']);
+    expect(screen.queryByRole('region', { name: 'Queued order baskets' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'slippage ×' })).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'none' }));
+    await user.click(screen.getByRole('checkbox', { name: 'order time' }));
+    expect(chainsInGrid()).toEqual(['AKBNK']);
+    await user.click(screen.getByRole('checkbox', { name: 'buys' }));
+
+    // The only flagged leg is a buy, so reading sells alone empties the Book.
+    expect(chainsInGrid()).toEqual([]);
+    expect(
+      screen.getByText('No chain owns an order flagged in a selected column.', { exact: false }),
+    ).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Close filter' }));
+    await user.click(screen.getByRole('button', { name: 'slippage · order time · sells only ×' }));
+    expect(chainsInGrid()).toEqual(['AKBNK', 'GARAN']);
+    expect(screen.getByRole('region', { name: 'Queued order baskets' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'any slippage' })).toBeVisible();
+  });
+
+  it('matches intent price on the slip the @intent cell draws from the minute history', async () => {
+    const user = userEvent.setup();
+    // 11:00:00 Istanbul on the dot: a whole minute, priced off 10:59's close.
+    const intent = Date.parse('2026-08-25T08:00:00.000Z');
+    histApiMock.getIntentBars.mockResolvedValue([
+      {
+        symbol: 'AKBNK',
+        sessionDate: '2026-08-25',
+        ts: intent - 60_000,
+        open: 68,
+        close: 68,
+        isAuction: false,
+      },
+    ]);
+    const filled = { status: 'PartiallyFilled' as const, filledQuantity: 10, averagePrice: 68.5 };
+    book.data = {
+      ...emptyRead(),
+      activeOrders: [
+        makeActiveOrder({
+          id: 1,
+          clientOrderId: 'a',
+          chainId: 'a',
+          symbol: 'AKBNK',
+          createdTime: intent,
+          sentTime: intent + 500,
+          orderTime: intent + 1_000,
+          ...filled,
+        }),
+        // The same fill, but its intent instant carries seconds and names no minute.
+        makeActiveOrder({ id: 2, clientOrderId: 'b', chainId: 'b', symbol: 'GARAN', ...filled }),
+      ],
+    };
+    renderBook();
+    await waitFor(() => expect(document.querySelector('.book-intent-price small')).not.toBeNull());
+
+    await user.click(screen.getByRole('button', { name: 'any slippage' }));
+    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    await user.click(screen.getByRole('button', { name: 'none' }));
+    await user.click(screen.getByRole('checkbox', { name: 'intent price' }));
+
+    expect(chainsInGrid()).toEqual(['AKBNK']);
+    // The strip's `slip @intent` reads the same resolved slip the cell drew.
+    expect(document.querySelector('.book-stat-strip')).toHaveTextContent('0,74');
+  });
+});

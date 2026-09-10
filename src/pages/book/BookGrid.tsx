@@ -23,13 +23,17 @@ import {
 } from '../../domain/format';
 import { bookBudget, budgetShare } from '../../domain/budget';
 import {
+  bookRowCreatedSlip,
+  bookRowSentSlip,
+  finalIsSlow,
+  orderIsSlow,
+  sentIsLate,
+} from '../../domain/bookRowFlags';
+import {
   deriveFilledPnlState,
   type FilledPnlState,
-  marketSlippagePercentage,
   pnlPercentage,
   realizedPnl,
-  sentSlipAllowed,
-  slippagePercentage,
   unrealizedPnl,
 } from '../../domain/orders';
 import { statusClass } from '../../domain/status';
@@ -511,21 +515,8 @@ const BookRow = memo(function BookRow({
     todayFigure && todayFigure.value !== null
       ? pnlPercentage(todayFigure.value, todayFigure.basis)
       : null;
-  const slip =
-    row.averagePrice === null
-      ? null
-      : slippagePercentage({
-          orderPrice: row.orderPrice,
-          averagePrice: row.averagePrice,
-          type: displayType,
-        });
-  const marketSlip =
-    row.averagePrice === null || !sentSlipAllowed(row.sentTime, calendar)
-      ? null
-      : marketSlippagePercentage({
-          marketPrice: row.marketPrice,
-          averagePrice: row.averagePrice,
-        });
+  const slip = bookRowCreatedSlip(row);
+  const marketSlip = bookRowSentSlip(row, calendar);
   const intentCell = intentCells.get(row.key);
   const status = bookRowPresentation(row, chain, now, opener);
   const actionButtons = orderActionsForRow(row, chain);
@@ -691,24 +682,16 @@ const BookRow = memo(function BookRow({
        * slow: `order` when the exchange registered the order more than ten seconds
        * after it was sent, `final` when it landed well past the order — two
        * minutes past both its intent and its send once the order registered, ten
-       * seconds past intent on a row that never did.
+       * seconds past intent on a row that never did. `domain/bookRowFlags` owns
+       * all three, and the slippage filter selects by the same functions.
        */}
-      <div
-        role="cell"
-        className={`muted book-time${lateAgainst(row.sentTime, [row.scheduledTime, row.createdTime], LATE_SENT_MS) ? ' book-time-late' : ''}`}
-      >
+      <div role="cell" className={`muted book-time${sentIsLate(row) ? ' book-time-late' : ''}`}>
         <RowTime timestamp={row.sentTime} batchDate={batchDate} />
       </div>
-      <div
-        role="cell"
-        className={`muted book-time${lateAgainst(row.orderTime, [row.sentTime], LATE_ORDER_MS) ? ' book-time-slow' : ''}`}
-      >
+      <div role="cell" className={`muted book-time${orderIsSlow(row) ? ' book-time-slow' : ''}`}>
         <RowTime timestamp={row.orderTime} batchDate={batchDate} />
       </div>
-      <div
-        role="cell"
-        className={`muted book-time${finalIsLate(row.finalSeenTime, row.orderTime, row.intentTime, row.sentTime) ? ' book-time-slow' : ''}`}
-      >
+      <div role="cell" className={`muted book-time${finalIsSlow(row) ? ' book-time-slow' : ''}`}>
         <RowTime timestamp={row.finalSeenTime} batchDate={batchDate} />
       </div>
       <ColumnDivider />
@@ -752,54 +735,6 @@ const BookRow = memo(function BookRow({
     </div>
   );
 });
-
-/** A send more than this later than its plan is drawn late. */
-const LATE_SENT_MS = 10_000;
-/** An exchange registration more than this later than the send is drawn slow. */
-const LATE_ORDER_MS = 10_000;
-/** A fill seen this long past both the order's intent and its send, once registered, is drawn late. */
-const LATE_FINAL_MS = 120_000;
-/** With no registration to lean on, a fill this long past the order's intent is late. */
-const LATE_ORPHAN_FINAL_MS = 10_000;
-
-/**
- * Whether `stamp` trails every anchor it can be measured against by more than
- * `toleranceMs`. A `null` stamp or no usable anchor is never late; an anchor
- * that sits after the stamp (clock skew, a plan revised past the send) is not
- * counted against it.
- */
-function lateAgainst(
-  stamp: number | null,
-  anchors: readonly (number | null)[],
-  toleranceMs: number,
-): boolean {
-  if (stamp === null) return false;
-  const present = anchors.filter((anchor): anchor is number => anchor !== null);
-  return present.length > 0 && present.every((anchor) => stamp - anchor > toleranceMs);
-}
-
-/**
- * Whether `final` landed late. Once the order had registered at the exchange
- * (`orderTime` present) the fill notice has some lag, so it is late only when it
- * trailed **both** the order's intent and its own send by more than two minutes.
- * On a row that never registered — a scheduled order skipped before it fired —
- * the order's intent is all there is, and ten seconds past it is late. A `null`
- * final, or a stamp missing or sitting after it, is never late.
- */
-function finalIsLate(
-  finalSeenTime: number | null,
-  orderTime: number | null,
-  intentTime: number | null,
-  sentTime: number | null,
-): boolean {
-  if (finalSeenTime === null || intentTime === null) return false;
-  if (orderTime === null) return finalSeenTime - intentTime > LATE_ORPHAN_FINAL_MS;
-  return (
-    sentTime !== null &&
-    finalSeenTime - intentTime > LATE_FINAL_MS &&
-    finalSeenTime - sentTime > LATE_FINAL_MS
-  );
-}
 
 /*
  * The minute is what a reader scans down the column; the seconds only settle

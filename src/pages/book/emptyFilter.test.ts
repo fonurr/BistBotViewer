@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import type { BookRowFlagContext } from '../../domain/bookSlippageFilter';
 import { buildBookChains, type BookScope } from '../../domain/chains';
 import { makeActiveOrder, makeCanceledOrder } from '../../test/fixtures';
 import { narrowingsThatEmptiedTheBook } from './BookPage';
@@ -22,6 +23,7 @@ const chains = buildBookChains({
 });
 
 const noAccount = () => null;
+const noFlags: BookRowFlagContext = { calendar: new Map(), intentSlip: () => null };
 
 describe('the reason a filter emptied the Book', () => {
   it('names the single narrowing that did it, with what relaxing it brings back', () => {
@@ -29,6 +31,7 @@ describe('the reason a filter emptied the Book', () => {
       chains,
       { ...defaultBookFilters, symbols: new Set(['GARAN']) },
       noAccount,
+      noFlags,
     );
 
     expect(reasons).toHaveLength(1);
@@ -46,6 +49,7 @@ describe('the reason a filter emptied the Book', () => {
         symbols: new Set(['THYAO']),
       },
       noAccount,
+      noFlags,
     );
 
     expect(reasons.map((reason) => reason.key)).toEqual(['bots', 'symbols']);
@@ -60,6 +64,7 @@ describe('the reason a filter emptied the Book', () => {
         symbols: new Set(['GARAN']),
       },
       noAccount,
+      noFlags,
     );
 
     expect(reasons).toEqual([]);
@@ -84,6 +89,7 @@ describe('the reason a filter emptied the Book', () => {
         canceledStatuses: new Set(['By user']),
       },
       noAccount,
+      noFlags,
     );
 
     expect(reason!.key).toBe('canceled-statuses');
@@ -112,6 +118,7 @@ describe('the reason a filter emptied the Book', () => {
       withReasons,
       { ...defaultBookFilters, reasonFilter: true, reasons: new Set(['BuyGuard']) },
       noAccount,
+      noFlags,
     );
 
     expect(reason!.key).toBe('reasons');
@@ -141,6 +148,7 @@ describe('the reason a filter emptied the Book', () => {
         sources: new Set(['Broker']),
       },
       noAccount,
+      noFlags,
     );
 
     expect(reason!.key).toBe('sources');
@@ -155,6 +163,7 @@ describe('the reason a filter emptied the Book', () => {
       chains,
       { ...defaultBookFilters, symbols: new Set(['GARAN']), batchFrom: '2020-01-01' },
       noAccount,
+      noFlags,
     );
 
     const cleared = reason!.clear({
@@ -173,7 +182,7 @@ describe('the reason a filter emptied the Book', () => {
       timeFrom: 600,
       timeTo: 602,
     };
-    const [reason] = narrowingsThatEmptiedTheBook(chains, filters, noAccount);
+    const [reason] = narrowingsThatEmptiedTheBook(chains, filters, noAccount, noFlags);
 
     expect(reason!.key).toBe('time');
     expect(reason!.sentence).toBe(
@@ -185,11 +194,13 @@ describe('the reason a filter emptied the Book', () => {
 
   it('names an empty time-column selection only while time filtering is enabled', () => {
     const filters = { ...defaultBookFilters, timeFilter: true, timeFields: new Set<never>() };
-    const [reason] = narrowingsThatEmptiedTheBook(chains, filters, noAccount);
+    const [reason] = narrowingsThatEmptiedTheBook(chains, filters, noAccount, noFlags);
     expect(reason!.sentence).toBe('No time column is selected.');
     expect(reason!.restored).toBe(2);
     expect(reason!.clear(filters).timeFields).toEqual(defaultBookFilters.timeFields);
-    expect(narrowingsThatEmptiedTheBook(chains, reason!.clear(filters), noAccount)).toEqual([]);
+    expect(
+      narrowingsThatEmptiedTheBook(chains, reason!.clear(filters), noAccount, noFlags),
+    ).toEqual([]);
   });
 
   it('names an empty side selection and restores both sides when cleared', () => {
@@ -199,7 +210,7 @@ describe('the reason a filter emptied the Book', () => {
       timeBuys: false,
       timeSells: false,
     };
-    const [reason] = narrowingsThatEmptiedTheBook(chains, filters, noAccount);
+    const [reason] = narrowingsThatEmptiedTheBook(chains, filters, noAccount, noFlags);
     expect(reason!.sentence).toBe('Neither buys nor sells is selected.');
     expect(reason!.restored).toBe(2);
     const cleared = reason!.clear(filters);
@@ -207,5 +218,76 @@ describe('the reason a filter emptied the Book', () => {
     expect(cleared.timeBuys).toBe(true);
     expect(cleared.timeSells).toBe(true);
     expect(cleared.timeIncludeCanceled).toBe(false);
+  });
+
+  it('names the slippage filter, which narrows even with every column ticked', () => {
+    const filters = { ...defaultBookFilters, slippageFilter: true };
+    const [reason] = narrowingsThatEmptiedTheBook(chains, filters, noAccount, noFlags);
+
+    expect(reason!.key).toBe('slippage');
+    expect(reason!.sentence).toBe('No chain owns an order flagged in a selected column.');
+    expect(reason!.restored).toBe(2);
+    expect(reason!.clear(filters)).toEqual(defaultBookFilters);
+  });
+
+  it('names an empty slippage column or side selection, and restores both when cleared', () => {
+    const noColumn = {
+      ...defaultBookFilters,
+      slippageFilter: true,
+      slippageFields: new Set<never>(),
+    };
+    const [columnReason] = narrowingsThatEmptiedTheBook(chains, noColumn, noAccount, noFlags);
+    expect(columnReason!.sentence).toBe('No slippage column is selected.');
+    expect(columnReason!.clear(noColumn)).toEqual(defaultBookFilters);
+
+    const noSide = {
+      ...defaultBookFilters,
+      slippageFilter: true,
+      slippageBuys: false,
+      slippageSells: false,
+    };
+    const [sideReason] = narrowingsThatEmptiedTheBook(chains, noSide, noAccount, noFlags);
+    expect(sideReason!.sentence).toBe('Neither buys nor sells is selected.');
+    expect(sideReason!.clear(noSide)).toEqual(defaultBookFilters);
+  });
+
+  it('keeps the slippage filter applied while it weighs every other narrowing', () => {
+    const mixed = buildBookChains({
+      activeOrders: [
+        makeActiveOrder({ id: 1, clientOrderId: 'a', chainId: 'a', symbol: 'AKBNK' }),
+        // Sent 45 seconds after it was written: the `sent time` flag.
+        makeActiveOrder({
+          id: 2,
+          clientOrderId: 'b',
+          chainId: 'b',
+          symbol: 'THYAO',
+          botId: 'bot-beta',
+          sentTime: Date.parse('2026-08-25T07:30:45.000Z'),
+          orderTime: Date.parse('2026-08-25T07:30:46.000Z'),
+        }),
+        makeActiveOrder({
+          id: 3,
+          clientOrderId: 'c',
+          chainId: 'c',
+          symbol: 'GARAN',
+          botId: 'bot-beta',
+        }),
+      ],
+      canceledOrders: [],
+      positions: [],
+      closedTrades: [],
+    });
+    const reasons = narrowingsThatEmptiedTheBook(
+      mixed,
+      { ...defaultBookFilters, botIds: new Set(['bot-alpha']), slippageFilter: true },
+      noAccount,
+      noFlags,
+    );
+
+    // Clearing the bot filter brings back only the flagged beta chain.
+    expect(reasons.map(({ key, restored }) => [key, restored])).toEqual([
+      ['bots', 1],
+      ['slippage', 1],
+    ]);
   });
 });
