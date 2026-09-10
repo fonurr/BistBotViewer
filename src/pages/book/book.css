@@ -15,6 +15,48 @@
   font-size: var(--font-leg);
 }
 
+.book-time-range {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-divider);
+}
+
+.book-time-slider {
+  display: grid;
+  gap: var(--space-2);
+  color: var(--mut);
+  font-size: var(--font-meta);
+}
+
+.book-time-slider-label {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.book-time-value {
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.book-time-slider input {
+  width: 100%;
+  height: var(--space-8);
+  margin: 0;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+.book-time-slider:has(input:disabled) {
+  opacity: 0.45;
+}
+
+.book-time-slider input:disabled {
+  cursor: default;
+}
+
 .book-toolbar-spacer,
 .pending-grow {
   flex: 1;

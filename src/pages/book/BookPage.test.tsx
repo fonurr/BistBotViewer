@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ResolvedPrice } from '../../priceApi/types';
+import { BOOK_TIME_STEPS } from '../../domain/bookTimeFilter';
 import {
   makeAccount,
   makeActiveOrder,
@@ -744,5 +745,75 @@ describe('the source filter', () => {
     await user.click(screen.getByRole('button', { name: 'clear the source filter' }));
     expect(chainsInGrid()).toEqual(['AKBNK', 'GARAN', 'SISE', 'THYAO']);
     expect(screen.getByRole('button', { name: 'any source' })).toBeVisible();
+  });
+});
+
+describe('the time filter', () => {
+  const chainsInGrid = () =>
+    [...document.querySelectorAll('.book-chain')]
+      .map((chain) => chain.getAttribute('aria-label')?.replace(' chain', '') ?? '')
+      .sort();
+
+  it('keeps a whole chain by a hidden leg, hides queued baskets, and restores them when cleared', async () => {
+    const user = userEvent.setup();
+    book.data = {
+      ...emptyRead(),
+      activeOrders: [
+        makeActiveOrder({ id: 1, clientOrderId: 'a', chainId: 'a', symbol: 'AKBNK' }),
+        makeActiveOrder({ id: 2, clientOrderId: 'b', chainId: 'b', symbol: 'GARAN' }),
+      ],
+      canceledOrders: [
+        makeCanceledOrder({
+          id: 401,
+          clientOrderId: 'dead-a',
+          chainId: 'a',
+          symbol: 'AKBNK',
+          finalSeenTime: Date.parse('2026-08-25T10:02:59.999+03:00'),
+        }),
+        makeCanceledOrder({
+          id: 402,
+          clientOrderId: 'dead-b',
+          chainId: 'b',
+          symbol: 'GARAN',
+          finalSeenTime: Date.parse('2026-08-25T10:03:00.000+03:00'),
+        }),
+      ],
+      pendingRequests: [makePendingOrderRequest()],
+    };
+    renderBook();
+    expect(chainsInGrid()).toEqual(['AKBNK', 'GARAN']);
+    expect(screen.getByRole('region', { name: 'Queued order baskets' })).toBeVisible();
+
+    // Collapsing a canceled tail must not remove it from the time search.
+    await user.click(document.querySelector('.canceled-global')!);
+    await user.click(screen.getByRole('button', { name: 'any time' }));
+    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    await user.click(screen.getByRole('button', { name: 'none' }));
+    await user.click(screen.getByRole('checkbox', { name: 'final' }));
+    fireEvent.change(screen.getByRole('slider', { name: 'Start time' }), {
+      target: { value: BOOK_TIME_STEPS.indexOf(600) },
+    });
+    fireEvent.change(screen.getByRole('slider', { name: 'End time' }), {
+      target: { value: BOOK_TIME_STEPS.indexOf(602) },
+    });
+
+    expect(chainsInGrid()).toEqual(['AKBNK']);
+    expect(screen.queryByRole('region', { name: 'Queued order baskets' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'time 10:00 → 10:02 ×' })).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Close filter' }));
+    await user.click(screen.getByRole('button', { name: 'time 10:00 → 10:02 ×' }));
+    expect(chainsInGrid()).toEqual(['AKBNK', 'GARAN']);
+    expect(screen.getByRole('region', { name: 'Queued order baskets' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'any time' }));
+    expect(screen.getByRole('slider', { name: 'Start time' })).toHaveAttribute(
+      'aria-valuetext',
+      '10:00',
+    );
+    expect(screen.getByRole('slider', { name: 'End time' })).toHaveAttribute(
+      'aria-valuetext',
+      '10:02',
+    );
+    expect(screen.getByRole('checkbox', { name: 'order' })).toBeChecked();
   });
 });

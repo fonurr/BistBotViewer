@@ -165,4 +165,30 @@ describe('the reason a filter emptied the Book', () => {
     expect(cleared.symbols.size).toBe(0);
     expect(cleared.batchFrom).toBe('2020-01-01');
   });
+
+  it('names an unmatched time range and disables it while retaining the range', () => {
+    const filters = {
+      ...defaultBookFilters,
+      timeFilter: true,
+      timeFrom: 600,
+      timeTo: 602,
+    };
+    const [reason] = narrowingsThatEmptiedTheBook(chains, filters, noAccount);
+
+    expect(reason!.key).toBe('time');
+    expect(reason!.sentence).toBe(
+      'No chain owns an order with a selected time inside the time range.',
+    );
+    expect(reason!.restored).toBe(2);
+    expect(reason!.clear(filters)).toEqual({ ...filters, timeFilter: false });
+  });
+
+  it('names an empty time-column selection only while time filtering is enabled', () => {
+    const filters = { ...defaultBookFilters, timeFilter: true, timeFields: new Set<never>() };
+    const [reason] = narrowingsThatEmptiedTheBook(chains, filters, noAccount);
+    expect(reason!.sentence).toBe('No time column is selected.');
+    expect(reason!.restored).toBe(2);
+    expect(reason!.clear(filters).timeFields).toEqual(defaultBookFilters.timeFields);
+    expect(narrowingsThatEmptiedTheBook(chains, reason!.clear(filters), noAccount)).toEqual([]);
+  });
 });

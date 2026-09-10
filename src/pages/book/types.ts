@@ -1,4 +1,5 @@
 import type { BookScope } from '../../domain/chains';
+import { BOOK_TIME_FIELDS, type BookTimeField } from '../../domain/bookTimeFilter';
 
 /**
  * One row's `@intent/slip` cell, resolved on the page so the grid stays a
@@ -53,6 +54,12 @@ export interface BookFilterState {
   originFilter: boolean;
   /** `null` is every origin, in the server's own key form. */
   origins: ReadonlySet<string> | null;
+  /** Any chosen clock on any chain leg can satisfy this daily Istanbul range. */
+  timeFilter: boolean;
+  timeFields: ReadonlySet<BookTimeField>;
+  /** Inclusive whole-minute bounds; 1440 is the following midnight. */
+  timeFrom: number;
+  timeTo: number;
   batchFrom: string | null;
   batchTo: string | null;
   noClosingOrder: boolean;
@@ -75,6 +82,10 @@ export const defaultBookFilters: BookFilterState = {
   sources: null,
   originFilter: false,
   origins: null,
+  timeFilter: false,
+  timeFields: new Set(BOOK_TIME_FIELDS.map(({ key }) => key)),
+  timeFrom: 0,
+  timeTo: 1440,
   /* Null is not "every batch" but the moment before one has loaded;
      `DateRangeFilter` resolves it to every loaded batch as soon as one exists. */
   batchFrom: null,

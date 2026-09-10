@@ -57,7 +57,7 @@ test('hides canceled legs behind a toggle that is itself the count', async ({ pa
   // Who ended it sits beside the display word in the same ink, and the stored
   // explanation rides behind both, quoted and faint.
   await expect(tail.locator('.book-status')).toHaveText(
-    'By user · User · canceled in the MatriksIQ terminal',
+    'By user by User · canceled in the MatriksIQ terminal',
   );
 
   // Reconciles the per-chain override against the global toggle.

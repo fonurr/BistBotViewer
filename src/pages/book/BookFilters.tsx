@@ -15,7 +15,8 @@ import { accountIdentityKey } from '../../domain/accounts';
 import { rowReasons, type BookChain, type BookScope } from '../../domain/chains';
 import { plural } from '../../domain/format';
 import { displayStatus } from '../../domain/status';
-import { scopeLabels, type BookFilterState } from './types';
+import { BookTimeFilter } from './BookTimeFilter';
+import { defaultBookFilters, scopeLabels, type BookFilterState } from './types';
 
 interface BookFiltersProps {
   filters: BookFilterState;
@@ -95,6 +96,10 @@ export function BookFilters(props: BookFiltersProps) {
       sources: null,
       originFilter: false,
       origins: null,
+      timeFilter: false,
+      timeFields: defaultBookFilters.timeFields,
+      timeFrom: defaultBookFilters.timeFrom,
+      timeTo: defaultBookFilters.timeTo,
       /* The widest range, stated outright: leaving it unset would send the
          range control back to its default and clear this filter with it. */
       batchFrom: props.batchDates[0] ?? null,
@@ -202,6 +207,12 @@ export function BookFilters(props: BookFiltersProps) {
             </>
           )}
           emptyNote="The list only holds symbols the loaded batches traded."
+        />
+        <BookTimeFilter
+          filters={filters}
+          onChange={(next) => onChange({ ...next, noClosingOrder: false })}
+          open={open === 'time'}
+          setOpen={setOpen}
         />
         {origins.length > 0 ? (
           <MultiSelectFilter

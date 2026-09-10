@@ -221,7 +221,7 @@ runs one way only: switching the scope back off leaves the toggle where the read
 by then they may be reading canceled legs on chains that traded.
 
 `BookFilters` owns the batch-range control, additive scopes, and the bot, account, symbol,
-origin, canceled-status, source, and reason controls — the batch range leads the toolbar row, then
+time, origin, canceled-status, source, and reason controls — the batch range leads the toolbar row, then
 the scopes, then the popover triggers in that order. The
 bot, account and symbol controls are `components/EntityFilters` and the batch range is
 `components/DateRangeFilter`, which the Bots and Performance
@@ -255,6 +255,24 @@ narrower than the loaded batches, and that chip names the days it kept. Anything
 widen the range — that chip, the empty-Book reason, the needs-a-human toggle that clears the
 rest — states the widest range outright rather than unsetting it; that is the same set the control
 settles on by default, named rather than left null.
+
+The **time filter** uses the six clocks drawn in the grid, in column order: `created`, `sched`,
+`intent`, `sent`, `order`, and `final`. Its popover starts with `filter`, `all`, and `none`, followed
+by the clock checkboxes and two sliders. It starts off, with every clock selected and the full
+day selected. `all` and `none` change only the clocks; switching the filter off restores all clock
+checkboxes and preserves the range. A chain qualifies where any of its orders has any selected
+clock within the range, and is drawn whole. Missing clocks cannot match, and queued baskets have
+no order clock, so they drop out while this filter is on. Clock comparison uses Istanbul time of
+day independently of the batch date, including the entire selected end minute: `10:00 → 10:02`
+keeps stamps through `10:02:59.999`.
+
+`domain/bookTimeFilter.ts` owns both matching and the slider stops: hourly from `00:00` through
+`09:00`, then `09:50`, `09:55`, every minute through `18:05`, every five minutes through `19:00`,
+and hourly through the following midnight, shown as `00:00 +1`. That last stop can match the
+midnight minute at the end of a range. Both sliders use the same scale and clamp against the
+other endpoint, so they may meet but never cross. Equal endpoints select that entire minute.
+The filter participates in active chips, empty-result recovery, and clearing the other filters
+when focusing positions without a closing order.
 
 The **canceled-status filter** lists every status the loaded canceled orders carry, in the display
 form the status cells print (`By user`, not `CanceledByUser`), so raw wire values that share a

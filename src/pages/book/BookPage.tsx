@@ -12,6 +12,7 @@ import { priceApi } from '../../priceApi/client';
 import { Modal } from '../../components/Modal';
 import { ResultList, type ActionResult } from '../../components/ResultList';
 import { accountIdentityKey } from '../../domain/accounts';
+import { formatBookTime, matchesBookTime } from '../../domain/bookTimeFilter';
 import { holidayCalendar, previousTradingDate, sessionBatchDate } from '../../domain/calendar';
 import { intentBarLookup, intentPriceReference, intentSlipAllowed } from '../../domain/intentPrice';
 import { useIntentPrices } from '../../app/useIntentPrices';
@@ -121,14 +122,15 @@ export function BookPage() {
   const visiblePending = useMemo(
     () =>
       /* A queued basket has no order yet, so it owns no canceled leg, no
-         recorded reason, no origin and nobody who ended it: nothing in it can
-         match a canceled status, a reason, an origin or a source, and it drops
+         recorded reason, no origin, no order clocks and nobody who ended it:
+         nothing in it can match those filters, and it drops
          with the chains that cannot match. */
       filters.noClosingOrder ||
       filters.canceledStatusFilter ||
       filters.reasonFilter ||
       filters.sourceFilter ||
       filters.originFilter ||
+      filters.timeFilter ||
       !filters.scopes.has('waiting')
         ? []
         : data.pendingRequests.filter((request) => {
@@ -741,6 +743,21 @@ export function narrowingsThatEmptiedTheBook(
       clear: (current) => ({ ...current, originFilter: false, origins: null }),
     });
   }
+  if (filters.timeFilter) {
+    candidates.push({
+      key: 'time',
+      phrase: 'the time filter',
+      sentence:
+        filters.timeFields.size === 0
+          ? 'No time column is selected.'
+          : 'No chain owns an order with a selected time inside the time range.',
+      clear: (current) => ({
+        ...current,
+        timeFilter: false,
+        timeFields: defaultBookFilters.timeFields,
+      }),
+    });
+  }
   const loadedBatches = [
     ...new Set(chains.flatMap((chain) => (chain.batchDate ? [chain.batchDate] : []))),
   ].sort();
@@ -787,6 +804,11 @@ function chainMatches(
   if (filters.reasonFilter && !matchesReason(chain, filters.reasons)) return false;
   if (filters.sourceFilter && !matchesSource(chain, filters.sources)) return false;
   if (filters.originFilter && !matchesOrigin(chain, filters.origins)) return false;
+  if (
+    filters.timeFilter &&
+    !matchesBookTime(chain, filters.timeFields, filters.timeFrom, filters.timeTo)
+  )
+    return false;
   if (chain.batchDate !== null && filters.batchFrom && chain.batchDate < filters.batchFrom)
     return false;
   if (chain.batchDate !== null && filters.batchTo && chain.batchDate > filters.batchTo)
@@ -1587,6 +1609,16 @@ function filterChips(
       label:
         filters.origins === null ? 'with a named origin' : plural(filters.origins.size, 'origin'),
       clear: (current) => ({ ...current, originFilter: false, origins: null }),
+    });
+  if (filters.timeFilter)
+    chips.push({
+      key: 'time',
+      label: `time ${formatBookTime(filters.timeFrom)} → ${formatBookTime(filters.timeTo)}`,
+      clear: (current) => ({
+        ...current,
+        timeFilter: false,
+        timeFields: defaultBookFilters.timeFields,
+      }),
     });
   // The range is always set — every loaded batch is the default — so the chip
   // appears only where it is narrower than the loaded batches, and names the
