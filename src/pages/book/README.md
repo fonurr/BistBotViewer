@@ -46,13 +46,17 @@ buy's reversing sell dated to the next close). It is empty when the order carrie
 the order actually registered.
 
 `created` and `sched` are the two clocks a reader rarely needs, so `.book-time-minor` draws the
-whole cell at the seconds' strength. `sent` and `final` are drawn in dead-red (`.book-time-late`)
-when they ran late. `sent` is late when it trailed **every** stamp it can be measured against
-(`scheduledTime`, `createdTime`) by more than ten seconds. `final` is late, once the order had
-registered (`orderTime` present, so the fill notice carries some lag), only when it trailed
-**both** the order's `intent` and its own `sent` by more than two minutes. On a row that never
-registered — a scheduled order skipped before it fired — `intent` is all there is, and ten seconds
-past it is late. Every column carries its seconds: the minute is what a reader scans, so
+whole cell at the seconds' strength. `sent` is drawn in dead-red (`.book-time-late`) when it ran
+late: it trailed **every** stamp it can be measured against (`scheduledTime`, `createdTime`) by
+more than ten seconds. `order` and `final` are drawn in orange (`.book-time-slow`, `--st-warn`)
+when the far side was slow — a step below the red, since it is the exchange or the fill notice
+lagging rather than the bot. `order` is slow when the exchange registered it more than ten seconds
+after `sent`. `final` is slow, once the order had registered (`orderTime` present, so the fill
+notice carries some lag), only when it trailed **both** the order's `intent` and its own `sent` by
+more than two minutes. On a row that never registered — a scheduled order skipped before it fired
+— `intent` is all there is, and ten seconds past it is slow. A stamp missing on either side, or an
+anchor that sits after the stamp, never colours a cell. Every column carries its seconds: the
+minute is what a reader scans, so
 `formatRowTimeParts` hands the seconds back separately and the cell draws them — their colon with
 them — at about a quarter opacity.
 

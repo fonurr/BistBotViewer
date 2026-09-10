@@ -687,9 +687,11 @@ const BookRow = memo(function BookRow({
       {/*
        * `sent` reddens when the send trailed the order's plan: it is more than ten
        * seconds later than every stamp it has to measure against (`scheduledTime`
-       * and `createdTime`). `final` reddens when it landed well past the order —
-       * two minutes past both its intent and its send once the order registered,
-       * ten seconds past intent on a row that never did.
+       * and `createdTime`). `order` and `final` turn orange when the far side was
+       * slow: `order` when the exchange registered the order more than ten seconds
+       * after it was sent, `final` when it landed well past the order — two
+       * minutes past both its intent and its send once the order registered, ten
+       * seconds past intent on a row that never did.
        */}
       <div
         role="cell"
@@ -697,12 +699,15 @@ const BookRow = memo(function BookRow({
       >
         <RowTime timestamp={row.sentTime} batchDate={batchDate} />
       </div>
-      <div role="cell" className="muted book-time">
+      <div
+        role="cell"
+        className={`muted book-time${lateAgainst(row.orderTime, [row.sentTime], LATE_ORDER_MS) ? ' book-time-slow' : ''}`}
+      >
         <RowTime timestamp={row.orderTime} batchDate={batchDate} />
       </div>
       <div
         role="cell"
-        className={`muted book-time${finalIsLate(row.finalSeenTime, row.orderTime, row.intentTime, row.sentTime) ? ' book-time-late' : ''}`}
+        className={`muted book-time${finalIsLate(row.finalSeenTime, row.orderTime, row.intentTime, row.sentTime) ? ' book-time-slow' : ''}`}
       >
         <RowTime timestamp={row.finalSeenTime} batchDate={batchDate} />
       </div>
@@ -750,6 +755,8 @@ const BookRow = memo(function BookRow({
 
 /** A send more than this later than its plan is drawn late. */
 const LATE_SENT_MS = 10_000;
+/** An exchange registration more than this later than the send is drawn slow. */
+const LATE_ORDER_MS = 10_000;
 /** A fill seen this long past both the order's intent and its send, once registered, is drawn late. */
 const LATE_FINAL_MS = 120_000;
 /** With no registration to lean on, a fill this long past the order's intent is late. */

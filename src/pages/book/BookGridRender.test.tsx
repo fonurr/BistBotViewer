@@ -191,9 +191,50 @@ describe('BookGrid row vocabulary', () => {
     expect(sentCell()).toHaveClass('book-time-late');
   });
 
+  const orderCell = () => [...document.querySelectorAll('.book-row [role="cell"].book-time')][4];
+
+  it('turns order orange when the exchange registered it over ten seconds after the send', () => {
+    const sent = Date.parse('2026-08-25T07:30:00.000Z');
+    renderGrid(
+      {},
+      {
+        activeOrders: [
+          makeActiveOrder({ createdTime: sent - 1_000, sentTime: sent, orderTime: sent + 12_000 }),
+        ],
+        canceledOrders: [],
+        positions: [],
+        closedTrades: [],
+      },
+    );
+    expect(orderCell()).toHaveClass('book-time-slow');
+    expect(orderCell()).not.toHaveClass('book-time-late');
+  });
+
+  it('leaves order muted within ten seconds of the send, or ahead of it, or with no send', () => {
+    const sent = Date.parse('2026-08-25T07:30:00.000Z');
+    renderGrid(
+      {},
+      {
+        activeOrders: [
+          makeActiveOrder({ id: 1, chainId: 'a', sentTime: sent, orderTime: sent + 9_000 }),
+          makeActiveOrder({ id: 2, chainId: 'b', sentTime: sent, orderTime: sent - 30_000 }),
+          makeActiveOrder({ id: 3, chainId: 'c', sentTime: null, orderTime: sent + 60_000 }),
+        ],
+        canceledOrders: [],
+        positions: [],
+        closedTrades: [],
+      },
+    );
+    const orders = [...document.querySelectorAll('.book-row')].map(
+      (row) => [...row.querySelectorAll('[role="cell"].book-time')][4]!,
+    );
+    expect(orders).toHaveLength(3);
+    for (const cell of orders) expect(cell).not.toHaveClass('book-time-slow');
+  });
+
   const finalCell = () => [...document.querySelectorAll('.book-row [role="cell"].book-time')][5];
 
-  it('reddens final on a registered row when it landed over two minutes past both intent and send', () => {
+  it('turns final orange on a registered row when it landed over two minutes past both intent and send', () => {
     const intent = Date.parse('2026-08-25T07:30:00.000Z');
     renderGrid(
       {},
@@ -212,7 +253,8 @@ describe('BookGrid row vocabulary', () => {
       },
     );
 
-    expect(finalCell()).toHaveClass('book-time-late');
+    expect(finalCell()).toHaveClass('book-time-slow');
+    expect(finalCell()).not.toHaveClass('book-time-late');
   });
 
   it('leaves final muted on a registered row whose send it followed within two minutes', () => {
@@ -236,10 +278,10 @@ describe('BookGrid row vocabulary', () => {
       },
     );
 
-    expect(finalCell()).not.toHaveClass('book-time-late');
+    expect(finalCell()).not.toHaveClass('book-time-slow');
   });
 
-  it('reddens final on a never-registered row when it landed over ten seconds past the intent', () => {
+  it('turns final orange on a never-registered row when it landed over ten seconds past the intent', () => {
     const scheduledTime = Date.parse('2026-08-25T09:00:00.000Z');
     renderGrid(
       { showCanceled: true },
@@ -263,8 +305,8 @@ describe('BookGrid row vocabulary', () => {
     );
 
     // No orderTime: the order never registered, so `intent` is the anchor and a
-    // 15-second lag past it is late.
-    expect(finalCell()).toHaveClass('book-time-late');
+    // 15-second lag past it is slow.
+    expect(finalCell()).toHaveClass('book-time-slow');
   });
 
   it('leaves final muted on a never-registered row killed promptly at its intent', () => {
@@ -290,7 +332,7 @@ describe('BookGrid row vocabulary', () => {
       },
     );
 
-    expect(finalCell()).not.toHaveClass('book-time-late');
+    expect(finalCell()).not.toHaveClass('book-time-slow');
   });
 
   it('leaves a cell empty rather than substituting a dash or a zero', () => {

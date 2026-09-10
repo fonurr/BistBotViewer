@@ -663,12 +663,21 @@
 }
 
 /*
- * A `sent` that trailed the order's plan, or a `final` this server was slow to
- * hear, is drawn in the same dead-red the header uses for a gone stream — the
- * stamp is the one a reader is meant to catch, so it overrides the muted ink.
+ * A `sent` that trailed the order's plan is drawn in the same dead-red the
+ * header uses for a gone stream — the stamp is the one a reader is meant to
+ * catch, so it overrides the muted ink.
  */
 .book-time.book-time-late {
   color: var(--st-dead);
+}
+
+/*
+ * An `order` the exchange was slow to register, or a `final` this server was
+ * slow to hear, is the far side lagging rather than the bot — orange, a step
+ * below the red a late send carries.
+ */
+.book-time.book-time-slow {
+  color: var(--st-warn);
 }
 
 /*
