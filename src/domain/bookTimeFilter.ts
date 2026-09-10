@@ -30,6 +30,32 @@ export function formatBookTime(minute: number): string {
   return `${String(hour).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
 }
 
+export interface BookTimeRange {
+  from: number;
+  to: number;
+}
+
+export type BookTimeRangeEdge = 'from' | 'to' | 'both';
+
+/**
+ * Like the batch range, walk positions in the allowed stops. A whole-window
+ * step keeps its width in stops; a step past either bound or the other edge
+ * is unavailable, so its button is disabled rather than shortening the step.
+ */
+export function stepBookTimeRange(
+  range: BookTimeRange,
+  edge: BookTimeRangeEdge,
+  by: 1 | -1,
+): BookTimeRange | null {
+  const start = BOOK_TIME_STEPS.indexOf(range.from);
+  const end = BOOK_TIME_STEPS.indexOf(range.to);
+  if (start < 0 || end < 0 || start > end) return null;
+  const from = edge === 'to' ? start : start + by;
+  const to = edge === 'from' ? end : end + by;
+  if (from < 0 || to >= BOOK_TIME_STEPS.length || from > to) return null;
+  return { from: BOOK_TIME_STEPS[from]!, to: BOOK_TIME_STEPS[to]! };
+}
+
 /**
  * Select whole chains by any chosen clock on any leg, including hidden canceled
  * legs. Dates stay the batch filter's concern. Both bounds include their whole

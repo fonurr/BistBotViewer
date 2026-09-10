@@ -30,10 +30,34 @@
   font-size: var(--font-meta);
 }
 
-.book-time-slider-label {
+.book-time-slider-label,
+.book-time-shift {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
+}
+
+.book-time-shift {
+  color: var(--mut);
+  font-size: var(--font-meta);
+}
+
+.book-time-nudge {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.book-time-step {
+  width: var(--space-8);
+  height: var(--space-8);
+  padding: 0;
+  border-radius: var(--radius-sm);
+}
+
+.book-time-step:disabled:hover {
+  background: transparent;
 }
 
 .book-time-value {

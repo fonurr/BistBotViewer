@@ -183,6 +183,46 @@ test('uses the requested clock steps and allows equal endpoints without crossing
   await expect(page.getByRole('article', { name: 'THYAO chain', exact: true })).toBeVisible();
 });
 
+test('range buttons update the kept chains without changing the chosen clock', async ({ page }) => {
+  const control = page.locator('.book-time-filter');
+  await control.getByRole('button', { name: 'any time', exact: true }).click();
+  const popover = control.getByRole('dialog');
+  await popover.getByRole('checkbox', { name: 'filter', exact: true }).check();
+  const start = popover.getByRole('slider', { name: 'Start time', exact: true });
+  const end = popover.getByRole('slider', { name: 'End time', exact: true });
+  await end.press('Home');
+  await advance(end, 'ArrowRight', BOOK_TIME_STEPS.indexOf(602));
+  await advance(start, 'ArrowRight', BOOK_TIME_STEPS.indexOf(600));
+  await popover.getByRole('button', { name: 'none', exact: true }).click();
+  await popover.getByRole('checkbox', { name: 'created', exact: true }).check();
+  await expect(page.getByRole('article')).toHaveCount(2);
+
+  await popover
+    .getByRole('button', { name: 'Whole time range one step later', exact: true })
+    .click();
+  await expectTime(start, 601);
+  await expectTime(end, 603);
+  await expect(page.getByRole('article')).toHaveCount(2);
+  await expect(page.getByRole('article', { name: 'AKBNK chain', exact: true })).toBeVisible();
+  await expect(page.getByRole('article', { name: 'GARAN chain', exact: true })).toBeVisible();
+  await expect(page.getByRole('article', { name: 'THYAO chain', exact: true })).toHaveCount(0);
+
+  await popover.getByRole('button', { name: 'Start time one step earlier', exact: true }).click();
+  await expectTime(start, 600);
+  await expectTime(end, 603);
+  await expect(page.getByRole('article')).toHaveCount(3);
+  await popover.getByRole('button', { name: 'End time one step earlier', exact: true }).click();
+  await expectTime(start, 600);
+  await expectTime(end, 602);
+  await expect(page.getByRole('article')).toHaveCount(2);
+  await expect(page.getByRole('article', { name: 'THYAO chain', exact: true })).toBeVisible();
+  await expect(page.getByRole('article', { name: 'GARAN chain', exact: true })).toHaveCount(0);
+  await expect(popover.getByRole('checkbox', { name: 'created', exact: true })).toBeChecked();
+  for (const field of timeFields.filter((field) => field !== 'created')) {
+    await expect(popover.getByRole('checkbox', { name: field, exact: true })).not.toBeChecked();
+  }
+});
+
 async function advance(slider: Locator, direction: 'ArrowLeft' | 'ArrowRight', count: number) {
   for (let index = 0; index < count; index += 1) await slider.press(direction);
 }

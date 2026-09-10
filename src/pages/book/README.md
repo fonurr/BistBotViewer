@@ -271,6 +271,12 @@ keeps stamps through `10:02:59.999`.
 and hourly through the following midnight, shown as `00:00 +1`. That last stop can match the
 midnight minute at the end of a range. Both sliders use the same scale and clamp against the
 other endpoint, so they may meet but never cross. Equal endpoints select that entire minute.
+Each slider has its own `− / +` buttons, and `‹ / ›` move both endpoints together. Like the batch
+range, the buttons step through the allowed stops rather than adding a fixed number of minutes:
+moving `09:00 → 09:55` one step later produces `09:50 → 09:56`. A step is disabled while the
+filter is off, at the day bounds, or when an individual endpoint would cross the other. On equal
+endpoints, the start's `+` and end's `−` are disabled; the whole-range buttons can still move that
+single minute. A whole-range move must fit in full and never shrinks against midnight.
 The filter participates in active chips, empty-result recovery, and clearing the other filters
 when focusing positions without a closing order.
 

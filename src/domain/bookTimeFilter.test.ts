@@ -11,6 +11,7 @@ import {
   BOOK_TIME_STEPS,
   formatBookTime,
   matchesBookTime,
+  stepBookTimeRange,
   type BookTimeField,
 } from './bookTimeFilter';
 import { buildBookChains, type BookChain, type BookChainRow } from './chains';
@@ -60,6 +61,51 @@ describe('the Book time slider stops', () => {
     expect(formatBookTime(590)).toBe('09:50');
     expect(formatBookTime(1085)).toBe('18:05');
     expect(formatBookTime(1440)).toBe('00:00 +1');
+  });
+});
+
+describe('time range steps', () => {
+  it('moves both endpoints by one allowed stop, including changes in clock spacing', () => {
+    expect(stepBookTimeRange({ from: 540, to: 595 }, 'both', 1)).toEqual({ from: 590, to: 596 });
+    expect(stepBookTimeRange({ from: 590, to: 596 }, 'both', -1)).toEqual({ from: 540, to: 595 });
+    expect(stepBookTimeRange({ from: 1084, to: 1140 }, 'both', 1)).toEqual({
+      from: 1085,
+      to: 1200,
+    });
+  });
+
+  it('moves either endpoint alone and allows the endpoints to meet', () => {
+    const range = { from: 590, to: 595 };
+    expect(stepBookTimeRange(range, 'from', -1)).toEqual({ from: 540, to: 595 });
+    expect(stepBookTimeRange(range, 'from', 1)).toEqual({ from: 595, to: 595 });
+    expect(stepBookTimeRange(range, 'to', -1)).toEqual({ from: 590, to: 590 });
+    expect(stepBookTimeRange(range, 'to', 1)).toEqual({ from: 590, to: 596 });
+  });
+
+  it('disables inward edge steps on a collapsed range but can still move both endpoints', () => {
+    const range = { from: 595, to: 595 };
+    expect(stepBookTimeRange(range, 'from', 1)).toBeNull();
+    expect(stepBookTimeRange(range, 'to', -1)).toBeNull();
+    expect(stepBookTimeRange(range, 'both', 1)).toEqual({ from: 596, to: 596 });
+    expect(stepBookTimeRange(range, 'both', -1)).toEqual({ from: 590, to: 590 });
+  });
+
+  it('refuses out-of-day moves without shrinking the range', () => {
+    expect(stepBookTimeRange({ from: 0, to: 595 }, 'both', -1)).toBeNull();
+    expect(stepBookTimeRange({ from: 1085, to: 1440 }, 'both', 1)).toBeNull();
+    expect(stepBookTimeRange({ from: 0, to: 1440 }, 'from', -1)).toBeNull();
+    expect(stepBookTimeRange({ from: 0, to: 1440 }, 'to', 1)).toBeNull();
+    expect(stepBookTimeRange({ from: 1380, to: 1380 }, 'both', 1)).toEqual({
+      from: 1440,
+      to: 1440,
+    });
+    expect(stepBookTimeRange({ from: 1440, to: 1440 }, 'both', 1)).toBeNull();
+  });
+
+  it('refuses endpoints outside the allowed stops and inverted ranges', () => {
+    expect(stepBookTimeRange({ from: 550, to: 595 }, 'both', 1)).toBeNull();
+    expect(stepBookTimeRange({ from: 540, to: 585 }, 'both', 1)).toBeNull();
+    expect(stepBookTimeRange({ from: 595, to: 590 }, 'both', -1)).toBeNull();
   });
 });
 
