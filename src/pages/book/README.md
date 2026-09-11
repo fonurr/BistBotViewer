@@ -187,14 +187,16 @@ instrument and same session means that gap is a mis-scaled bar rather than a mar
 An empty `@intent` cell has two causes a reader must be able to tell apart — the rules withheld the
 figure, or the price history does not reach that session — so the strip's `slip @intent` names the
 second on its detail line: `intent prices 08.09.26` for the last session the bars do reach, drawn
-whenever a batch on screen is past it, `intent prices unavailable` where no snapshot was ever
-built, and nothing at all otherwise. The cells themselves stay empty either way; an empty value
-is empty here as everywhere.
+whenever an **older** batch on screen is past it, `intent prices unavailable` where no snapshot was
+ever built, and nothing at all otherwise. The cells themselves stay empty either way; an empty
+value is empty here as everywhere.
 
 ⚠️ **Expect the newest batch to be the blank one.** BistData backfills, so its minute history
 trails the live sessions, and the Book opens on the newest batch. The column fills as you walk
 back through the batches, not on the one being worked — which is the opposite of where a reader
-looks first, and the reason the strip says how far the history got.
+looks first. That lag is routine, not news, so the detail line stays silent when the current
+session is the only batch past the cache; it only speaks up once an *older* batch is left behind
+too, which is when the lag is worth a reader's attention.
 
 The read is **chunked** for the same reason it is bounded: `BookPage` asks for every row the
 filters kept, not only the batch that happens to be open, and a year of them passes the bridge's

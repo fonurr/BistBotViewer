@@ -506,6 +506,35 @@ describe('The Book page states', () => {
     expect(document.querySelector('.book-row .book-intent-price')!.textContent).toBe('');
   });
 
+  it('says nothing when only the current session is past the cache', async () => {
+    // The order's batch is today's session — the one BistData always trails,
+    // since it cannot backfill a session before it closes. That lag is routine,
+    // not a stall, so the strip must stay silent even though the cache stops
+    // one session short of it.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-25T08:30:00.000Z'));
+    try {
+      book.data = {
+        ...emptyRead(),
+        activeOrders: [makeActiveOrder({ createdTime: Date.parse('2026-08-25T11:30:00+03:00') })],
+      };
+      histApiMock.getSnapshotStatus.mockResolvedValue({
+        available: true,
+        snapshotFor: '2026-08-24',
+        builtAt: 1,
+        barRows: 1,
+        coversThrough: '2026-08-24',
+        stale: false,
+      });
+      renderBook();
+
+      await waitFor(() => expect(histApiMock.getIntentBars).toHaveBeenCalled());
+      expect(document.querySelector('.book-stat-strip')!).not.toHaveTextContent('intent prices');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('says nothing when the history reaches every batch on screen', async () => {
     book.data = {
       ...emptyRead(),

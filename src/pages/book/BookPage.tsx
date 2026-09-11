@@ -318,20 +318,19 @@ export function BookPage() {
     );
     return slips.length ? slips.reduce((sum, value) => sum + value, 0) / slips.length : null;
   }, [rowFlags, view, visibleChains]);
-  /*
-   * An empty `@intent` column has two very different causes, and the reader has
-   * to be able to tell them apart: the rules withheld every figure, or the
-   * nightly cache is behind and simply has no minute for the newest sessions.
-   * Only the second is worth a word, and only once a row actually asked for one.
-   */
+  // The batch this moment belongs to: on a Saturday, Monday's session, because
+  // Friday's evening orders are already filed under it.
+  const currentSession =
+    sessionBatchDate(Date.now(), calendar) ?? batchDates.at(-1) ?? todayCalendarDate;
   /*
    * An empty `@intent` column has two very different causes, and the reader has
    * to be able to tell them apart: the rules withheld every figure, or the
    * history simply does not reach these sessions yet. BistData backfills, so it
    * trails the live sessions by a day or more — which means the newest batch,
-   * the one being worked, is usually the one it cannot price. Naming the last
-   * session it does reach is the only way that reads as a gap rather than a
-   * fault. Said only once a drawn row actually asked for a minute.
+   * the one being worked, is always the one it cannot price yet. That gap is
+   * routine, not news, so the note only speaks up for an *older* batch left
+   * behind — naming the last session the cache does reach is the only way that
+   * reads as a genuine stall rather than the nightly lag everyone expects.
    */
   const intentCacheNote = useMemo(() => {
     if (!intentPrices.asked || !intentPrices.statusSettled) return null;
@@ -339,12 +338,15 @@ export function BookPage() {
       return 'intent prices unavailable';
     }
     const beyond = visibleChains.some(
-      (chain) => chain.batchDate !== null && chain.batchDate > intentPrices.coversThrough!,
+      (chain) =>
+        chain.batchDate !== null &&
+        chain.batchDate !== currentSession &&
+        chain.batchDate > intentPrices.coversThrough!,
     );
     return beyond
       ? `intent prices ${formatDate(Date.parse(`${intentPrices.coversThrough}T00:00:00+03:00`))}`
       : null;
-  }, [intentPrices, visibleChains]);
+  }, [currentSession, intentPrices, visibleChains]);
   const todaySummary = useMemo(
     () =>
       summarizeBookToday(
@@ -356,10 +358,6 @@ export function BookPage() {
       ),
     [closingBars, priceFeed.prices, priceFeed.trustworthy, todayCalendarDate, visibleChains],
   );
-  // The batch this moment belongs to: on a Saturday, Monday's session, because
-  // Friday's evening orders are already filed under it.
-  const currentSession =
-    sessionBatchDate(Date.now(), calendar) ?? batchDates.at(-1) ?? todayCalendarDate;
   // The days the range can be set to. Read as `active` that is every session a
   // loaded chain was alive in, which reaches days no chain was opened on.
   const rangeDates = useMemo(
