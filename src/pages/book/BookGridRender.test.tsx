@@ -210,13 +210,13 @@ describe('BookGrid row vocabulary', () => {
     expect(orderCell()).not.toHaveClass('book-time-late');
   });
 
-  it('leaves order muted within ten seconds of the send, or ahead of it, or with no send', () => {
+  it('leaves order muted within five seconds of the send, or ahead of it, or with no send', () => {
     const sent = Date.parse('2026-08-25T07:30:00.000Z');
     renderGrid(
       {},
       {
         activeOrders: [
-          makeActiveOrder({ id: 1, chainId: 'a', sentTime: sent, orderTime: sent + 9_000 }),
+          makeActiveOrder({ id: 1, chainId: 'a', sentTime: sent, orderTime: sent + 5_000 }),
           makeActiveOrder({ id: 2, chainId: 'b', sentTime: sent, orderTime: sent - 30_000 }),
           makeActiveOrder({ id: 3, chainId: 'c', sentTime: null, orderTime: sent + 60_000 }),
         ],
