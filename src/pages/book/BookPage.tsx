@@ -1207,8 +1207,9 @@ function summarize(
     .filter((value): value is number => value !== null);
   return {
     chains: chains.length,
-    // A Positions row is the holding its buy left, not an order of its own.
-    orders: rows.filter((row) => row.source !== 'position').length,
+    // Every drawn row is an order, the holding a filled buy left included —
+    // the chain dialog's own `chain · N order` kicker already counts it that way.
+    orders: rows.length,
     realized,
     unrealized,
     unrealizedKnown: hasEveryPrice,
