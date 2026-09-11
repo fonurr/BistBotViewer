@@ -266,11 +266,28 @@ to land before settling, since the nine of them return independently and the def
 once. The canceled toggle starts where switching the never-opened scope on would put it, because
 that scope draws nothing but canceled legs and would otherwise open on a row of collapsed stubs.
 
-Because the range is always set, the `filtered` row carries a chip for it only where it is
-narrower than the loaded batches, and that chip names the days it kept. Anything that means to
-widen the range — that chip, the empty-Book reason, the needs-a-human toggle that clears the
-rest — states the widest range outright rather than unsetting it; that is the same set the control
-settles on by default, named rather than left null.
+Because the range is always set, the `filtered` row carries a chip for it only where it leaves
+out a day the control offers, and that chip names the days it kept. A range reaching past every
+day on offer excludes nothing and carries no chip. Anything that means to widen the range — that
+chip, the empty-Book reason, the needs-a-human toggle that clears the rest — states the widest
+range outright rather than unsetting it; that is the same set the control settles on by default,
+named rather than left null.
+
+The popover's **`active on any day`** switch changes how the range is read, not which days it
+names. Off — the default — a chain is kept by the batch it was filed under. On, it is kept
+wherever it was **alive on any session of the range**: from its batch through the session of the
+newest stamp any of its rows recorded (`createdTime`, `sentTime`, `orderTime`, `finalSeenTime` —
+never a schedule's `scheduledTime`, which is a plan), read by the same batch rule, so a cancel
+written at 18:30 is the next session's. A chain still holding shares or working an order has not
+ended, so it reaches every range from its batch on. `BookChain.activeSpan` carries the span and
+`domain/batchRange.ts` (`withinBatchRange`) owns the rule. The switch only ever adds chains, and
+each still draws under **its own** batch heading, so a range of one day can show last week's
+heading too. While it is on, the calendar and steppers offer every session some loaded chain was
+alive in (`activeSessionDates`, a live chain through the session being worked), so a day nothing
+opened on can be picked. The trigger takes the accent ink, the chip reads `25.08.26 · active on
+any day`, and the empty-Book reason says `No chain was alive on any day of the selected batch
+range.` Widening the range leaves the switch where it is — across every day on offer both
+readings keep the same chains — and `clear all` turns it back off.
 
 The **time filter** uses the six clocks drawn in the grid, in column order: `created`, `sched`,
 `intent`, `sent`, `order`, and `final`. Its popover starts with `filter`, `all`, and `none`, followed

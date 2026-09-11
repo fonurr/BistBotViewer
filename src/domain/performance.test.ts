@@ -147,6 +147,49 @@ describe('buildPerformanceReport', () => {
     });
   });
 
+  it('takes a round trip open on any session of the window when read as active', () => {
+    // Opened on Thursday the 20th and sold on Monday the 24th.
+    const spanning = trade({ id: 1 });
+    // Opened and sold within Friday the 21st.
+    const friday = trade({
+      id: 2,
+      openOrderTime: at('2026-08-21T07:00:00.000Z'),
+      openFinalSeenTime: at('2026-08-21T07:01:00.000Z'),
+      closeOrderTime: at('2026-08-21T12:00:00.000Z'),
+      closeFinalSeenTime: at('2026-08-21T12:01:00.000Z'),
+    });
+    const input = {
+      trades: [spanning, friday],
+      closingBars: [],
+      holidays: calendarCoverage,
+      asOf: at('2026-08-25T12:00:00.000Z'),
+      startDate: '2026-08-24',
+      endDate: '2026-08-25',
+    };
+
+    const byBatch = buildPerformanceReport(input);
+    expect(byBatch.window.basis).toBe('batch');
+    expect(byBatch.trades).toHaveLength(0);
+    expect(byBatch.exclusions.beforeWindowCount).toBe(2);
+
+    const active = buildPerformanceReport({ ...input, windowBasis: 'active' });
+    expect(active.window).toMatchObject({
+      basis: 'active',
+      startDate: '2026-08-24',
+      endDate: '2026-08-25',
+    });
+    expect(active.trades.map(({ key, businessDate }) => [key, businessDate])).toEqual([
+      ['closed-trade:1', '2026-08-20'],
+    ]);
+    expect(active.exclusions.beforeWindowCount).toBe(1);
+    // Still filed under the batch it opened in, so the series starts before the window.
+    expect(active.summary.series.map(({ date, tradeCount }) => [date, tradeCount])).toEqual([
+      ['2026-08-20', 1],
+      ['2026-08-24', 0],
+      ['2026-08-25', 0],
+    ]);
+  });
+
   it('rolls exact gross arithmetic up by bot and brokerage/account', () => {
     const result = report({
       trades: [

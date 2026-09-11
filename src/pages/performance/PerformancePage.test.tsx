@@ -160,6 +160,64 @@ describe('Performance scope and unavailable values', () => {
     });
   });
 
+  it('counts a dead attempt still working inside the window when read as active', () => {
+    // Sent late on the Monday and called off on the Tuesday morning.
+    const overnight = canceled({
+      id: 8,
+      orderTime: Date.parse('2026-08-24T17:00:00+03:00'),
+      sentTime: Date.parse('2026-08-24T16:59:59+03:00'),
+      finalSeenTime: Date.parse('2026-08-25T10:30:00+03:00'),
+    });
+    const scope = {
+      botIds: null,
+      accountScoped: false,
+      symbols: new Set<string>(),
+      from: FIXTURE_DAY,
+      to: FIXTURE_DAY,
+      calendar: holidayCalendar([]),
+    };
+
+    expect(scopeCanceledRetries([overnight], scope).rows).toEqual([]);
+    expect(
+      scopeCanceledRetries([overnight], { ...scope, basis: 'active' }).rows.map(({ id }) => id),
+    ).toEqual([8]);
+  });
+
+  it('takes the round trips open on a day of the window once read as active', async () => {
+    const user = userEvent.setup();
+    const fixture = makePerformanceReadFixture();
+    fixture.closedTrades = [
+      makeClosedTrade(),
+      // Bought on the Monday, sold on the Tuesday morning.
+      makeClosedTrade({
+        id: 302,
+        chainId: 'chain-thyao-overnight',
+        openOrderTime: Date.parse('2026-08-24T10:00:00+03:00'),
+        openFinalSeenTime: Date.parse('2026-08-24T10:00:02+03:00'),
+        closeOrderTime: Date.parse('2026-08-25T11:00:00+03:00'),
+        closeFinalSeenTime: Date.parse('2026-08-25T11:00:03+03:00'),
+      }),
+    ];
+    useFixture(fixture);
+    renderPerformance();
+
+    await user.click(await screen.findByRole('button', { name: '24.08.26 → 25.08.26' }));
+    await user.click(screen.getByRole('button', { name: '25 August 2026' }));
+    expect(await screen.findByText(/· 1 trade$/)).toBeVisible();
+
+    await user.click(screen.getByRole('checkbox', { name: 'active on any day' }));
+    expect(await screen.findByText(/· 2 trades$/)).toBeVisible();
+    // Filed under the Monday it opened in, so the curve starts a day before the window.
+    expect(screen.getByText('24.08.26 → 25.08.26 · gross')).toBeVisible();
+    expect(
+      screen.getByText(/this window holds every round trip that was open on one of its sessions/),
+    ).toBeVisible();
+
+    await user.click(screen.getByRole('checkbox', { name: 'active on any day' }));
+    expect(await screen.findByText(/· 1 trade$/)).toBeVisible();
+    expect(screen.getByText('25.08.26 → 25.08.26 · gross')).toBeVisible();
+  });
+
   it('keeps identical account numbers at different brokerages separately selectable', async () => {
     const user = userEvent.setup();
     const fixture = makePerformanceReadFixture();

@@ -34,7 +34,7 @@ describe('BookFilters account identity', () => {
         ]}
         accounts={accounts}
         chains={[]}
-        batchDates={[]}
+        rangeDates={[]}
         batchesLoaded
         currentSession={FIXTURE_DAY}
         onSettleDates={vi.fn()}
@@ -78,7 +78,7 @@ describe('BookFilters bot picks', () => {
         ]}
         accounts={[makeAccount()]}
         chains={[]}
-        batchDates={[]}
+        rangeDates={[]}
         batchesLoaded
         currentSession={FIXTURE_DAY}
         onSettleDates={vi.fn()}
@@ -159,7 +159,7 @@ describe('BookFilters canceled status filter', () => {
         bots={[makeBot({ id: 'bot-alpha' }), makeBot({ id: 'bot-beta' })]}
         accounts={[makeAccount()]}
         chains={chains}
-        batchDates={[]}
+        rangeDates={[]}
         batchesLoaded
         currentSession={FIXTURE_DAY}
         onSettleDates={vi.fn()}
@@ -255,7 +255,7 @@ describe('BookFilters canceled status filter', () => {
           positions: [],
           closedTrades: [],
         })}
-        batchDates={[]}
+        rangeDates={[]}
         batchesLoaded
         currentSession={FIXTURE_DAY}
         onSettleDates={vi.fn()}
@@ -306,7 +306,7 @@ describe('BookFilters reason filter', () => {
         bots={[makeBot({ id: 'bot-alpha' })]}
         accounts={[makeAccount()]}
         chains={chains}
-        batchDates={[]}
+        rangeDates={[]}
         batchesLoaded
         currentSession={FIXTURE_DAY}
         onSettleDates={vi.fn()}
@@ -400,7 +400,7 @@ describe('BookFilters reason filter', () => {
           positions: [],
           closedTrades: [],
         })}
-        batchDates={[]}
+        rangeDates={[]}
         batchesLoaded
         currentSession={FIXTURE_DAY}
         onSettleDates={vi.fn()}
@@ -440,7 +440,7 @@ describe('BookFilters source filter', () => {
         bots={[makeBot({ id: 'bot-alpha' })]}
         accounts={[makeAccount()]}
         chains={chains}
-        batchDates={[]}
+        rangeDates={[]}
         batchesLoaded
         currentSession={FIXTURE_DAY}
         onSettleDates={vi.fn()}
@@ -508,7 +508,7 @@ describe('BookFilters source filter', () => {
           positions: [],
           closedTrades: [],
         })}
-        batchDates={[]}
+        rangeDates={[]}
         batchesLoaded
         currentSession={FIXTURE_DAY}
         onSettleDates={vi.fn()}
@@ -551,7 +551,7 @@ describe('BookFilters origin filter', () => {
         bots={[makeBot({ id: 'bot-alpha' })]}
         accounts={[makeAccount()]}
         chains={chains}
-        batchDates={[]}
+        rangeDates={[]}
         batchesLoaded
         currentSession={FIXTURE_DAY}
         onSettleDates={vi.fn()}
@@ -620,7 +620,7 @@ describe('BookFilters origin filter', () => {
           positions: [],
           closedTrades: [],
         })}
-        batchDates={[]}
+        rangeDates={[]}
         batchesLoaded
         currentSession={FIXTURE_DAY}
         onSettleDates={vi.fn()}

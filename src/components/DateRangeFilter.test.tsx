@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
 
+import type { BatchRangeBasis } from '../domain/batchRange';
 import { DateRangeFilter, rangeLabel, stepRange, type DateRange } from './DateRangeFilter';
 
 // A Friday, a Monday and a Tuesday: the weekend between them is exactly the gap
@@ -175,16 +176,46 @@ describe('DateRangeFilter', () => {
     await user.click(screen.getByRole('button', { name: '25 August 2026' }));
     expect(screen.getByRole('button', { name: '21.08.26 → 25.08.26' })).toBeVisible();
   });
+
+  it('draws the basis switch only for a page that reads one', async () => {
+    const user = userEvent.setup();
+    renderControl();
+    await user.click(await screen.findByRole('button', { name: '26.08.26' }));
+
+    expect(screen.queryByRole('checkbox', { name: 'active on any day' })).not.toBeInTheDocument();
+  });
+
+  it('flips the basis and back, keeping the range, and inks the trigger while it is on', async () => {
+    const user = userEvent.setup();
+    renderControl('latest', dates, true, true);
+    const trigger = await screen.findByRole('button', { name: '26.08.26' });
+    await user.click(trigger);
+
+    const toggle = screen.getByRole('checkbox', { name: 'active on any day' });
+    expect(toggle).not.toBeChecked();
+    expect(document.querySelector('.date-range-active')).toBeNull();
+
+    await user.click(toggle);
+    expect(toggle).toBeChecked();
+    expect(document.querySelector('.date-range-active')).not.toBeNull();
+    expect(screen.getByRole('button', { name: '26.08.26' })).toBeVisible();
+
+    await user.click(toggle);
+    expect(toggle).not.toBeChecked();
+    expect(document.querySelector('.date-range-active')).toBeNull();
+  });
 });
 
 function renderControl(
   defaultRange: 'latest' | 'all' = 'latest',
   loaded: readonly string[] = dates,
   ready = true,
+  withBasis = false,
 ) {
   function Harness() {
     const [open, setOpen] = useState<string | null>(null);
     const [range, setRange] = useState<DateRange>({ from: null, to: null });
+    const [basis, setBasis] = useState<BatchRangeBasis>('batch');
     return (
       <DateRangeFilter
         open={open === 'dates'}
@@ -195,6 +226,7 @@ function renderControl(
         range={range}
         onChange={setRange}
         defaultRange={defaultRange}
+        {...(withBasis ? { basis, onBasisChange: setBasis } : {})}
       />
     );
   }

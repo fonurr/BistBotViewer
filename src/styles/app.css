@@ -558,6 +558,16 @@ a:hover {
   white-space: nowrap;
 }
 
+/* Read as `active on any day`, the range keeps more than its batches hold; the
+   trigger has no room left to say so in words, so it says it in ink. */
+.date-range-active .filter-trigger {
+  color: var(--color-accent-400);
+}
+
+.date-range-basis {
+  padding-bottom: 0;
+}
+
 .batch-calendar {
   margin-top: var(--space-4);
 }

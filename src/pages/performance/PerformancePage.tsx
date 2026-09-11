@@ -7,6 +7,7 @@ import { priceKeys } from '../../app/queryKeys';
 import type { CanceledOrder, ClosedTrade } from '../../bistApi/types';
 import {
   buildPerformanceReport,
+  closedTradeSpan,
   type HoldComparison,
   type PerformanceAggregate,
   type PerformanceMetric,
@@ -22,6 +23,12 @@ import {
 import { DateRangeFilter, type DateRange } from '../../components/DateRangeFilter';
 import { PopoverScrim } from '../../components/FilterPopover';
 import { accountIdentityKey } from '../../domain/accounts';
+import {
+  activeSessionDates,
+  lastActiveSession,
+  withinBatchRange,
+  type BatchRangeBasis,
+} from '../../domain/batchRange';
 import { holidayCalendar, sessionBatchDate, type HolidayCalendar } from '../../domain/calendar';
 import {
   formatCompactDuration,
@@ -62,6 +69,8 @@ interface RetryScopeOptions {
   symbols: ReadonlySet<string>;
   from: string;
   to: string;
+  /** Read as `active`, a dead attempt also counts where it was still working inside the window. */
+  basis?: BatchRangeBasis;
   calendar: HolidayCalendar;
 }
 
@@ -70,6 +79,7 @@ export function PerformancePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const today = toIstanbulDateKey(Date.now());
   const [dateRange, setDateRange] = useState<DateRange>({ from: null, to: null });
+  const [rangeBasis, setRangeBasis] = useState<BatchRangeBasis>('batch');
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   const sourceReady = !data.isPending && data.error === null;
 
@@ -155,33 +165,39 @@ export function PerformancePage() {
   );
   const budgets = useBotBudgets(selectedBots, sourceReady);
   const calendar = useMemo(() => holidayCalendar(data.holidays), [data.holidays]);
+  const tradeSpans = useMemo(
+    () =>
+      scopedTrades.flatMap((trade) => {
+        const span = closedTradeSpan(trade, calendar);
+        return span === null ? [] : [span];
+      }),
+    [calendar, scopedTrades],
+  );
   // The batch a round trip was opened in is the unit this page reports by, so
   // the range control offers exactly those days rather than a calendar — the
   // Book's own list, built from the trips the other filters left in scope.
   const batchDates = useMemo(
-    () =>
-      [
-        ...new Set(
-          scopedTrades.flatMap((trade) => {
-            const batch = sessionBatchDate(
-              trade.openOrderTime ?? trade.openFinalSeenTime,
-              calendar,
-            );
-            return batch === null ? [] : [batch];
-          }),
-        ),
-      ].sort(),
-    [calendar, scopedTrades],
+    () => [...new Set(tradeSpans.map((span) => span.batch))].sort(),
+    [tradeSpans],
   );
-  const bounds = useMemo(
-    () => windowBounds(dateRange, batchDates, today),
-    [batchDates, dateRange, today],
-  );
-  // Today's close, not the window's: it is the far edge of what has happened,
-  // and a window ending last week does not make this week's closes unobserved.
   // The batch this moment belongs to, which is where the range control's
   // `latest` stops — an evening order is already the next session's business.
   const currentSession = sessionBatchDate(Date.now(), calendar) ?? today;
+  // Read as `active`, the range reaches every session a trip in scope was open
+  // in, which takes in days no trip was opened on.
+  const rangeDates = useMemo(
+    () =>
+      rangeBasis === 'active'
+        ? activeSessionDates(tradeSpans, currentSession, calendar)
+        : batchDates,
+    [batchDates, calendar, currentSession, rangeBasis, tradeSpans],
+  );
+  const bounds = useMemo(
+    () => windowBounds(dateRange, rangeDates, today),
+    [dateRange, rangeDates, today],
+  );
+  // Today's close, not the window's: it is the far edge of what has happened,
+  // and a window ending last week does not make this week's closes unobserved.
   // An evening order already filed under tomorrow's session reaches past today.
   const latestBatch = batchDates.at(-1) ?? today;
   const readAt = endOfIstanbulDay(latestBatch > today ? latestBatch : today);
@@ -197,8 +213,9 @@ export function PerformancePage() {
         asOf: readAt,
         startDate: bounds.from,
         endDate: bounds.to,
+        windowBasis: rangeBasis,
       }),
-    [bounds.from, bounds.to, data.holidays, readAt, scopedTrades],
+    [bounds.from, bounds.to, data.holidays, rangeBasis, readAt, scopedTrades],
   );
   const barKey = baseReport.requiredClosingBars
     .map((key) => `${key.symbol}:${key.sessionDate}`)
@@ -263,8 +280,18 @@ export function PerformancePage() {
         asOf: readAt,
         startDate: bounds.from,
         endDate: bounds.to,
+        windowBasis: rangeBasis,
       }),
-    [bars.data, bounds.from, bounds.to, data.holidays, intentPrices.raw, readAt, scopedTrades],
+    [
+      bars.data,
+      bounds.from,
+      bounds.to,
+      data.holidays,
+      intentPrices.raw,
+      rangeBasis,
+      readAt,
+      scopedTrades,
+    ],
   );
   const completeSelectedBots = selectedBots.filter((bot) => bot.complete);
   const committedKnown =
@@ -292,6 +319,7 @@ export function PerformancePage() {
         symbols: selectedSymbols,
         from: bounds.from,
         to: bounds.to,
+        basis: rangeBasis,
         calendar,
       }),
     [
@@ -300,6 +328,7 @@ export function PerformancePage() {
       bounds.to,
       calendar,
       data.canceledOrders,
+      rangeBasis,
       selectedBotIds,
       selectedSymbols,
     ],
@@ -340,12 +369,18 @@ export function PerformancePage() {
           <DateRangeFilter
             open={openFilter === 'dates'}
             setOpen={setOpenFilter}
-            dates={batchDates}
+            dates={rangeDates}
             ready={sourceReady}
             currentSession={currentSession}
             range={dateRange}
             onChange={setDateRange}
-            note="Only a session a round trip in scope was opened in can be picked — that batch is the day every figure below is filed under."
+            basis={rangeBasis}
+            onBasisChange={setRangeBasis}
+            note={
+              rangeBasis === 'active'
+                ? 'A round trip counts on every session from the one it opened in through the one it closed in, and every figure below still files it under the batch it opened in. Only a session some round trip in scope was open in can be picked.'
+                : 'Only a session a round trip in scope was opened in can be picked — that batch is the day every figure below is filed under.'
+            }
           />
           <MultiSelectFilter
             name="bots"
@@ -491,7 +526,15 @@ export function scopeCanceledRetries(
       excludedUntimed += 1;
       continue;
     }
-    if (batch < options.from || batch > options.to) continue;
+    const span = {
+      batch,
+      through: lastActiveSession(
+        batch,
+        [order.finalSeenTime, order.orderTime, order.sentTime],
+        options.calendar,
+      ),
+    };
+    if (!withinBatchRange(span, options, options.basis ?? 'batch')) continue;
     rows.push(order);
   }
   return { rows, excludedUntimed, accountAttributionUnavailable: false };
@@ -657,11 +700,18 @@ function PerformanceCurve({ report }: { report: PerformanceReport }) {
     : '';
   const area = drawsPath ? `${left},${bottom} ${line} ${points.at(-1)!.x},${bottom}` : '';
   const end = points.at(-1);
+  // Read as `active`, a trip opened before the window is still filed under the
+  // batch it opened in, so the curve can start before the window does.
+  const firstDate = series[0]?.date;
+  const start =
+    firstDate !== undefined && firstDate < report.window.startDate
+      ? firstDate
+      : report.window.startDate;
   return (
     <section className="performance-section">
       <SectionHeading
         title="cumulative realized"
-        detail={`${formatDateKey(report.window.startDate)} → ${formatDateKey(report.window.endDate)} · gross`}
+        detail={`${formatDateKey(start)} → ${formatDateKey(report.window.endDate)} · gross`}
       />
       <div className="curve-wrap">
         <svg viewBox="0 0 960 200" role="img" aria-labelledby="performance-curve-title">
@@ -1253,13 +1303,15 @@ function Limitations({
         <p>
           Every figure here is filed by batch: the session the opening buy belongs to, the day the
           Book files the same chain under. A round trip counts in the batch its bot opened it in,
-          however many sessions later it closed, so this window holds the batches that opened inside
-          it and not the closes that landed there. {report.exclusions.openedAfterHoursCount} were
-          written past their own session and count in the next one.{' '}
-          {plural(report.exclusions.missingOpeningStampCount, 'row')} carried no opening stamp and{' '}
-          {plural(report.exclusions.missingCloseFinalSeenCount, 'row')} no close final-seen stamp;
-          neither can be placed in time, and both were excluded. The stamps behind hold remain
-          observation times, not fill times.
+          however many sessions later it closed,{' '}
+          {report.window.basis === 'active'
+            ? 'and read as active on any day this window holds every round trip that was open on one of its sessions — one opened before it included, which is why the curve can start earlier than the window.'
+            : 'so this window holds the batches that opened inside it and not the closes that landed there.'}{' '}
+          {report.exclusions.openedAfterHoursCount} were written past their own session and count in
+          the next one. {plural(report.exclusions.missingOpeningStampCount, 'row')} carried no
+          opening stamp and {plural(report.exclusions.missingCloseFinalSeenCount, 'row')} no close
+          final-seen stamp; neither can be placed in time, and both were excluded. The stamps behind
+          hold remain observation times, not fill times.
         </p>
       </article>
       <article className="card">

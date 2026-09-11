@@ -87,6 +87,15 @@ export function rollToTradingDay(day: string, holidays: HolidayCalendar): string
   return null;
 }
 
+/** Every trading day from `from` through `to`, both inclusive, ascending. */
+export function tradingDaysBetween(from: string, to: string, holidays: HolidayCalendar): string[] {
+  const days: string[] = [];
+  for (let day = from; day <= to; day = nextDay(day)) {
+    if (isTradingDay(day, holidays)) days.push(day);
+  }
+  return days;
+}
+
 /**
  * The trading day immediately before `day`, or null when a year back is closed. Used to name the
  * session whose closing auction is the overnight reference for a position carried into `day`.

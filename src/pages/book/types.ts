@@ -1,3 +1,4 @@
+import type { BatchRangeBasis } from '../../domain/batchRange';
 import type { BookScope } from '../../domain/chains';
 import {
   BOOK_SLIPPAGE_FIELDS,
@@ -96,6 +97,13 @@ export interface BookFilterState {
   slippageSells: boolean;
   batchFrom: string | null;
   batchTo: string | null;
+  /**
+   * How the batch range is read: `batch` keeps the chains filed under one of its
+   * sessions, `active` every chain alive on one of them (`BookChain.activeSpan`).
+   * Over the widest range the two keep the same chains, so the difference only
+   * shows once the range is narrowed.
+   */
+  batchBasis: BatchRangeBasis;
   noClosingOrder: boolean;
 }
 
@@ -131,6 +139,7 @@ export const defaultBookFilters: BookFilterState = {
      `DateRangeFilter` resolves it to every loaded batch as soon as one exists. */
   batchFrom: null,
   batchTo: null,
+  batchBasis: 'batch',
   noClosingOrder: false,
 };
 

@@ -33,6 +33,12 @@ minutes past the close) stays in `calendar.ts`, and MatriksOrder's own send time
 order (09:00, and thirty seconds past the opening match or the close) stay in `schedule.ts`,
 since neither is the exchange's.
 
+`batchRange.ts` owns the two ways a batch range is read. `batch` keeps what was filed under one of
+its sessions; `active` keeps an `ActiveSpan` — from the batch through the session of the newest
+thing recorded, open-ended while still alive — that touches any of them. Both pages build their
+spans with it (`BookChain.activeSpan`, `closedTradeSpan`), so `active` means the same set of days on
+the Book and on Performance.
+
 `priceRules.ts` owns the buy-only `openPrice`/`closePrice` rules end to end: reading the JSON the
 server echoes back, saying it out loud, and turning the Book's form draft into a request. It draws
 an absent rule apart from one it cannot re-express — display collapses both to nothing, but a write

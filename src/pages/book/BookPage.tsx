@@ -19,6 +19,7 @@ import {
   type BookRowFlagContext,
 } from '../../domain/bookSlippageFilter';
 import { formatBookTime, matchesBookTime } from '../../domain/bookTimeFilter';
+import { activeSessionDates, withinBatchRange } from '../../domain/batchRange';
 import { bookAllocation } from '../../domain/budget';
 import {
   holidayCalendar,
@@ -333,7 +334,20 @@ export function BookPage() {
   // Friday's evening orders are already filed under it.
   const currentSession =
     sessionBatchDate(Date.now(), calendar) ?? batchDates.at(-1) ?? todayCalendarDate;
-  const chips = filterChips(filters, data.bots.length, data.accounts.length, batchDates);
+  // The days the range can be set to. Read as `active` that is every session a
+  // loaded chain was alive in, which reaches days no chain was opened on.
+  const rangeDates = useMemo(
+    () =>
+      filters.batchBasis === 'active'
+        ? activeSessionDates(
+            chains.flatMap((chain) => (chain.activeSpan === null ? [] : [chain.activeSpan])),
+            currentSession,
+            calendar,
+          )
+        : batchDates,
+    [batchDates, calendar, chains, currentSession, filters.batchBasis],
+  );
+  const chips = filterChips(filters, data.bots.length, data.accounts.length, rangeDates);
   const genuineEmpty = chains.length === 0 && data.pendingRequests.length === 0;
   const filteredEmpty = !genuineEmpty && visibleChains.length === 0 && visiblePending.length === 0;
   const emptyCulprits = useMemo(
@@ -344,9 +358,10 @@ export function BookPage() {
             filters,
             (chain) => accountKeyForBot(botById.get(chain.botId)),
             rowFlags,
+            rangeDates,
           )
         : [],
-    [botById, chains, filters, filteredEmpty, rowFlags],
+    [botById, chains, filters, filteredEmpty, rangeDates, rowFlags],
   );
   const resolvedOpenChain = useMemo(() => resolveOpenChain(chains, openChain), [chains, openChain]);
 
@@ -453,7 +468,7 @@ export function BookPage() {
         bots={data.bots}
         accounts={data.accounts}
         chains={chains}
-        batchDates={batchDates}
+        rangeDates={rangeDates}
         batchesLoaded={!data.isPending}
         currentSession={currentSession}
         noClosingOrderCount={noClosingOrderCount}
@@ -685,6 +700,10 @@ export function narrowingsThatEmptiedTheBook(
   filters: BookFilterState,
   accountKeyFor: (chain: BookChain) => string | null,
   rowFlags: BookRowFlagContext,
+  /** The days the range control offers; every loaded batch unless the page says otherwise. */
+  rangeDates: readonly string[] = [
+    ...new Set(chains.flatMap((chain) => (chain.batchDate ? [chain.batchDate] : []))),
+  ].sort(),
 ): BookNarrowing[] {
   const candidates: Array<Omit<BookNarrowing, 'restored'>> = [];
   if (filters.scopes.size > 0 && filters.scopes.size < 4) {
@@ -810,23 +829,21 @@ export function narrowingsThatEmptiedTheBook(
       clear: clearSlippageFilter,
     });
   }
-  const loadedBatches = [
-    ...new Set(chains.flatMap((chain) => (chain.batchDate ? [chain.batchDate] : []))),
-  ].sort();
-  if (
-    (filters.batchFrom !== null && filters.batchFrom !== loadedBatches[0]) ||
-    (filters.batchTo !== null && filters.batchTo !== loadedBatches.at(-1))
-  ) {
+  if (rangeNarrowed(filters, rangeDates)) {
     candidates.push({
       key: 'dates',
       phrase: 'the batch range',
-      sentence: 'No chain opened inside the selected batch range.',
+      sentence:
+        filters.batchBasis === 'active'
+          ? 'No chain was alive on any day of the selected batch range.'
+          : 'No chain opened inside the selected batch range.',
       // The widest range, stated outright — the same set the control settles on
-      // by default, named rather than left unset.
+      // by default, named rather than left unset. The basis stays: across every
+      // day on offer both readings keep the same chains.
       clear: (current) => ({
         ...current,
-        batchFrom: loadedBatches[0] ?? null,
-        batchTo: loadedBatches.at(-1) ?? null,
+        batchFrom: rangeDates[0] ?? null,
+        batchTo: rangeDates.at(-1) ?? null,
       }),
     });
   }
@@ -900,12 +917,32 @@ function chainMatches(
     })
   )
     return false;
-  if (chain.batchDate !== null && filters.batchFrom && chain.batchDate < filters.batchFrom)
+  // A chain with no batch has no span either, and stays out of every range.
+  if (
+    (filters.batchFrom !== null || filters.batchTo !== null) &&
+    (chain.activeSpan === null ||
+      !withinBatchRange(
+        chain.activeSpan,
+        { from: filters.batchFrom, to: filters.batchTo },
+        filters.batchBasis,
+      ))
+  )
     return false;
-  if (chain.batchDate !== null && filters.batchTo && chain.batchDate > filters.batchTo)
-    return false;
-  if (chain.batchDate === null && (filters.batchFrom || filters.batchTo)) return false;
   return true;
+}
+
+/**
+ * Whether the range leaves out a day the control offers. A range reaching past
+ * them — the other basis's widest, or a batch a refresh no longer holds —
+ * excludes nothing, so it is not a narrowing to name or to clear.
+ */
+function rangeNarrowed(filters: BookFilterState, rangeDates: readonly string[]): boolean {
+  const earliest = rangeDates[0];
+  const latest = rangeDates.at(-1);
+  return (
+    (filters.batchFrom !== null && earliest !== undefined && filters.batchFrom > earliest) ||
+    (filters.batchTo !== null && latest !== undefined && filters.batchTo < latest)
+  );
 }
 
 /**
@@ -1609,7 +1646,7 @@ function filterChips(
   filters: BookFilterState,
   botCount: number,
   accountCount: number,
-  batchDates: readonly string[],
+  rangeDates: readonly string[],
 ) {
   const chips: Array<{
     key: string;
@@ -1732,18 +1769,20 @@ function filterChips(
     });
   }
   // The range is always set — every loaded batch is the default — so the chip
-  // appears only where it is narrower than the loaded batches, and names the
-  // days it kept rather than the fact that a range exists.
-  const earliestBatch = batchDates[0] ?? null;
-  const latestBatch = batchDates.at(-1) ?? null;
-  if (
-    (filters.batchFrom !== null && filters.batchFrom !== earliestBatch) ||
-    (filters.batchTo !== null && filters.batchTo !== latestBatch)
-  )
+  // appears only where it is narrower than the days on offer, and names the
+  // days it kept rather than the fact that a range exists. Read as `active` it
+  // says so, since the same days then keep more chains.
+  if (rangeNarrowed(filters, rangeDates)) {
+    const range = rangeLabel({ from: filters.batchFrom, to: filters.batchTo });
     chips.push({
       key: 'dates',
-      label: rangeLabel({ from: filters.batchFrom, to: filters.batchTo }),
-      clear: (current) => ({ ...current, batchFrom: earliestBatch, batchTo: latestBatch }),
+      label: filters.batchBasis === 'active' ? `${range} · active on any day` : range,
+      clear: (current) => ({
+        ...current,
+        batchFrom: rangeDates[0] ?? null,
+        batchTo: rangeDates.at(-1) ?? null,
+      }),
     });
+  }
   return chips;
 }

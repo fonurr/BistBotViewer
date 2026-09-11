@@ -552,7 +552,9 @@ describe('buildBookChains', () => {
       ],
     });
 
-    const positionRow = chains.flatMap((chain) => chain.rows).find((row) => row.source === 'position');
+    const positionRow = chains
+      .flatMap((chain) => chain.rows)
+      .find((row) => row.source === 'position');
     expect(positionRow?.scheduledTime).toBe(dueAt);
     const tradeRows = chains.flatMap((chain) => chain.tradeRows);
     expect(tradeRows.find((row) => row.leg === 'open')?.scheduledTime).toBe(dueAt);
@@ -679,6 +681,42 @@ describe('buildBookChains', () => {
 
     expect(order).toEqual(['chain:new-a-1', 'chain:new-a-2', 'chain:new-b', 'chain:old-a']);
     expect(reversedOrder).toEqual(order);
+  });
+
+  it('spans a finished chain from its batch to the session of the last thing it recorded', () => {
+    // Opened Monday, sold on the Tuesday afternoon.
+    const [roundTrip] = build({ closedTrades: [trade()], canceledOrders: [canceled()] });
+    expect(roundTrip?.activeSpan).toEqual({ batch: '2026-08-24', through: '2026-08-25' });
+
+    // Its exit called off at 18:30 on the Tuesday, past that session's last minute.
+    const [neverOpened] = build({
+      canceledOrders: [
+        canceled({
+          id: 11,
+          clientOrderId: 'buy-1',
+          parentClientOrderId: null,
+          direction: 'buy',
+          orderTime: at('2026-08-24T10:00:00+03:00'),
+          sentTime: at('2026-08-24T09:59:59+03:00'),
+          finalSeenTime: at('2026-08-24T10:05:00+03:00'),
+        }),
+        canceled({ finalSeenTime: at('2026-08-25T18:30:00+03:00') }),
+      ],
+    });
+    expect(neverOpened?.scope).toBe('canceled');
+    expect(neverOpened?.activeSpan).toEqual({ batch: '2026-08-24', through: '2026-08-26' });
+  });
+
+  it('leaves a chain open-ended while it holds shares or has an order working', () => {
+    const [held] = build({ positions: [position()] });
+    expect(held?.activeSpan).toEqual({ batch: '2026-08-24', through: null });
+
+    const [resting] = build({ activeOrders: [active()] });
+    expect(resting?.activeSpan).toEqual({ batch: '2026-08-24', through: null });
+
+    // Nothing on it can be dated, so it has no batch and no span.
+    const [undated] = build({ activeOrders: [active({ orderTime: null, sentTime: null })] });
+    expect(undated?.activeSpan).toBeNull();
   });
 });
 

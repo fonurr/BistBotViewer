@@ -175,6 +175,47 @@ describe('the reason a filter emptied the Book', () => {
     expect(cleared.batchFrom).toBe('2020-01-01');
   });
 
+  it('names the batch range by the way it is read, and widens it to every day on offer', () => {
+    const offered = ['2026-08-20', '2026-08-21', '2026-08-24', '2026-08-25'];
+    const filters = {
+      ...defaultBookFilters,
+      batchFrom: '2026-08-20',
+      batchTo: '2026-08-21',
+      batchBasis: 'active' as const,
+    };
+    const [reason] = narrowingsThatEmptiedTheBook(chains, filters, noAccount, noFlags, offered);
+
+    expect(reason!.key).toBe('dates');
+    expect(reason!.sentence).toBe('No chain was alive on any day of the selected batch range.');
+    expect(reason!.restored).toBe(2);
+    // The reading stays: across every day on offer both keep the same chains.
+    expect(reason!.clear(filters)).toEqual({
+      ...filters,
+      batchFrom: '2026-08-20',
+      batchTo: '2026-08-25',
+    });
+
+    const [byBatch] = narrowingsThatEmptiedTheBook(
+      chains,
+      { ...filters, batchBasis: 'batch' },
+      noAccount,
+      noFlags,
+      offered,
+    );
+    expect(byBatch!.sentence).toBe('No chain opened inside the selected batch range.');
+  });
+
+  it('does not call a range reaching past every day on offer a narrowing', () => {
+    expect(
+      narrowingsThatEmptiedTheBook(
+        chains,
+        { ...defaultBookFilters, symbols: new Set(['GARAN']), batchFrom: '2020-01-01' },
+        noAccount,
+        noFlags,
+      ).map(({ key }) => key),
+    ).toEqual(['symbols']);
+  });
+
   it('names an unmatched time range and disables it while retaining the range', () => {
     const filters = {
       ...defaultBookFilters,

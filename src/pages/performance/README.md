@@ -71,7 +71,16 @@ a report over a single session is not a report.
 The window bounds the **batches**, never the closes. `endDate` carries it into
 `buildPerformanceReport`, while `asOf` stays the moment the page is read — so a trip opened inside
 the window and closed after it still counts as the window's, exactly as the paragraph above says
-it should, and only a close that has not happened yet is held out. The page is read-only. A bot-card deep link uses `?bot=<id>`,
+it should, and only a close that has not happened yet is held out.
+
+The range popover's **`active on any day`** switch is the Book's, read the same way: on, the
+window takes every round trip that was **open on one of its sessions** — `closedTradeSpan`, from
+its opening batch through the session its close was last seen in — so one opened before the window
+and closed inside it or after is in too (`windowBasis: 'active'`). Canceled retries follow the same
+reading. What it does **not** change is the filing: every figure still files a trip under the batch
+it opened in, so the curve can start before the window, and its heading then names the day it
+starts on rather than the window's first. The calendar and steppers offer every session a trip in
+scope was open in, and the time-boundary card says which reading is in force. The page is read-only. A bot-card deep link uses `?bot=<id>`,
 which is the same state as selecting exactly one bot in the filter; it recomputes the whole report
 and the fleet comparison tables disappear for that scope. The bot popover offers `all`, `none`,
 `active` and `inactive`; picking a split that lands on exactly one bot is the same state as that

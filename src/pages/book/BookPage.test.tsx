@@ -185,6 +185,106 @@ describe('the batch range the Book opens on', () => {
   });
 });
 
+describe('the batch range read as active on any day', () => {
+  // Thursday the 27th, midday.
+  const THURSDAY = Date.parse('2026-08-27T12:00:00+03:00');
+  const istanbul = (stamp: string) => Date.parse(`${stamp}+03:00`);
+  const threeChains = () => ({
+    ...emptyRead(),
+    // Bought on the Monday, sold on the Wednesday.
+    closedTrades: [
+      makeClosedTrade({
+        chainId: 'trip-a',
+        clientOpenOrderId: 'trip-a',
+        symbol: 'THYAO',
+        openCreatedTime: istanbul('2026-08-24T09:59:58'),
+        openSentTime: istanbul('2026-08-24T09:59:59'),
+        openOrderTime: istanbul('2026-08-24T10:00:00'),
+        openFinalSeenTime: istanbul('2026-08-24T10:00:02'),
+        closeCreatedTime: istanbul('2026-08-26T14:59:58'),
+        closeSentTime: istanbul('2026-08-26T14:59:59'),
+        closeOrderTime: istanbul('2026-08-26T15:00:00'),
+        closeFinalSeenTime: istanbul('2026-08-26T15:00:03'),
+      }),
+    ],
+    // Resting since the Tuesday.
+    activeOrders: [
+      makeActiveOrder({
+        chainId: 'rest-b',
+        clientOrderId: 'rest-b',
+        symbol: 'AKBNK',
+        createdTime: istanbul('2026-08-25T10:29:59'),
+        sentTime: istanbul('2026-08-25T10:30:00'),
+        orderTime: istanbul('2026-08-25T10:30:01'),
+      }),
+    ],
+    // Dead within the Monday.
+    canceledOrders: [
+      makeCanceledOrder({
+        chainId: 'dead-c',
+        clientOrderId: 'dead-c',
+        parentClientOrderId: null,
+        direction: 'buy',
+        symbol: 'GARAN',
+        createdTime: istanbul('2026-08-24T10:59:59'),
+        sentTime: istanbul('2026-08-24T11:00:00'),
+        orderTime: istanbul('2026-08-24T11:00:01'),
+        finalSeenTime: istanbul('2026-08-24T11:05:00'),
+      }),
+    ],
+  });
+  // Every batch drawn, the ones shut behind their chevron opened first.
+  const chainsDrawn = async (user: ReturnType<typeof userEvent.setup>) => {
+    for (const heading of document.querySelectorAll<HTMLElement>(
+      '.book-date-heading[aria-expanded="false"]',
+    ))
+      await user.click(heading);
+    return [...document.querySelectorAll('.book-chain')]
+      .map((chain) => chain.getAttribute('aria-label')?.replace(' chain', '') ?? '')
+      .sort();
+  };
+
+  it('keeps every chain alive on a day of the range, and goes back to batches', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(THURSDAY);
+    const user = userEvent.setup();
+    book.data = threeChains();
+    renderBook();
+
+    await user.click(screen.getByRole('button', { name: '24.08.26 → 25.08.26' }));
+    await user.click(screen.getByRole('button', { name: '25 August 2026' }));
+    expect(await chainsDrawn(user)).toEqual(['AKBNK']);
+    // Nothing was opened on the Wednesday, so a batch range cannot reach it.
+    expect(screen.getByRole('button', { name: '26 August 2026' })).toBeDisabled();
+
+    const toggle = screen.getByRole('checkbox', { name: 'active on any day' });
+    await user.click(toggle);
+    // The round trip held shares on the Tuesday; the dead buy never lived past Monday.
+    expect(await chainsDrawn(user)).toEqual(['AKBNK', 'THYAO']);
+    expect(screen.getByRole('button', { name: '25.08.26 · active on any day ×' })).toBeVisible();
+    // The round trip was still alive on the Wednesday, and the resting buy still is.
+    expect(screen.getByRole('button', { name: '26 August 2026' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '27 August 2026' })).toBeEnabled();
+
+    await user.click(toggle);
+    expect(await chainsDrawn(user)).toEqual(['AKBNK']);
+    expect(screen.getByRole('button', { name: '25.08.26 ×' })).toBeVisible();
+  });
+
+  it('reaches a session no chain opened in, where only what is still alive stays', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(THURSDAY);
+    const user = userEvent.setup();
+    book.data = threeChains();
+    renderBook();
+
+    await user.click(screen.getByRole('button', { name: '24.08.26 → 25.08.26' }));
+    await user.click(screen.getByRole('checkbox', { name: 'active on any day' }));
+    await user.click(screen.getByRole('button', { name: '27 August 2026' }));
+
+    expect(screen.getByRole('button', { name: '27.08.26' })).toBeVisible();
+    expect(await chainsDrawn(user)).toEqual(['AKBNK']);
+  });
+});
+
 describe('The Book page states', () => {
   it('renders nothing in the content area when there is genuinely no data', () => {
     renderBook();

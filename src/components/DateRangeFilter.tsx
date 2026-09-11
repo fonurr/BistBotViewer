@@ -1,6 +1,7 @@
 import { CaretLeft, CaretRight, Minus, Plus } from '@phosphor-icons/react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 
+import type { BatchRangeBasis } from '../domain/batchRange';
 import { formatDateKey } from '../domain/format';
 import { FilterPopover, PopoverHeading } from './FilterPopover';
 
@@ -52,6 +53,13 @@ interface DateRangeFilterProps {
    * clears the no-exit toggle, and nobody asked it to. Defaults to `onChange`.
    */
   onSettle?: (range: DateRange) => void;
+  /**
+   * How the range is read — the batch a row was filed under, or every session it was alive in —
+   * and the switch that flips it, which the popover draws only where both are given. The page
+   * owns what `dates` holds on each basis and passes the matching list.
+   */
+  basis?: BatchRangeBasis;
+  onBasisChange?: (basis: BatchRangeBasis) => void;
   align?: 'left' | 'right';
   /** The fact that prevents a wrong reading, under the calendar. */
   note?: ReactNode;
@@ -69,6 +77,11 @@ interface DateRangeFilterProps {
  * of them stop at the loaded bounds rather than shortening the window against
  * them: a step that cannot be taken whole is not taken, and its button is
  * disabled instead.
+ *
+ * Given `onBasisChange`, the popover carries an `active on any day` switch under
+ * its shortcuts. On, the range keeps whatever was alive on one of its sessions
+ * rather than only what was filed under one, and the trigger takes the accent
+ * ink, so that reading is not lost once the popover closes.
  */
 export function DateRangeFilter({
   name = 'dates',
@@ -81,6 +94,8 @@ export function DateRangeFilter({
   onChange,
   defaultRange = 'all',
   onSettle,
+  basis = 'batch',
+  onBasisChange,
   align = 'left',
   note,
 }: DateRangeFilterProps) {
@@ -116,7 +131,7 @@ export function DateRangeFilter({
   };
 
   return (
-    <div className="date-range">
+    <div className={`date-range${basis === 'active' ? ' date-range-active' : ''}`}>
       <button
         type="button"
         className="input date-step"
@@ -161,6 +176,16 @@ export function DateRangeFilter({
             all
           </button>
         </div>
+        {onBasisChange ? (
+          <label className="filter-option date-range-basis">
+            <input
+              type="checkbox"
+              checked={basis === 'active'}
+              onChange={() => onBasisChange(basis === 'active' ? 'batch' : 'active')}
+            />
+            <span>active on any day</span>
+          </label>
+        ) : null}
         <BatchCalendar dates={dates} range={range} onChange={onChange} />
         {note ? <p className="filter-help">{note}</p> : null}
       </FilterPopover>

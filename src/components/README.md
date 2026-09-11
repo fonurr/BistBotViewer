@@ -49,6 +49,11 @@ components; shared components never import a page.
   against a bound: a step that cannot be taken whole is refused, and `stepRange` returning `null`
   is what disables the button that asked. The trigger is a fixed width and names one batch as one
   date, so a range collapsing does not resize the toolbar under the hand that collapsed it.
+  Given `basis` and `onBasisChange`, the popover carries an `active on any day` switch under its
+  shortcuts — the Book and Performance both pass it. On, the range keeps whatever was alive on one
+  of its sessions (`domain/batchRange.ts`) rather than only what was filed under one; the page
+  passes the matching `dates` for each reading, and the trigger takes the accent ink while it is
+  on, since a fixed-width date range has no room left to say so in words.
 - `useMinuteClock` ticks relative copy — a scheduled countdown, how early a `fire now` goes —
   on the minute boundary, because a quiet snapshot does not re-render on its own.
 

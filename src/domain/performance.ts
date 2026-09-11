@@ -2,6 +2,12 @@ import type { ClosedTrade, Holiday } from '../bistApi/types';
 import type { AuctionBar, AuctionBarKey } from '../priceApi/types';
 import { accountIdentityKey } from './accounts';
 import {
+  lastActiveSession,
+  withinBatchRange,
+  type ActiveSpan,
+  type BatchRangeBasis,
+} from './batchRange';
+import {
   firstTradeInstant,
   holidayCalendar,
   istanbulDay,
@@ -226,6 +232,8 @@ export interface PerformanceWindow {
   readonly days: number;
   readonly startDate: string;
   readonly endDate: string;
+  /** Which round trips the window takes; each is filed under its opening batch either way. */
+  readonly basis: BatchRangeBasis;
   readonly calendarVerified: boolean;
   readonly tradingDayCount: PerformanceMetric;
   readonly halfTradingDayCount: PerformanceMetric;
@@ -286,6 +294,13 @@ export interface BuildPerformanceReportInput {
    */
   readonly endDate?: string;
   /**
+   * Which round trips the window takes. `batch`, the default, takes those opened inside it;
+   * `active` also takes one opened before it and closed inside it or after — see `closedTradeSpan`.
+   * Either way a trip is filed under the batch it opened in, so under `active` the series can
+   * start before `startDate`.
+   */
+  readonly windowBasis?: BatchRangeBasis;
+  /**
    * Resolved intent prices, keyed `SYMBOL|ts` by `histApi`'s `intentBarKey`. The
    * page runs this report twice: once with none, to learn which instants it must
    * ask the history cache for, and again with what came back. Absent keys are
@@ -330,6 +345,7 @@ export function buildPerformanceReport(input: BuildPerformanceReportInput): Perf
     throw new RangeError('Performance startDate must be a valid ISO day on or before endDate.');
   }
   const windowDays = datesBetween(startDate, endDate).length;
+  const windowBasis = input.windowBasis ?? 'batch';
   const fullHolidays = new Set(
     input.holidays.filter(({ type }) => type === 'full').map(({ date }) => date),
   );
@@ -358,20 +374,21 @@ export function buildPerformanceReport(input: BuildPerformanceReportInput): Perf
       continue;
     }
 
-    const openingStamp = firstFiniteStamp(trade.openOrderTime, trade.openFinalSeenTime);
-    const businessDate = sessionBatchDate(openingStamp, calendarDays);
-    if (businessDate === null) {
+    const span = closedTradeSpan(trade, calendarDays);
+    if (span === null) {
       missingOpeningStampCount += 1;
       continue;
     }
-    if (businessDate < startDate) {
-      beforeWindowCount += 1;
-      continue;
-    }
+    const businessDate = span.batch;
     if (businessDate > endDate) {
       futureCount += 1;
       continue;
     }
+    if (!withinBatchRange(span, { from: startDate, to: endDate }, windowBasis)) {
+      beforeWindowCount += 1;
+      continue;
+    }
+    const openingStamp = firstFiniteStamp(trade.openOrderTime, trade.openFinalSeenTime);
     if (businessDate !== istanbulDay(openingStamp!)) {
       openedAfterHoursCount += 1;
     }
@@ -444,6 +461,7 @@ export function buildPerformanceReport(input: BuildPerformanceReportInput): Perf
       days: windowDays,
       startDate,
       endDate,
+      basis: windowBasis,
       calendarVerified: calendar.verified,
       tradingDayCount,
       halfTradingDayCount,
@@ -468,6 +486,27 @@ export function buildPerformanceReport(input: BuildPerformanceReportInput): Perf
       openedAfterHoursCount,
       calendarUnverifiedTradeCount,
     },
+  };
+}
+
+/**
+ * The sessions a round trip was open in: from the batch its opening buy belongs to — the day the
+ * report files it under — through the session its close was last seen in. `null` where no opening
+ * stamp names a batch. A round trip has always ended, so `through` is never open.
+ */
+export function closedTradeSpan(trade: ClosedTrade, holidays: HolidayCalendar): ActiveSpan | null {
+  const batch = sessionBatchDate(
+    firstFiniteStamp(trade.openOrderTime, trade.openFinalSeenTime),
+    holidays,
+  );
+  if (batch === null) return null;
+  return {
+    batch,
+    through: lastActiveSession(
+      batch,
+      [trade.closeFinalSeenTime, trade.closeOrderTime, trade.closeSentTime],
+      holidays,
+    ),
   };
 }
 

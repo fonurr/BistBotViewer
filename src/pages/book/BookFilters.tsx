@@ -27,8 +27,11 @@ interface BookFiltersProps {
   bots: readonly Bot[];
   accounts: readonly Account[];
   chains: readonly BookChain[];
-  /** Every batch the loaded chains were filed under, ascending. */
-  batchDates: readonly string[];
+  /**
+   * Every day the batch range can be set to, ascending: the batches the loaded
+   * chains were filed under, or — read as `active` — every session one was alive in.
+   */
+  rangeDates: readonly string[];
   /** Whether every Book read is in, so the range can settle on its default. */
   batchesLoaded: boolean;
   /** The batch this moment belongs to, which is where `latest` stops. */
@@ -107,8 +110,8 @@ export function BookFilters(props: BookFiltersProps) {
       slippageSells: defaultBookFilters.slippageSells,
       /* The widest range, stated outright: leaving it unset would send the
          range control back to its default and clear this filter with it. */
-      batchFrom: props.batchDates[0] ?? null,
-      batchTo: props.batchDates.at(-1) ?? null,
+      batchFrom: props.rangeDates[0] ?? null,
+      batchTo: props.rangeDates.at(-1) ?? null,
       noClosingOrder: true,
     });
   };
@@ -120,7 +123,7 @@ export function BookFilters(props: BookFiltersProps) {
           open={open === 'dates'}
           setOpen={setOpen}
           defaultRange="all"
-          dates={props.batchDates}
+          dates={props.rangeDates}
           ready={props.batchesLoaded}
           currentSession={props.currentSession}
           range={{ from: filters.batchFrom, to: filters.batchTo }}
@@ -133,7 +136,15 @@ export function BookFilters(props: BookFiltersProps) {
             })
           }
           onSettle={props.onSettleDates}
-          note="Only a day the loaded chains were filed under can be picked. A session where no bot ran has no batch, so the calendar and the steppers both pass over it."
+          basis={filters.batchBasis}
+          onBasisChange={(batchBasis) =>
+            onChange({ ...filters, batchBasis, noClosingOrder: false })
+          }
+          note={
+            filters.batchBasis === 'active'
+              ? 'A chain counts on every session from its batch through the last thing it recorded, and on every session since while it holds shares or has an order working. It still draws under its own batch. Only a session some loaded chain was alive in can be picked.'
+              : 'Only a day the loaded chains were filed under can be picked. A session where no bot ran has no batch, so the calendar and the steppers both pass over it.'
+          }
         />
         <div className="seg" aria-label="Book scopes">
           {scopes.map((scope) => (

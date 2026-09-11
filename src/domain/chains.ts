@@ -9,6 +9,7 @@ import type {
   Position,
   ReasonData,
 } from '../bistApi/types';
+import { lastActiveSession, type ActiveSpan } from './batchRange';
 import {
   firstTradeInstant,
   holidayCalendar,
@@ -176,6 +177,13 @@ export interface BookChain {
    */
   readonly batchDate: string | null;
   readonly batchTimestamp: number | null;
+  /**
+   * The sessions the chain was alive in, for a batch range read as `active`: from `batchDate`
+   * through the session of the newest stamp any of its rows recorded, or open-ended while it
+   * still holds shares or has an order working. `null` where the chain has no batch, which keeps
+   * it out of every range on either basis.
+   */
+  readonly activeSpan: ActiveSpan | null;
   readonly rows: readonly BookChainRow[];
   readonly activeRows: readonly BookActiveOrderRow[];
   readonly canceledRows: readonly BookCanceledOrderRow[];
@@ -719,20 +727,42 @@ function finalizeChain(accumulator: ChainAccumulator, calendar: HolidayCalendar)
     positionQuantity !== null && positionQuantity > 0 && !hasWaitingSell;
   const hasWaitingBuyWithoutExit =
     tradeRows.length === 0 && waitingBuyIds.size > 0 && !hasWaitingSell && hasCanceledReversingExit;
+  const hasWaitingOrder = activeRows.some((row) => row.isWaiting);
   const scope = classifyBookChain({
     hasPosition: positionRows.length > 0,
     hasTrade: tradeRows.length > 0,
-    hasWaitingOrder: activeRows.some((row) => row.isWaiting),
+    hasWaitingOrder,
     hasCanceled: canceledRows.length > 0,
   });
+  const batchDate = sessionBatchDate(batchTimestamp, calendar);
+  const alive = positionRows.length > 0 || hasWaitingOrder;
 
   return {
     key: accumulator.key,
     chainId: accumulator.chainId,
     botId: representative.botId,
     symbol: representative.symbol,
-    batchDate: sessionBatchDate(batchTimestamp, calendar),
+    batchDate,
     batchTimestamp,
+    activeSpan:
+      batchDate === null
+        ? null
+        : {
+            batch: batchDate,
+            // Only what happened: a schedule's `scheduledTime` is a plan, not an event.
+            through: alive
+              ? null
+              : lastActiveSession(
+                  batchDate,
+                  rows.flatMap((row) => [
+                    row.createdTime,
+                    row.sentTime,
+                    row.orderTime,
+                    row.finalSeenTime,
+                  ]),
+                  calendar,
+                ),
+          },
     rows,
     activeRows,
     canceledRows,
