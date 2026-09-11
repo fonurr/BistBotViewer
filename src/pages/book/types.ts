@@ -1,15 +1,8 @@
 import type { BatchRangeBasis } from '../../domain/batchRange';
 import type { BookScope } from '../../domain/chains';
-import {
-  BOOK_SLIPPAGE_FIELDS,
-  BOOK_SLIPPAGE_SIDES_DEFAULT,
-  type BookSlippageField,
-} from '../../domain/bookSlippageFilter';
-import {
-  BOOK_TIME_FIELDS,
-  BOOK_TIME_SIDES_DEFAULT,
-  type BookTimeField,
-} from '../../domain/bookTimeFilter';
+import { BOOK_SIDES_DEFAULT, type BookSides } from '../../domain/bookSides';
+import type { BookSlippageField } from '../../domain/bookSlippageFilter';
+import type { BookTimeField } from '../../domain/bookTimeFilter';
 
 /**
  * One row's `@intent/slip` cell, resolved on the page so the grid stays a
@@ -28,12 +21,19 @@ export interface BookFilterState {
   accountIds: ReadonlySet<string> | null;
   symbols: ReadonlySet<string>;
   /**
+   * Whether `symbols` names the chains left out rather than the ones kept. It
+   * only reads while a symbol is picked: an empty pick is every symbol either way.
+   */
+  symbolsExcluded: boolean;
+  /**
    * Whether the canceled-status filter applies at all. It is off by default
    * because switching it on is itself a narrowing: a chain qualifies only by
    * owning a canceled order, so every chain that never lost a leg drops out
    * even with all statuses ticked. Off is therefore not "all of them" — it is
-   * the filter not being asked, which is why `canceledStatuses` is pinned back
-   * to every status whenever it goes off.
+   * the filter not being asked. Switching it either way puts `canceledStatuses`
+   * back to none, the way `none` leaves it, so a reader switching it on ticks
+   * the statuses they came for rather than unticking the rest first. The same
+   * holds for every filter below that carries a switch.
    */
   canceledStatusFilter: boolean;
   /** `null` is every status, in the display form the status cells carry. */
@@ -67,16 +67,6 @@ export interface BookFilterState {
   /** Any chosen clock on any chain leg can satisfy this daily Istanbul range. */
   timeFilter: boolean;
   timeFields: ReadonlySet<BookTimeField>;
-  /**
-   * Which legs the time filter reads. `timeBuys` / `timeSells` are an OR over the
-   * chain's legs; `timeIncludeCanceled` is an AND laid over both. They sit beside
-   * the clock checkboxes and `all` / `none` never touch them, so switching the
-   * filter off is the only thing that restores their defaults (both sides on,
-   * canceled legs out).
-   */
-  timeBuys: boolean;
-  timeSells: boolean;
-  timeIncludeCanceled: boolean;
   /** Inclusive whole-minute bounds, from 00:00 (0) through 23:59 (1439). */
   timeFrom: number;
   timeTo: number;
@@ -90,11 +80,12 @@ export interface BookFilterState {
   slippageFilter: boolean;
   slippageFields: ReadonlySet<BookSlippageField>;
   /**
-   * Which legs it reads, an OR over the chain's legs like the time filter's.
-   * `all` / `none` never touch them; switching the filter off restores both.
+   * Which orders every row filter reads (`rowFiltersActive`): `buys` / `sells`
+   * are an OR, `includeCanceled` an AND laid over both. They sit beside
+   * `matching orders only` and, like it, answer for all of those filters at
+   * once. The default reads every order.
    */
-  slippageBuys: boolean;
-  slippageSells: boolean;
+  sides: BookSides;
   batchFrom: string | null;
   batchTo: string | null;
   /**
@@ -124,25 +115,24 @@ export const defaultBookFilters: BookFilterState = {
   botIds: null,
   accountIds: null,
   symbols: new Set<string>(),
+  symbolsExcluded: false,
+  /* Every filter behind a switch comes on with nothing ticked, the way its
+     `none` leaves it — `null` would be every option. */
   canceledStatusFilter: false,
-  canceledStatuses: null,
+  canceledStatuses: new Set<string>(),
   reasonFilter: false,
-  reasons: null,
+  reasons: new Set<string>(),
   sourceFilter: false,
-  sources: null,
+  sources: new Set<string>(),
   originFilter: false,
-  origins: null,
+  origins: new Set<string>(),
   timeFilter: false,
-  timeFields: new Set(BOOK_TIME_FIELDS.map(({ key }) => key)),
-  timeBuys: BOOK_TIME_SIDES_DEFAULT.buys,
-  timeSells: BOOK_TIME_SIDES_DEFAULT.sells,
-  timeIncludeCanceled: BOOK_TIME_SIDES_DEFAULT.includeCanceled,
+  timeFields: new Set<BookTimeField>(),
   timeFrom: 0,
   timeTo: 1439,
   slippageFilter: false,
-  slippageFields: new Set(BOOK_SLIPPAGE_FIELDS.map(({ key }) => key)),
-  slippageBuys: BOOK_SLIPPAGE_SIDES_DEFAULT.buys,
-  slippageSells: BOOK_SLIPPAGE_SIDES_DEFAULT.sells,
+  slippageFields: new Set<BookSlippageField>(),
+  sides: BOOK_SIDES_DEFAULT,
   /* Null is not "every batch" but the moment before one has loaded;
      `DateRangeFilter` resolves it to every loaded batch as soon as one exists. */
   batchFrom: null,

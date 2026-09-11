@@ -183,7 +183,13 @@ describe('time range steps', () => {
   });
 });
 
-const allSides = { buys: true, sells: true, includeCanceled: true } as const;
+/** A whole chain read on every row it owns, as the page reads it with the side toggles at rest. */
+const matchesChain = (
+  chain: BookChain,
+  fields: ReadonlySet<BookTimeField>,
+  from: number,
+  to: number,
+) => matchesBookTime(chain.rows, fields, from, to);
 
 describe('whole-chain time matching', () => {
   it.each([
@@ -194,41 +200,23 @@ describe('whole-chain time matching', () => {
     ['10:03:00.000', false],
   ])('includes full endpoint minutes at %s', (clock, expected) => {
     expect(
-      matchesBookTime(
-        withClocks({ orderTime: stamp(clock) }),
-        new Set(['orderTime']),
-        600,
-        602,
-        allSides,
-      ),
+      matchesChain(withClocks({ orderTime: stamp(clock) }), new Set(['orderTime']), 600, 602),
     ).toBe(expected);
   });
 
   it('allows equal bounds and includes the entire selected minute', () => {
-    expect(
-      matchesBookTime(
-        withClocks({ sentTime: stamp('10:02:59.999') }),
-        allFields,
-        602,
-        602,
-        allSides,
-      ),
-    ).toBe(true);
-    expect(
-      matchesBookTime(
-        withClocks({ sentTime: stamp('10:03:00.000') }),
-        allFields,
-        602,
-        602,
-        allSides,
-      ),
-    ).toBe(false);
+    expect(matchesChain(withClocks({ sentTime: stamp('10:02:59.999') }), allFields, 602, 602)).toBe(
+      true,
+    );
+    expect(matchesChain(withClocks({ sentTime: stamp('10:03:00.000') }), allFields, 602, 602)).toBe(
+      false,
+    );
   });
 
   it('reads Istanbul clock time independently of the timestamp and batch dates', () => {
     const chain = withClocks({ orderTime: Date.parse('2026-09-11T07:02:59.999Z') });
     expect(chain.batchDate).not.toBe('2026-09-11');
-    expect(matchesBookTime(chain, new Set(['orderTime']), 600, 602, allSides)).toBe(true);
+    expect(matchesChain(chain, new Set(['orderTime']), 600, 602)).toBe(true);
   });
 
   it('matches any selected clock on any leg and ignores unselected clocks', () => {
@@ -236,13 +224,9 @@ describe('whole-chain time matching', () => {
       { orderTime: stamp('09:00:00'), sentTime: stamp('09:00:01') },
       { finalSeenTime: stamp('10:02:59.999'), createdTime: stamp('08:00:00') },
     );
-    expect(
-      matchesBookTime(chain, new Set(['orderTime', 'finalSeenTime']), 600, 602, allSides),
-    ).toBe(true);
-    expect(matchesBookTime(chain, new Set(['orderTime', 'sentTime']), 600, 602, allSides)).toBe(
-      false,
-    );
-    expect(matchesBookTime(chain, new Set(), 0, 1439, allSides)).toBe(false);
+    expect(matchesChain(chain, new Set(['orderTime', 'finalSeenTime']), 600, 602)).toBe(true);
+    expect(matchesChain(chain, new Set(['orderTime', 'sentTime']), 600, 602)).toBe(false);
+    expect(matchesChain(chain, new Set(), 0, 1439)).toBe(false);
   });
 
   it('ignores missing, invalid and nonfinite timestamps without interpreting them as midnight', () => {
@@ -251,58 +235,40 @@ describe('whole-chain time matching', () => {
       { orderTime: NaN, sentTime: Infinity, createdTime: -Infinity },
       { finalSeenTime: 9e15 },
     );
-    expect(matchesBookTime(chain, allFields, 0, 1439, allSides)).toBe(false);
+    expect(matchesChain(chain, allFields, 0, 1439)).toBe(false);
   });
 
   it('includes the final 23:59 minute without wrapping into midnight', () => {
     const midnight = withClocks({ orderTime: stamp('00:00:59.999', '2026-09-11') });
-    expect(matchesBookTime(midnight, allFields, 0, 0, allSides)).toBe(true);
-    expect(matchesBookTime(midnight, allFields, 1380, 1439, allSides)).toBe(false);
-    expect(matchesBookTime(midnight, allFields, 1439, 1439, allSides)).toBe(false);
-    expect(matchesBookTime(midnight, allFields, 1380, 1380, allSides)).toBe(false);
+    expect(matchesChain(midnight, allFields, 0, 0)).toBe(true);
+    expect(matchesChain(midnight, allFields, 1380, 1439)).toBe(false);
+    expect(matchesChain(midnight, allFields, 1439, 1439)).toBe(false);
+    expect(matchesChain(midnight, allFields, 1380, 1380)).toBe(false);
+    expect(matchesChain(withClocks({ orderTime: stamp('00:01:00') }), allFields, 1380, 1439)).toBe(
+      false,
+    );
     expect(
-      matchesBookTime(
-        withClocks({ orderTime: stamp('00:01:00') }),
-        allFields,
-        1380,
-        1439,
-        allSides,
-      ),
-    ).toBe(false);
-    expect(
-      matchesBookTime(
-        withClocks({ orderTime: stamp('23:59:59.999') }),
-        allFields,
-        1439,
-        1439,
-        allSides,
-      ),
+      matchesChain(withClocks({ orderTime: stamp('23:59:59.999') }), allFields, 1439, 1439),
     ).toBe(true);
   });
 
   it('matches precise manually entered minutes outside the base slider stops', () => {
-    expect(
-      matchesBookTime(
-        withClocks({ orderTime: stamp('01:25:59.999') }),
-        allFields,
-        85,
-        85,
-        allSides,
-      ),
-    ).toBe(true);
-    expect(
-      matchesBookTime(withClocks({ orderTime: stamp('01:26:00') }), allFields, 85, 85, allSides),
-    ).toBe(false);
+    expect(matchesChain(withClocks({ orderTime: stamp('01:25:59.999') }), allFields, 85, 85)).toBe(
+      true,
+    );
+    expect(matchesChain(withClocks({ orderTime: stamp('01:26:00') }), allFields, 85, 85)).toBe(
+      false,
+    );
   });
 
   it('rejects inverted and invalid bounds', () => {
     const chain = withClocks({ orderTime: stamp('10:00:00') });
-    expect(matchesBookTime(chain, allFields, 602, 600, allSides)).toBe(false);
-    expect(matchesBookTime(chain, allFields, NaN, 600, allSides)).toBe(false);
-    expect(matchesBookTime(chain, allFields, 600, Infinity, allSides)).toBe(false);
-    expect(matchesBookTime(chain, allFields, -1, 1439, allSides)).toBe(false);
-    expect(matchesBookTime(chain, allFields, 0, 1440, allSides)).toBe(false);
-    expect(matchesBookTime(chain, allFields, 0, 602.5, allSides)).toBe(false);
+    expect(matchesChain(chain, allFields, 602, 600)).toBe(false);
+    expect(matchesChain(chain, allFields, NaN, 600)).toBe(false);
+    expect(matchesChain(chain, allFields, 600, Infinity)).toBe(false);
+    expect(matchesChain(chain, allFields, -1, 1439)).toBe(false);
+    expect(matchesChain(chain, allFields, 0, 1440)).toBe(false);
+    expect(matchesChain(chain, allFields, 0, 602.5)).toBe(false);
   });
 
   const rows: readonly BookChainRow[] = buildBookChains({
@@ -331,78 +297,38 @@ describe('whole-chain time matching', () => {
           ...baseChain,
           rows: [{ ...row, ...absentClocks, [key]: stamp('10:02:59.999') }],
         };
-        expect(matchesBookTime(chain, new Set([key]), 600, 602, allSides)).toBe(true);
-        expect(matchesBookTime(chain, new Set([key]), 603, 610, allSides)).toBe(false);
+        expect(matchesChain(chain, new Set([key]), 600, 602)).toBe(true);
+        expect(matchesChain(chain, new Set([key]), 603, 610)).toBe(false);
       }
     },
   );
 });
 
-describe('time matching by leg side', () => {
+describe('time matching one leg at a time', () => {
   const canceledRow = buildBookChains({
     activeOrders: [],
     canceledOrders: [makeCanceledOrder()],
     positions: [],
     closedTrades: [],
   })[0]!.rows[0]!;
-  // One chain with a buy leg at 10:00, a sell leg at 11:00, and a canceled buy
-  // leg at 12:00 — the three clocks the side toggles are read against.
-  const legChain: BookChain = {
-    ...baseChain,
-    rows: [
-      { ...baseChain.rows[0]!, ...absentClocks, direction: 'buy', createdTime: stamp('10:00:30') },
-      { ...baseChain.rows[0]!, ...absentClocks, direction: 'sell', createdTime: stamp('11:00:30') },
-      { ...canceledRow, ...absentClocks, direction: 'buy', finalSeenTime: stamp('12:00:30') },
-    ],
-  };
-  const at = (from: number, to: number, sides: Partial<typeof allSides>) =>
-    matchesBookTime(legChain, allFields, from, to, {
-      buys: false,
-      sells: false,
-      includeCanceled: false,
-      ...sides,
-    });
-
-  it('reads a buy leg only while buys is ticked', () => {
-    expect(at(600, 600, { buys: true })).toBe(true);
-    expect(at(600, 600, { sells: true })).toBe(false);
-  });
-
-  it('reads a sell leg only while sells is ticked', () => {
-    expect(at(660, 660, { sells: true })).toBe(true);
-    expect(at(660, 660, { buys: true })).toBe(false);
-  });
-
-  it('combines the two sides with OR across the chain', () => {
-    expect(at(600, 660, { buys: true, sells: true })).toBe(true);
-    expect(at(600, 660, { buys: true })).toBe(true);
-    expect(at(600, 660, { sells: true })).toBe(true);
-  });
-
-  it('drops every chain when neither side is ticked', () => {
-    expect(at(0, 1439, {})).toBe(false);
-  });
-
-  it('reads a canceled leg only with include-canceled, and only when its side is on too', () => {
-    expect(at(720, 720, { buys: true })).toBe(false);
-    expect(at(720, 720, { buys: true, includeCanceled: true })).toBe(true);
-    expect(at(720, 720, { sells: true, includeCanceled: true })).toBe(false);
-  });
+  // A buy leg at 10:00, a sell leg at 11:00, and a canceled buy leg at 12:00.
+  const legs: readonly BookChainRow[] = [
+    { ...baseChain.rows[0]!, ...absentClocks, direction: 'buy', createdTime: stamp('10:00:30') },
+    { ...baseChain.rows[0]!, ...absentClocks, direction: 'sell', createdTime: stamp('11:00:30') },
+    { ...canceledRow, ...absentClocks, direction: 'buy', finalSeenTime: stamp('12:00:30') },
+  ];
+  const matchingLegs = (from: number, to: number) =>
+    legs.map((row) => rowMatchesBookTime(row, allFields, from, to));
 
   it('answers the same test one leg at a time, for the rows matching orders only draws', () => {
-    const legs = (from: number, to: number, sides: Partial<typeof allSides>) =>
-      legChain.rows.map((row) =>
-        rowMatchesBookTime(row, allFields, from, to, {
-          buys: false,
-          sells: false,
-          includeCanceled: false,
-          ...sides,
-        }),
-      );
+    expect(matchingLegs(600, 600)).toEqual([true, false, false]);
+    expect(matchingLegs(600, 660)).toEqual([true, true, false]);
+    expect(matchingLegs(720, 600)).toEqual([false, false, false]);
+  });
 
-    expect(legs(600, 720, { buys: true, sells: true })).toEqual([true, true, false]);
-    expect(legs(600, 720, { sells: true })).toEqual([false, true, false]);
-    expect(legs(600, 720, { buys: true, includeCanceled: true })).toEqual([true, false, true]);
-    expect(legs(720, 600, { buys: true, sells: true })).toEqual([false, false, false]);
+  it('reads a canceled leg like any other: which legs are read at all is the side toggles’ call', () => {
+    expect(matchingLegs(720, 720)).toEqual([false, false, true]);
+    expect(matchesBookTime(legs, allFields, 720, 720)).toBe(true);
+    expect(matchesBookTime(legs.slice(0, 2), allFields, 720, 720)).toBe(false);
   });
 });

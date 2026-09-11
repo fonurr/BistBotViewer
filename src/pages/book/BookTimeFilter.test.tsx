@@ -241,66 +241,41 @@ describe('BookTimeFilter editable times', () => {
   });
 });
 
-describe('BookTimeFilter leg sides', () => {
-  const sideBox = (name: 'buys' | 'sells' | 'include canceled') =>
-    screen.getByRole<HTMLInputElement>('checkbox', { name });
+describe('BookTimeFilter switch', () => {
+  const CLOCKS = ['created', 'sched', 'intent', 'sent', 'order', 'final'];
 
-  it('comes up with both sides on and canceled legs out, all three enabled', async () => {
-    renderControl();
-    expect(sideBox('buys')).toBeChecked();
-    expect(sideBox('sells')).toBeChecked();
-    expect(sideBox('include canceled')).not.toBeChecked();
-    for (const name of ['buys', 'sells', 'include canceled'] as const) {
-      expect(sideBox(name)).toBeEnabled();
-    }
-  });
-
-  it('disables the three while the filter is off and leaves their values alone', async () => {
+  it('comes up off with no clock ticked, and switches on still ticking none', async () => {
     const user = userEvent.setup();
-    renderControl({ timeFilter: false, timeBuys: false, timeIncludeCanceled: true });
+    renderControl({ timeFilter: false });
 
-    for (const name of ['buys', 'sells', 'include canceled'] as const) {
-      expect(sideBox(name)).toBeDisabled();
-    }
-    // Turning the filter on restores their defaults, like the clock checkboxes.
-    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
-    expect(sideBox('buys')).toBeChecked();
-    expect(sideBox('sells')).toBeChecked();
-    expect(sideBox('include canceled')).not.toBeChecked();
-  });
-
-  it('toggles each side independently and lets all three be picked at once', async () => {
-    const user = userEvent.setup();
-    renderControl();
-
-    await user.click(sideBox('buys'));
-    await user.click(sideBox('include canceled'));
-    expect(sideBox('buys')).not.toBeChecked();
-    expect(sideBox('sells')).toBeChecked();
-    expect(sideBox('include canceled')).toBeChecked();
-
-    await user.click(sideBox('buys'));
-    expect(sideBox('buys')).toBeChecked();
-  });
-
-  it('keeps the sides untouched when all and none change the clocks', async () => {
-    const user = userEvent.setup();
-    renderControl();
-
-    await user.click(sideBox('sells'));
-    await user.click(sideBox('include canceled'));
-    await user.click(screen.getByRole('button', { name: 'none' }));
-    for (const field of ['created', 'sched', 'intent', 'sent', 'order', 'final']) {
+    for (const field of CLOCKS) {
       expect(screen.getByRole('checkbox', { name: field })).not.toBeChecked();
+      expect(screen.getByRole('checkbox', { name: field })).toBeDisabled();
     }
-    expect(sideBox('buys')).toBeChecked();
-    expect(sideBox('sells')).not.toBeChecked();
-    expect(sideBox('include canceled')).toBeChecked();
+    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    for (const field of CLOCKS) {
+      expect(screen.getByRole('checkbox', { name: field })).not.toBeChecked();
+      expect(screen.getByRole('checkbox', { name: field })).toBeEnabled();
+    }
+  });
+
+  it('puts the clocks back to none when switched off, and keeps the range', async () => {
+    const user = userEvent.setup();
+    renderControl({ timeFrom: 600, timeTo: 602 });
 
     await user.click(screen.getByRole('button', { name: 'all' }));
-    expect(sideBox('buys')).toBeChecked();
-    expect(sideBox('sells')).not.toBeChecked();
-    expect(sideBox('include canceled')).toBeChecked();
+    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    for (const field of CLOCKS) {
+      expect(screen.getByRole('checkbox', { name: field })).not.toBeChecked();
+    }
+    expectRange('10:00', '10:02');
+  });
+
+  it('carries no leg-side toggles: those answer for every row filter, beside matching orders only', () => {
+    renderControl();
+    for (const name of ['buys', 'sells', 'include canceled']) {
+      expect(screen.queryByRole('checkbox', { name })).toBeNull();
+    }
   });
 });
 

@@ -405,13 +405,18 @@ a:hover {
   color: var(--color-text);
 }
 
+/* Alone on its row — the symbol popover's `exclude` — it has nothing to rule off. */
+.filter-switch:only-child {
+  border-right: 0;
+}
+
 .filter-picks .btn:disabled {
   opacity: 0.4;
   cursor: default;
 }
 
-/* Ticked and disabled: with the filter off nothing is excluded, so the boxes
-   show every option kept rather than a selection nobody made. */
+/* Disabled: with the filter off nothing is being asked, so the boxes only show
+   the selection it comes back on with. */
 .filter-option-off {
   color: var(--mut);
   cursor: default;
@@ -475,6 +480,11 @@ a:hover {
 .symbol-option {
   font-size: 10.5px;
   cursor: pointer;
+}
+
+/* A picked symbol while `exclude` is on: the one left out. */
+.symbol-option-excluded {
+  text-decoration: line-through;
 }
 
 .symbol-enter-target {

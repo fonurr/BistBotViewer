@@ -1,5 +1,5 @@
 import type { HolidayCalendar } from './calendar';
-import type { BookChain, BookChainRow } from './chains';
+import type { BookChainRow } from './chains';
 import {
   bookRowCreatedSlip,
   bookRowSentSlip,
@@ -35,18 +35,6 @@ export const BOOK_SLIPPAGE_FIELDS = [
 export type BookSlippageField = (typeof BOOK_SLIPPAGE_FIELDS)[number]['key'];
 
 /**
- * Which of a chain's legs the slippage filter reads — an OR, like the time
- * filter's: a chain matches on any leg whose side is still ticked. `all` /
- * `none` never touch these; only switching the filter off restores them.
- */
-export interface BookSlippageSides {
-  buys: boolean;
-  sells: boolean;
-}
-
-export const BOOK_SLIPPAGE_SIDES_DEFAULT: BookSlippageSides = { buys: true, sells: true };
-
-/**
  * What a row's flags are read against: the trading calendar the `@sent` slip's
  * session rule needs, and the `@intent` slip the page already resolved for the
  * row, since that price comes from the minute history rather than the row.
@@ -70,32 +58,30 @@ const FLAGGED: Record<
 };
 
 /**
- * Select whole chains by any ticked flag on any leg of a ticked side — live,
- * scheduled, canceled, or a round trip's leg alike. A chain none of whose legs
- * the grid would flag cannot match, so switching the filter on narrows the Book
- * even with every field ticked.
+ * Select a whole chain by any ticked flag on any of the rows given — live,
+ * scheduled, canceled, or a round trip's leg alike; the page hands over the ones
+ * its side toggles read (`bookSides.ts`). A chain none of whose legs the grid
+ * would flag cannot match, so the filter narrows the Book even with every field
+ * ticked.
  */
 export function matchesBookSlippage(
-  chain: BookChain,
+  rows: readonly BookChainRow[],
   fields: ReadonlySet<BookSlippageField>,
-  sides: BookSlippageSides,
   context: BookRowFlagContext,
 ): boolean {
-  return chain.rows.some((row) => rowMatchesBookSlippage(row, fields, sides, context));
+  return rows.some((row) => rowMatchesBookSlippage(row, fields, context));
 }
 
 /**
- * The same test for one leg: a leg on a ticked side that the grid flags in a
- * ticked column. `matchesBookSlippage` keeps a chain on any such leg; the Book's
- * `matching orders only` draws just the legs that pass it.
+ * The same test for one leg: a leg the grid flags in a ticked column.
+ * `matchesBookSlippage` keeps a chain on any such leg; the Book's `matching
+ * orders only` draws just the legs that pass it.
  */
 export function rowMatchesBookSlippage(
   row: BookChainRow,
   fields: ReadonlySet<BookSlippageField>,
-  sides: BookSlippageSides,
   context: BookRowFlagContext,
 ): boolean {
-  if (row.direction === 'buy' ? !sides.buys : !sides.sells) return false;
   for (const field of fields) if (FLAGGED[field](row, context)) return true;
   return false;
 }

@@ -76,17 +76,21 @@ test('keeps whole chains through the final millisecond of a picked minute and co
   await expect(enabled).not.toBeChecked();
   for (const field of timeFields) {
     const checkbox = popover.getByRole('checkbox', { name: field, exact: true });
-    await expect(checkbox).toBeChecked();
+    await expect(checkbox).not.toBeChecked();
     await expect(checkbox).toBeDisabled();
   }
   await expect(start).toBeDisabled();
   await expect(end).toBeDisabled();
 
+  // On, it ticks no clock yet — the way `none` leaves it.
   await enabled.check();
+  for (const field of timeFields) {
+    await expect(popover.getByRole('checkbox', { name: field, exact: true })).not.toBeChecked();
+  }
+  await expect(page.getByText('No time column is selected.', { exact: false })).toBeVisible();
   await end.press('Home');
   await advance(end, 'ArrowRight', BOOK_TIME_STEPS.indexOf(602));
   await advance(start, 'ArrowRight', BOOK_TIME_STEPS.indexOf(600));
-  await popover.getByRole('button', { name: 'none', exact: true }).click();
   await popover.getByRole('checkbox', { name: 'created', exact: true }).check();
 
   await expect(page.getByRole('article')).toHaveCount(2);
@@ -197,29 +201,33 @@ test('uses the requested clock steps and allows equal endpoints without crossing
   await expect(page.getByRole('article', { name: 'THYAO chain', exact: true })).toBeVisible();
 });
 
-test('reads the range against only the leg sides left ticked', async ({ page }) => {
+test('reads the range against only the orders the side toggles leave ticked', async ({ page }) => {
+  // The toggles sit beside `matching orders only`, outside the popover, and
+  // only while a filter that reads orders one at a time is on.
+  const toggles = page.locator('.filter-chips-toggles');
+  const buys = toggles.getByRole('checkbox', { name: 'buys', exact: true });
+  const sells = toggles.getByRole('checkbox', { name: 'sells', exact: true });
+  const canceled = toggles.getByRole('checkbox', { name: 'include canceled', exact: true });
+  await expect(buys).toHaveCount(0);
+
   const control = page.locator('.book-time-filter');
   await control.getByRole('button', { name: 'any time', exact: true }).click();
   const popover = control.getByRole('dialog');
-  const buys = popover.getByRole('checkbox', { name: 'buys', exact: true });
-  const sells = popover.getByRole('checkbox', { name: 'sells', exact: true });
-  const canceled = popover.getByRole('checkbox', { name: 'include canceled', exact: true });
-
-  for (const box of [buys, sells, canceled]) await expect(box).toBeDisabled();
+  await expect(popover.getByRole('checkbox', { name: 'buys', exact: true })).toHaveCount(0);
   await popover.getByRole('checkbox', { name: 'filter', exact: true }).check();
-  await expect(buys).toBeChecked();
-  await expect(sells).toBeChecked();
-  await expect(canceled).not.toBeChecked();
-
   const start = popover.getByRole('slider', { name: 'Start time', exact: true });
   const end = popover.getByRole('slider', { name: 'End time', exact: true });
   await end.press('Home');
   await advance(end, 'ArrowRight', BOOK_TIME_STEPS.indexOf(602));
   await advance(start, 'ArrowRight', BOOK_TIME_STEPS.indexOf(600));
-  await popover.getByRole('button', { name: 'none', exact: true }).click();
   await popover.getByRole('checkbox', { name: 'created', exact: true }).check();
   // AKBNK by its sell leg (created 10:02:59.999), THYAO by its buy (created 10:00).
   await expect(page.getByRole('article')).toHaveCount(2);
+  await page.keyboard.press('Escape');
+  await expect(popover).toHaveCount(0);
+
+  // Every order is read by default, canceled ones included.
+  for (const box of [buys, sells, canceled]) await expect(box).toBeChecked();
 
   await buys.uncheck();
   await expect(page.getByRole('article')).toHaveCount(1);
@@ -227,16 +235,18 @@ test('reads the range against only the leg sides left ticked', async ({ page }) 
 
   await sells.uncheck();
   await expect(page.getByText('No chains match this filter.')).toBeVisible();
+  await expect(page.getByText(/Clearing any one of these brings chains back/)).toContainText(
+    'the side toggles',
+  );
 
   await buys.check();
   await expect(page.getByRole('article')).toHaveCount(1);
   await expect(page.getByRole('article', { name: 'THYAO chain', exact: true })).toBeVisible();
 
-  // `all` / `none` never touch the sides.
-  await popover.getByRole('button', { name: 'all', exact: true }).click();
-  await popover.getByRole('button', { name: 'none', exact: true }).click();
-  await expect(buys).toBeChecked();
-  await expect(sells).not.toBeChecked();
+  // `clear all` reads every order again, and with no filter on the toggles go.
+  await page.getByRole('button', { name: 'clear all', exact: true }).click();
+  await expect(page.getByRole('article')).toHaveCount(4);
+  await expect(buys).toHaveCount(0);
 });
 
 test('range buttons update the kept chains without changing the chosen clock', async ({ page }) => {

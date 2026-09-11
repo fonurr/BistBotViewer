@@ -91,23 +91,23 @@ export function BookFilters(props: BookFiltersProps) {
       scopes: new Set<BookScope>(['waiting', 'positions']),
       botIds: null,
       accountIds: null,
-      symbols: new Set<string>(),
+      symbols: defaultBookFilters.symbols,
+      symbolsExcluded: false,
       canceledStatusFilter: false,
-      canceledStatuses: null,
+      canceledStatuses: defaultBookFilters.canceledStatuses,
       reasonFilter: false,
-      reasons: null,
+      reasons: defaultBookFilters.reasons,
       sourceFilter: false,
-      sources: null,
+      sources: defaultBookFilters.sources,
       originFilter: false,
-      origins: null,
+      origins: defaultBookFilters.origins,
       timeFilter: false,
       timeFields: defaultBookFilters.timeFields,
       timeFrom: defaultBookFilters.timeFrom,
       timeTo: defaultBookFilters.timeTo,
       slippageFilter: false,
       slippageFields: defaultBookFilters.slippageFields,
-      slippageBuys: defaultBookFilters.slippageBuys,
-      slippageSells: defaultBookFilters.slippageSells,
+      sides: defaultBookFilters.sides,
       /* The widest range, stated outright: leaving it unset would send the
          range control back to its default and clear this filter with it. */
       batchFrom: props.rangeDates[0] ?? null,
@@ -192,6 +192,7 @@ export function BookFilters(props: BookFiltersProps) {
           heading="accounts"
           help="One chain sits under one account. The mismatch in the red banner is a chain whose orders name two — it shows under both."
           options={accountOptions(props.accounts)}
+          picks={[{ label: 'none', select: new Set<string>() }]}
           selected={filters.accountIds}
           onChange={(accountIds) => onChange({ ...filters, accountIds, noClosingOrder: false })}
           one="account"
@@ -214,12 +215,22 @@ export function BookFilters(props: BookFiltersProps) {
           symbols={allSymbols}
           selected={filters.symbols}
           onChange={(symbols) => onChange({ ...filters, symbols, noClosingOrder: false })}
+          excluded={filters.symbolsExcluded}
+          onExcludedChange={(symbolsExcluded) =>
+            onChange({ ...filters, symbolsExcluded, noClosingOrder: false })
+          }
           keptNote={(count, list) => (
             /* The one fact that prevents a wrong reading: the filter is per
                chain, not per row, so a chain with one matching leg stays. */
             <>
               {plural(count, 'symbol')} kept: {list}. A chain qualifies if any of its orders is one
               of them.
+            </>
+          )}
+          excludedNote={(count, list) => (
+            <>
+              {plural(count, 'symbol')} excluded: {list}. A chain drops out if any of its orders is
+              one of them.
             </>
           )}
           emptyNote="The list only holds symbols the loaded batches traded."
@@ -250,7 +261,7 @@ export function BookFilters(props: BookFiltersProps) {
               onChange({
                 ...filters,
                 originFilter: active,
-                origins: null,
+                origins: defaultBookFilters.origins,
                 noClosingOrder: false,
               })
             }
@@ -274,13 +285,13 @@ export function BookFilters(props: BookFiltersProps) {
             picks={[{ label: 'none', select: new Set<string>() }]}
             active={props.filters.canceledStatusFilter}
             onActiveChange={(active) =>
-              /* Off pins the selection back to every status, so the ticked,
-                 disabled boxes are telling the truth rather than hiding a
-                 narrowing that would spring back on. */
+              /* Either way the selection goes back to none: switching on starts
+                 from nothing ticked, and the disabled boxes behind an off switch
+                 show exactly what it would come back on with. */
               onChange({
                 ...filters,
                 canceledStatusFilter: active,
-                canceledStatuses: null,
+                canceledStatuses: defaultBookFilters.canceledStatuses,
                 noClosingOrder: false,
               })
             }
@@ -313,7 +324,7 @@ export function BookFilters(props: BookFiltersProps) {
               onChange({
                 ...filters,
                 sourceFilter: active,
-                sources: null,
+                sources: defaultBookFilters.sources,
                 noClosingOrder: false,
               })
             }
@@ -337,13 +348,10 @@ export function BookFilters(props: BookFiltersProps) {
             picks={[{ label: 'none', select: new Set<string>() }]}
             active={props.filters.reasonFilter}
             onActiveChange={(active) =>
-              /* Off pins the selection back to every reason, for the same cause
-                 as the status filter above: the ticked, disabled boxes have to
-                 be telling the truth. */
               onChange({
                 ...filters,
                 reasonFilter: active,
-                reasons: null,
+                reasons: defaultBookFilters.reasons,
                 noClosingOrder: false,
               })
             }

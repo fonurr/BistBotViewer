@@ -15,35 +15,6 @@
   font-size: var(--font-leg);
 }
 
-/* Wide enough for the side column ("include canceled") to sit on one line
-   across from the first clock checkboxes. */
-.book-time-filter .filter-popover {
-  width: 340px;
-}
-
-/* The time and slippage popovers share one head: field checkboxes on the left,
-   the leg-side toggles across from them on the right (`BookFilterChecks`). */
-.book-filter-fields {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-6);
-}
-
-.book-filter-checks {
-  flex: 0 0 auto;
-}
-
-.book-filter-sides {
-  flex: 1;
-  min-width: 0;
-}
-
-/* Pushed to the popover's right edge, with the label ahead of the box. */
-.book-filter-side {
-  grid-template-columns: auto auto;
-  justify-content: end;
-}
-
 .book-time-range {
   display: grid;
   gap: var(--space-4);
@@ -211,13 +182,21 @@
   font-size: var(--font-meta);
 }
 
-/* `matching orders only` closes the row at its far end, under the canceled
-   toggle that ends the toolbar: both decide which rows of a kept chain draw. */
+/* The side toggles and `matching orders only` close the row at its far end,
+   under the canceled toggle that ends the toolbar: all of them decide which
+   orders of a kept chain the row filters read and draw. */
+.filter-chips-toggles {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-left: auto;
+}
+
 .filter-chips-toggle {
   display: inline-flex;
   align-items: center;
   gap: var(--space-3);
-  margin-left: auto;
   color: var(--mut);
   font-size: var(--font-leg);
   cursor: pointer;

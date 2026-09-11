@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import type { BookRowFlagContext } from '../../domain/bookSlippageFilter';
+import { BOOK_SIDES_DEFAULT } from '../../domain/bookSides';
+import { BOOK_SLIPPAGE_FIELDS, type BookRowFlagContext } from '../../domain/bookSlippageFilter';
+import { BOOK_TIME_FIELDS } from '../../domain/bookTimeFilter';
 import { buildBookChains, type BookScope } from '../../domain/chains';
 import { makeActiveOrder, makeCanceledOrder } from '../../test/fixtures';
 import { drawnBookView, narrowingsThatEmptiedTheBook } from './BookPage';
 import { defaultBookFilters } from './types';
+
+// Every filter behind a switch comes on with nothing ticked; these tick all.
+const everyClock = new Set(BOOK_TIME_FIELDS.map(({ key }) => key));
+const everySlipColumn = new Set(BOOK_SLIPPAGE_FIELDS.map(({ key }) => key));
 
 const chains = buildBookChains({
   activeOrders: [
@@ -96,10 +102,10 @@ describe('the reason a filter emptied the Book', () => {
     expect(reason!.sentence).toBe(
       'No chain owns a canceled order with one of the selected statuses.',
     );
-    // Switching it off is what restores the chains, ticks and all.
+    // Switching it off is what restores the chains, the ticks back to none.
     const cleared = reason!.clear(defaultBookFilters);
     expect(cleared.canceledStatusFilter).toBe(false);
-    expect(cleared.canceledStatuses).toBeNull();
+    expect(cleared.canceledStatuses).toEqual(new Set());
   });
 
   it('names the reason filter, which narrows even with every reason ticked', () => {
@@ -126,7 +132,7 @@ describe('the reason a filter emptied the Book', () => {
     expect(reason!.restored).toBe(2);
     const cleared = reason!.clear(defaultBookFilters);
     expect(cleared.reasonFilter).toBe(false);
-    expect(cleared.reasons).toBeNull();
+    expect(cleared.reasons).toEqual(new Set());
   });
 
   it('names the source filter, which narrows even with every source ticked', () => {
@@ -155,7 +161,7 @@ describe('the reason a filter emptied the Book', () => {
     expect(reason!.sentence).toBe('No chain owns an order ended by one of the selected sources.');
     const cleared = reason!.clear(defaultBookFilters);
     expect(cleared.sourceFilter).toBe(false);
-    expect(cleared.sources).toBeNull();
+    expect(cleared.sources).toEqual(new Set());
   });
 
   it('clears exactly the narrowing it names', () => {
@@ -220,6 +226,7 @@ describe('the reason a filter emptied the Book', () => {
     const filters = {
       ...defaultBookFilters,
       timeFilter: true,
+      timeFields: everyClock,
       timeFrom: 600,
       timeTo: 602,
     };
@@ -230,7 +237,11 @@ describe('the reason a filter emptied the Book', () => {
       'No chain owns an order with a selected time inside the time range.',
     );
     expect(reason!.restored).toBe(2);
-    expect(reason!.clear(filters)).toEqual({ ...filters, timeFilter: false });
+    expect(reason!.clear(filters)).toEqual({
+      ...filters,
+      timeFilter: false,
+      timeFields: new Set(),
+    });
   });
 
   it('names an empty time-column selection only while time filtering is enabled', () => {
@@ -244,25 +255,70 @@ describe('the reason a filter emptied the Book', () => {
     ).toEqual([]);
   });
 
-  it('names an empty side selection and restores both sides when cleared', () => {
+  it('names an empty side selection, and clears the side toggles back to every order', () => {
     const filters = {
       ...defaultBookFilters,
       timeFilter: true,
-      timeBuys: false,
-      timeSells: false,
+      timeFields: everyClock,
+      sides: { ...BOOK_SIDES_DEFAULT, buys: false, sells: false },
     };
-    const [reason] = narrowingsThatEmptiedTheBook(chains, filters, noAccount, noFlags);
-    expect(reason!.sentence).toBe('Neither buys nor sells is selected.');
-    expect(reason!.restored).toBe(2);
-    const cleared = reason!.clear(filters);
-    expect(cleared.timeFilter).toBe(false);
-    expect(cleared.timeBuys).toBe(true);
-    expect(cleared.timeSells).toBe(true);
-    expect(cleared.timeIncludeCanceled).toBe(false);
+    const reasons = narrowingsThatEmptiedTheBook(chains, filters, noAccount, noFlags);
+    expect(reasons.map(({ key, restored }) => [key, restored])).toEqual([
+      ['time', 2],
+      ['sides', 2],
+    ]);
+    const sides = reasons.at(-1)!;
+    expect(sides.phrase).toBe('the side toggles');
+    expect(sides.sentence).toBe('Neither buys nor sells is selected.');
+    // The time filter stays: the toggles clear as one, and only they do.
+    expect(sides.clear(filters)).toEqual({ ...filters, sides: BOOK_SIDES_DEFAULT });
+  });
+
+  it('names the side toggles where they leave out the one leg a filter kept', () => {
+    // The only reason on record rides on a dead sell.
+    const deadOnly = buildBookChains({
+      activeOrders: [makeActiveOrder({ id: 1, clientOrderId: 'a', chainId: 'a' })],
+      canceledOrders: [
+        makeCanceledOrder({
+          clientOrderId: 'dead',
+          chainId: 'a',
+          symbol: 'AKBNK',
+          parentClientOrderId: 'a',
+          reason: 'BuyGuard',
+        }),
+      ],
+      positions: [],
+      closedTrades: [],
+    });
+    const filters = {
+      ...defaultBookFilters,
+      reasonFilter: true,
+      reasons: null,
+      sides: { ...BOOK_SIDES_DEFAULT, includeCanceled: false },
+    };
+    const reasons = narrowingsThatEmptiedTheBook(deadOnly, filters, noAccount, noFlags);
+    expect(reasons.map(({ key }) => key)).toEqual(['reasons', 'sides']);
+    expect(reasons[1]!.sentence).toBe(
+      'The side toggles leave out every order the filters would keep.',
+    );
+
+    // With no row filter on they read nothing, so they are no narrowing at all.
+    expect(
+      narrowingsThatEmptiedTheBook(
+        chains,
+        { ...filters, reasonFilter: false, symbols: new Set(['GARAN']) },
+        noAccount,
+        noFlags,
+      ).map(({ key }) => key),
+    ).toEqual(['symbols']);
   });
 
   it('names the slippage filter, which narrows even with every column ticked', () => {
-    const filters = { ...defaultBookFilters, slippageFilter: true };
+    const filters = {
+      ...defaultBookFilters,
+      slippageFilter: true,
+      slippageFields: everySlipColumn,
+    };
     const [reason] = narrowingsThatEmptiedTheBook(chains, filters, noAccount, noFlags);
 
     expect(reason!.key).toBe('slippage');
@@ -271,7 +327,7 @@ describe('the reason a filter emptied the Book', () => {
     expect(reason!.clear(filters)).toEqual(defaultBookFilters);
   });
 
-  it('names an empty slippage column or side selection, and restores both when cleared', () => {
+  it('names an empty slippage column selection, and puts it back to none when cleared', () => {
     const noColumn = {
       ...defaultBookFilters,
       slippageFilter: true,
@@ -280,16 +336,6 @@ describe('the reason a filter emptied the Book', () => {
     const [columnReason] = narrowingsThatEmptiedTheBook(chains, noColumn, noAccount, noFlags);
     expect(columnReason!.sentence).toBe('No slippage column is selected.');
     expect(columnReason!.clear(noColumn)).toEqual(defaultBookFilters);
-
-    const noSide = {
-      ...defaultBookFilters,
-      slippageFilter: true,
-      slippageBuys: false,
-      slippageSells: false,
-    };
-    const [sideReason] = narrowingsThatEmptiedTheBook(chains, noSide, noAccount, noFlags);
-    expect(sideReason!.sentence).toBe('Neither buys nor sells is selected.');
-    expect(sideReason!.clear(noSide)).toEqual(defaultBookFilters);
   });
 
   it('keeps the slippage filter applied while it weighs every other narrowing', () => {
@@ -320,7 +366,12 @@ describe('the reason a filter emptied the Book', () => {
     });
     const reasons = narrowingsThatEmptiedTheBook(
       mixed,
-      { ...defaultBookFilters, botIds: new Set(['bot-alpha']), slippageFilter: true },
+      {
+        ...defaultBookFilters,
+        botIds: new Set(['bot-alpha']),
+        slippageFilter: true,
+        slippageFields: everySlipColumn,
+      },
       noAccount,
       noFlags,
     );
@@ -353,6 +404,7 @@ describe('the reason a filter emptied the Book', () => {
     const filters = {
       ...defaultBookFilters,
       canceledStatusFilter: true,
+      canceledStatuses: null,
       timeFilter: true,
       timeFields: new Set(['orderTime'] as const),
       timeFrom: 630,
@@ -393,7 +445,7 @@ describe('the reason a filter emptied the Book', () => {
       positions: [],
       closedTrades: [],
     });
-    const byOrigin = { ...defaultBookFilters, originFilter: true, ordersOnly: true };
+    const byOrigin = { ...defaultBookFilters, originFilter: true, origins: null, ordersOnly: true };
 
     const view = drawnBookView([chain!], byOrigin, noFlags);
     expect(view.chains).toEqual([chain]);
@@ -401,11 +453,47 @@ describe('the reason a filter emptied the Book', () => {
 
     // A row filter that every row passes leaves nothing to name, and with no row
     // filter on at all the switch has nothing to narrow.
-    const byTime = { ...defaultBookFilters, timeFilter: true, ordersOnly: true };
+    const byTime = {
+      ...defaultBookFilters,
+      timeFilter: true,
+      timeFields: everyClock,
+      ordersOnly: true,
+    };
     expect(drawnBookView([chain!], byTime, noFlags).rows.size).toBe(0);
     expect(drawnBookView([chain!], { ...byOrigin, originFilter: false }, noFlags)).toEqual({
       chains: [chain],
       rows: new Map(),
     });
+
+    // The side toggles are asked first, of every row: with sells left out, the
+    // filter that every row passes draws the buy alone.
+    const buysOnly = { ...byTime, sides: { ...BOOK_SIDES_DEFAULT, sells: false } };
+    expect(
+      drawnBookView([chain!], buysOnly, noFlags)
+        .rows.get(chain!.key)
+        ?.map((row) => row.clientOrderId),
+    ).toEqual(['buy']);
+  });
+
+  it('names the account filter when none is selected, and an excluded symbol by what it leaves', () => {
+    const [accounts] = narrowingsThatEmptiedTheBook(
+      chains,
+      { ...defaultBookFilters, accountIds: new Set<string>() },
+      noAccount,
+      noFlags,
+    );
+    expect(accounts!.sentence).toBe('No account is selected.');
+
+    const [symbols] = narrowingsThatEmptiedTheBook(
+      chains,
+      { ...defaultBookFilters, symbols: new Set(['AKBNK', 'THYAO']), symbolsExcluded: true },
+      noAccount,
+      noFlags,
+    );
+    expect(symbols!.sentence).toBe('Excluding AKBNK, THYAO leaves no chain in this view.');
+    expect(symbols!.restored).toBe(2);
+    expect(
+      symbols!.clear({ ...defaultBookFilters, symbols: new Set(['AKBNK']), symbolsExcluded: true }),
+    ).toEqual(defaultBookFilters);
   });
 });

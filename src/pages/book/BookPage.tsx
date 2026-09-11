@@ -14,6 +14,13 @@ import { ResultList, type ActionResult } from '../../components/ResultList';
 import { accountIdentityKey } from '../../domain/accounts';
 import { bookRowCreatedSlip, bookRowSentSlip } from '../../domain/bookRowFlags';
 import {
+  BOOK_SIDES_DEFAULT,
+  bookSidesNarrowed,
+  rowOnBookSides,
+  rowsOnBookSides,
+  type BookSides,
+} from '../../domain/bookSides';
+import {
   BOOK_SLIPPAGE_FIELDS,
   matchesBookSlippage,
   rowMatchesBookSlippage,
@@ -236,9 +243,12 @@ export function BookPage() {
             )
               return false;
             const requestSymbols = request.request?.stocks.map((stock) => stock.symbol) ?? [];
+            // Excluding is the pick's complement: a basket naming any picked
+            // symbol is one keeping them would draw, so it is the one left out.
             if (
               filters.symbols.size > 0 &&
-              !requestSymbols.some((symbol) => filters.symbols.has(symbol))
+              requestSymbols.some((symbol) => filters.symbols.has(symbol)) ===
+                filters.symbolsExcluded
             )
               return false;
             return true;
@@ -536,17 +546,34 @@ export function BookPage() {
           <button type="button" className="btn btn-ghost" onClick={clearFilters}>
             clear all
           </button>
-          {/* Drawn only where it can change something: a filter that reads rows
+          {/* Drawn only where they can change something: a filter that reads rows
               one at a time is on, and every one of those carries a chip here. */}
           {rowFiltersActive(filters) ? (
-            <label className="filter-chips-toggle" title={ORDERS_ONLY_TITLE}>
-              <input
-                type="checkbox"
-                checked={filters.ordersOnly}
-                onChange={() => applyFilters({ ...filters, ordersOnly: !filters.ordersOnly })}
-              />
-              <span>matching orders only</span>
-            </label>
+            <div className="filter-chips-toggles">
+              {SIDE_TOGGLES.map(({ key, label }) => (
+                <label className="filter-chips-toggle" key={key} title={SIDES_TITLE}>
+                  <input
+                    type="checkbox"
+                    checked={filters.sides[key]}
+                    onChange={() =>
+                      applyFilters({
+                        ...filters,
+                        sides: { ...filters.sides, [key]: !filters.sides[key] },
+                      })
+                    }
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+              <label className="filter-chips-toggle" title={ORDERS_ONLY_TITLE}>
+                <input
+                  type="checkbox"
+                  checked={filters.ordersOnly}
+                  onChange={() => applyFilters({ ...filters, ordersOnly: !filters.ordersOnly })}
+                />
+                <span>matching orders only</span>
+              </label>
+            </div>
           ) : null}
         </div>
       ) : null}
@@ -769,16 +796,26 @@ export function narrowingsThatEmptiedTheBook(
     candidates.push({
       key: 'accounts',
       phrase: 'the account filter',
-      sentence: `The ${plural(filters.accountIds.size, 'selected account')} have no chain in this view.`,
+      sentence:
+        filters.accountIds.size === 0
+          ? 'No account is selected.'
+          : `The ${plural(filters.accountIds.size, 'selected account')} have no chain in this view.`,
       clear: (current) => ({ ...current, accountIds: null }),
     });
   }
   if (filters.symbols.size > 0) {
+    const symbols = [...filters.symbols].join(', ');
     candidates.push({
       key: 'symbols',
       phrase: 'the symbol filter',
-      sentence: `${[...filters.symbols].join(', ')} has no chain in this view.`,
-      clear: (current) => ({ ...current, symbols: new Set<string>() }),
+      sentence: filters.symbolsExcluded
+        ? `Excluding ${symbols} leaves no chain in this view.`
+        : `${symbols} has no chain in this view.`,
+      clear: (current) => ({
+        ...current,
+        symbols: defaultBookFilters.symbols,
+        symbolsExcluded: false,
+      }),
     });
   }
   if (filters.canceledStatusFilter) {
@@ -791,11 +828,7 @@ export function narrowingsThatEmptiedTheBook(
         filters.canceledStatuses !== null && filters.canceledStatuses.size === 0
           ? 'No canceled status is selected.'
           : 'No chain owns a canceled order with one of the selected statuses.',
-      clear: (current) => ({
-        ...current,
-        canceledStatusFilter: false,
-        canceledStatuses: null,
-      }),
+      clear: clearCanceledStatusFilter,
     });
   }
   if (filters.reasonFilter) {
@@ -806,7 +839,7 @@ export function narrowingsThatEmptiedTheBook(
         filters.reasons !== null && filters.reasons.size === 0
           ? 'No reason is selected.'
           : 'No chain owns a row with one of the selected reasons.',
-      clear: (current) => ({ ...current, reasonFilter: false, reasons: null }),
+      clear: clearReasonFilter,
     });
   }
   if (filters.sourceFilter) {
@@ -817,7 +850,7 @@ export function narrowingsThatEmptiedTheBook(
         filters.sources !== null && filters.sources.size === 0
           ? 'No source is selected.'
           : 'No chain owns an order ended by one of the selected sources.',
-      clear: (current) => ({ ...current, sourceFilter: false, sources: null }),
+      clear: clearSourceFilter,
     });
   }
   if (filters.originFilter) {
@@ -828,7 +861,7 @@ export function narrowingsThatEmptiedTheBook(
         filters.origins !== null && filters.origins.size === 0
           ? 'No origin is selected.'
           : 'No chain owns a row from one of the selected origins.',
-      clear: (current) => ({ ...current, originFilter: false, origins: null }),
+      clear: clearOriginFilter,
     });
   }
   if (filters.timeFilter) {
@@ -838,17 +871,8 @@ export function narrowingsThatEmptiedTheBook(
       sentence:
         filters.timeFields.size === 0
           ? 'No time column is selected.'
-          : !filters.timeBuys && !filters.timeSells
-            ? 'Neither buys nor sells is selected.'
-            : 'No chain owns an order with a selected time inside the time range.',
-      clear: (current) => ({
-        ...current,
-        timeFilter: false,
-        timeFields: defaultBookFilters.timeFields,
-        timeBuys: defaultBookFilters.timeBuys,
-        timeSells: defaultBookFilters.timeSells,
-        timeIncludeCanceled: defaultBookFilters.timeIncludeCanceled,
-      }),
+          : 'No chain owns an order with a selected time inside the time range.',
+      clear: clearTimeFilter,
     });
   }
   if (filters.slippageFilter) {
@@ -858,9 +882,7 @@ export function narrowingsThatEmptiedTheBook(
       sentence:
         filters.slippageFields.size === 0
           ? 'No slippage column is selected.'
-          : !filters.slippageBuys && !filters.slippageSells
-            ? 'Neither buys nor sells is selected.'
-            : 'No chain owns an order flagged in a selected column.',
+          : 'No chain owns an order flagged in a selected column.',
       clear: clearSlippageFilter,
     });
   }
@@ -880,6 +902,20 @@ export function narrowingsThatEmptiedTheBook(
         batchFrom: rangeDates[0] ?? null,
         batchTo: rangeDates.at(-1) ?? null,
       }),
+    });
+  }
+
+  /* The side toggles narrow only what the row filters read, so they count while
+     one of those is on — and clear as one, back to reading every order. */
+  if (rowFiltersActive(filters) && bookSidesNarrowed(filters.sides)) {
+    candidates.push({
+      key: 'sides',
+      phrase: 'the side toggles',
+      sentence:
+        !filters.sides.buys && !filters.sides.sells
+          ? 'Neither buys nor sells is selected.'
+          : 'The side toggles leave out every order the filters would keep.',
+      clear: (current) => ({ ...current, sides: BOOK_SIDES_DEFAULT }),
     });
   }
 
@@ -958,6 +994,9 @@ function rowMatchesFilters(
   filters: BookFilterState,
   rowFlags: BookRowFlagContext,
 ): boolean {
+  // The side toggles first: the cheapest question, and a row they leave out
+  // spares every test below it.
+  if (!rowOnBookSides(row, filters.sides)) return false;
   if (filters.canceledStatusFilter && !rowMatchesCanceledStatus(row, filters.canceledStatuses))
     return false;
   if (filters.reasonFilter && !rowMatchesReason(row, filters.reasons)) return false;
@@ -965,34 +1004,46 @@ function rowMatchesFilters(
   if (filters.originFilter && !rowMatchesOrigin(row, filters.origins)) return false;
   if (
     filters.timeFilter &&
-    !rowMatchesBookTime(row, filters.timeFields, filters.timeFrom, filters.timeTo, {
-      buys: filters.timeBuys,
-      sells: filters.timeSells,
-      includeCanceled: filters.timeIncludeCanceled,
-    })
+    !rowMatchesBookTime(row, filters.timeFields, filters.timeFrom, filters.timeTo)
   )
     return false;
-  if (
-    filters.slippageFilter &&
-    !rowMatchesBookSlippage(
-      row,
-      filters.slippageFields,
-      { buys: filters.slippageBuys, sells: filters.slippageSells },
-      rowFlags,
-    )
-  )
+  if (filters.slippageFilter && !rowMatchesBookSlippage(row, filters.slippageFields, rowFlags))
     return false;
   return true;
 }
 
-/** Off, with every field and both sides back — the state the filter comes up in. */
+/* Each row filter cleared: off, with its selection back to the none it comes up in. */
+
+function clearCanceledStatusFilter(current: BookFilterState): BookFilterState {
+  return {
+    ...current,
+    canceledStatusFilter: false,
+    canceledStatuses: defaultBookFilters.canceledStatuses,
+  };
+}
+
+function clearReasonFilter(current: BookFilterState): BookFilterState {
+  return { ...current, reasonFilter: false, reasons: defaultBookFilters.reasons };
+}
+
+function clearSourceFilter(current: BookFilterState): BookFilterState {
+  return { ...current, sourceFilter: false, sources: defaultBookFilters.sources };
+}
+
+function clearOriginFilter(current: BookFilterState): BookFilterState {
+  return { ...current, originFilter: false, origins: defaultBookFilters.origins };
+}
+
+/** The clocks go back to none; the range stays for the next time it is switched on. */
+function clearTimeFilter(current: BookFilterState): BookFilterState {
+  return { ...current, timeFilter: false, timeFields: defaultBookFilters.timeFields };
+}
+
 function clearSlippageFilter(current: BookFilterState): BookFilterState {
   return {
     ...current,
     slippageFilter: false,
     slippageFields: defaultBookFilters.slippageFields,
-    slippageBuys: defaultBookFilters.slippageBuys,
-    slippageSells: defaultBookFilters.slippageSells,
   };
 }
 
@@ -1010,9 +1061,8 @@ function chainMatchesSlippage(
   return (
     !filters.slippageFilter ||
     matchesBookSlippage(
-      chain,
+      rowsOnBookSides(chain.rows, filters.sides),
       filters.slippageFields,
-      { buys: filters.slippageBuys, sells: filters.slippageSells },
       rowFlags,
     )
   );
@@ -1024,24 +1074,12 @@ function chainMatches(
   accountKey: string | null,
 ): boolean {
   if (filters.noClosingOrder) return chain.hasNoClosingOrder;
+  // What answers for the whole chain at once goes first: each is one lookup.
   if (!filters.scopes.has(chain.scope)) return false;
   if (filters.botIds !== null && !filters.botIds.has(chain.botId)) return false;
   if (filters.accountIds !== null && (accountKey === null || !filters.accountIds.has(accountKey)))
     return false;
-  if (filters.symbols.size > 0 && !filters.symbols.has(chain.symbol)) return false;
-  if (filters.canceledStatusFilter && !matchesCanceledStatus(chain, filters.canceledStatuses))
-    return false;
-  if (filters.reasonFilter && !matchesReason(chain, filters.reasons)) return false;
-  if (filters.sourceFilter && !matchesSource(chain, filters.sources)) return false;
-  if (filters.originFilter && !matchesOrigin(chain, filters.origins)) return false;
-  if (
-    filters.timeFilter &&
-    !matchesBookTime(chain, filters.timeFields, filters.timeFrom, filters.timeTo, {
-      buys: filters.timeBuys,
-      sells: filters.timeSells,
-      includeCanceled: filters.timeIncludeCanceled,
-    })
-  )
+  if (filters.symbols.size > 0 && filters.symbols.has(chain.symbol) === filters.symbolsExcluded)
     return false;
   // A chain with no batch has no span either, and stays out of every range.
   if (
@@ -1052,6 +1090,20 @@ function chainMatches(
         { from: filters.batchFrom, to: filters.batchTo },
         filters.batchBasis,
       ))
+  )
+    return false;
+  if (!rowFiltersActive(filters)) return true;
+  // Then the row filters, each on only the rows the side toggles read — asked
+  // once, here, so every costlier test below runs on what they leave.
+  const rows = rowsOnBookSides(chain.rows, filters.sides);
+  if (filters.canceledStatusFilter && !matchesCanceledStatus(rows, filters.canceledStatuses))
+    return false;
+  if (filters.reasonFilter && !matchesReason(rows, filters.reasons)) return false;
+  if (filters.sourceFilter && !matchesSource(rows, filters.sources)) return false;
+  if (filters.originFilter && !matchesOrigin(rows, filters.origins)) return false;
+  if (
+    filters.timeFilter &&
+    !matchesBookTime(rows, filters.timeFields, filters.timeFrom, filters.timeTo)
   )
     return false;
   return true;
@@ -1071,6 +1123,11 @@ function rangeNarrowed(filters: BookFilterState, rangeDates: readonly string[]):
   );
 }
 
+/*
+ * The chain-level tests below are each handed the chain's rows the side toggles
+ * read, never the chain: a row they leave out cannot keep its chain.
+ */
+
 /**
  * A chain qualifies by owning a canceled order whose status is ticked, and it
  * then draws in full — the filter selects chains, never rows, exactly as the
@@ -1078,8 +1135,11 @@ function rangeNarrowed(filters: BookFilterState, rangeDates: readonly string[]):
  * so switching the filter on narrows the Book even with every status ticked;
  * that is what the off switch beside them is for.
  */
-function matchesCanceledStatus(chain: BookChain, statuses: ReadonlySet<string> | null): boolean {
-  return chain.canceledRows.some((row) => rowMatchesCanceledStatus(row, statuses));
+function matchesCanceledStatus(
+  rows: readonly BookChainRow[],
+  statuses: ReadonlySet<string> | null,
+): boolean {
+  return rows.some((row) => rowMatchesCanceledStatus(row, statuses));
 }
 
 function rowMatchesCanceledStatus(
@@ -1098,8 +1158,11 @@ function rowMatchesCanceledStatus(
  * at all cannot match, which is why switching the filter on narrows the Book
  * even with every reason ticked.
  */
-function matchesReason(chain: BookChain, reasons: ReadonlySet<string> | null): boolean {
-  return chain.rows.some((row) => rowMatchesReason(row, reasons));
+function matchesReason(
+  rows: readonly BookChainRow[],
+  reasons: ReadonlySet<string> | null,
+): boolean {
+  return rows.some((row) => rowMatchesReason(row, reasons));
 }
 
 function rowMatchesReason(row: BookChainRow, reasons: ReadonlySet<string> | null): boolean {
@@ -1111,8 +1174,11 @@ function rowMatchesReason(row: BookChainRow, reasons: ReadonlySet<string> | null
  * death names one, which is why switching the filter on narrows the Book even
  * with every source ticked.
  */
-function matchesSource(chain: BookChain, sources: ReadonlySet<string> | null): boolean {
-  return chain.rows.some((row) => rowMatchesSource(row, sources));
+function matchesSource(
+  rows: readonly BookChainRow[],
+  sources: ReadonlySet<string> | null,
+): boolean {
+  return rows.some((row) => rowMatchesSource(row, sources));
 }
 
 function rowMatchesSource(row: BookChainRow, sources: ReadonlySet<string> | null): boolean {
@@ -1124,8 +1190,11 @@ function rowMatchesSource(row: BookChainRow, sources: ReadonlySet<string> | null
  * ordinary bot order names no origin, which is why switching the filter on
  * narrows the Book even with every origin ticked.
  */
-function matchesOrigin(chain: BookChain, origins: ReadonlySet<string> | null): boolean {
-  return chain.rows.some((row) => rowMatchesOrigin(row, origins));
+function matchesOrigin(
+  rows: readonly BookChainRow[],
+  origins: ReadonlySet<string> | null,
+): boolean {
+  return rows.some((row) => rowMatchesOrigin(row, origins));
 }
 
 function rowMatchesOrigin(row: BookChainRow, origins: ReadonlySet<string> | null): boolean {
@@ -1323,6 +1392,17 @@ const ALLOCATED_TITLE =
 const ORDERS_ONLY_TITLE =
   'Draw only the orders that pass every filter at once, each still inside its chain.\n' +
   'The order count, the canceled count and the slip averages follow the orders drawn; budget, allocated, P&L and today still read each drawn chain whole.';
+
+/** Which orders the row filters read, beside the switch that draws only those. */
+const SIDE_TOGGLES: readonly { key: keyof BookSides; label: string }[] = [
+  { key: 'buys', label: 'buys' },
+  { key: 'sells', label: 'sells' },
+  { key: 'includeCanceled', label: 'include canceled' },
+];
+
+const SIDES_TITLE =
+  'Which orders every order filter reads — canceled status, reason, source, origin, time and slippage.\n' +
+  'A buy or a sell is read while its side is ticked; a canceled order only while include canceled is ticked too.';
 
 function Stat({
   label,
@@ -1820,10 +1900,11 @@ function filterChips(
     });
   // One chip per symbol, never a joined list: a chip is the control that
   // removes what it names, and `AKBNK, GARAN ×` can only drop both at once.
+  // An excluded one says so, since it removes the opposite of what it names.
   for (const symbol of [...filters.symbols].sort())
     chips.push({
       key: `symbol:${symbol}`,
-      label: symbol,
+      label: filters.symbolsExcluded ? `not ${symbol}` : symbol,
       clear: (current) => {
         const symbols = new Set(current.symbols);
         symbols.delete(symbol);
@@ -1839,11 +1920,7 @@ function filterChips(
         filters.canceledStatuses === null
           ? 'with a canceled leg'
           : plural(filters.canceledStatuses.size, 'canceled status', 'canceled statuses'),
-      clear: (current) => ({
-        ...current,
-        canceledStatusFilter: false,
-        canceledStatuses: null,
-      }),
+      clear: clearCanceledStatusFilter,
     });
   if (filters.reasonFilter)
     chips.push({
@@ -1852,47 +1929,32 @@ function filterChips(
         filters.reasons === null
           ? 'with a recorded reason'
           : plural(filters.reasons.size, 'reason'),
-      clear: (current) => ({ ...current, reasonFilter: false, reasons: null }),
+      clear: clearReasonFilter,
     });
   if (filters.sourceFilter)
     chips.push({
       key: 'sources',
       label:
         filters.sources === null ? 'with a named source' : plural(filters.sources.size, 'source'),
-      clear: (current) => ({ ...current, sourceFilter: false, sources: null }),
+      clear: clearSourceFilter,
     });
   if (filters.originFilter)
     chips.push({
       key: 'origins',
       label:
         filters.origins === null ? 'with a named origin' : plural(filters.origins.size, 'origin'),
-      clear: (current) => ({ ...current, originFilter: false, origins: null }),
+      clear: clearOriginFilter,
     });
-  if (filters.timeFilter) {
-    // The chip names the range, then any way the side toggles depart from
-    // "both sides, canceled legs out" — the state the filter comes up in.
-    const sideNotes = [
-      filters.timeBuys === filters.timeSells ? null : filters.timeBuys ? 'buys only' : 'sells only',
-      !filters.timeBuys && !filters.timeSells ? 'no side' : null,
-      filters.timeIncludeCanceled ? 'with canceled' : null,
-    ].filter((note): note is string => note !== null);
-    const range = `time ${formatBookTime(filters.timeFrom)} → ${formatBookTime(filters.timeTo)}`;
+  // The side toggles take no chip of their own: they are drawn at the end of
+  // this same row, beside `matching orders only`, whenever they can matter.
+  if (filters.timeFilter)
     chips.push({
       key: 'time',
-      label: sideNotes.length > 0 ? `${range} · ${sideNotes.join(' · ')}` : range,
-      clear: (current) => ({
-        ...current,
-        timeFilter: false,
-        timeFields: defaultBookFilters.timeFields,
-        timeBuys: defaultBookFilters.timeBuys,
-        timeSells: defaultBookFilters.timeSells,
-        timeIncludeCanceled: defaultBookFilters.timeIncludeCanceled,
-      }),
+      label: `time ${formatBookTime(filters.timeFrom)} → ${formatBookTime(filters.timeTo)}`,
+      clear: clearTimeFilter,
     });
-  }
   if (filters.slippageFilter) {
-    // Every column ticked is the plain word; a narrower pick names its columns,
-    // then the chip says how the sides depart from "both".
+    // Every column ticked is the plain word; a narrower pick names its columns.
     const fields =
       filters.slippageFields.size === BOOK_SLIPPAGE_FIELDS.length
         ? null
@@ -1901,17 +1963,9 @@ function filterChips(
           : BOOK_SLIPPAGE_FIELDS.filter(({ key }) => filters.slippageFields.has(key))
               .map(({ label }) => label)
               .join(', ');
-    const sides =
-      filters.slippageBuys === filters.slippageSells
-        ? filters.slippageBuys
-          ? null
-          : 'no side'
-        : filters.slippageBuys
-          ? 'buys only'
-          : 'sells only';
     chips.push({
       key: 'slippage',
-      label: ['slippage', fields, sides].filter((part) => part !== null).join(' · '),
+      label: fields === null ? 'slippage' : `slippage · ${fields}`,
       clear: clearSlippageFilter,
     });
   }

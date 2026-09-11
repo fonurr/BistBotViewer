@@ -195,7 +195,7 @@ value is empty here as everywhere.
 trails the live sessions, and the Book opens on the newest batch. The column fills as you walk
 back through the batches, not on the one being worked — which is the opposite of where a reader
 looks first. That lag is routine, not news, so the detail line stays silent when the current
-session is the only batch past the cache; it only speaks up once an *older* batch is left behind
+session is the only batch past the cache; it only speaks up once an _older_ batch is left behind
 too, which is when the lag is worth a reader's attention.
 
 The read is **chunked** for the same reason it is bounded: `BookPage` asks for every row the
@@ -249,7 +249,9 @@ pages import unchanged — the Book defines the shape, and no page reimplements 
 the current selection as a count (`4 bots`, `2 accounts`), and an unset symbol filter reads
 `any symbol` in placeholder ink. The bot popover carries `all`, `none`, `active` and `inactive`
 over its heading; `none` empties the book and the reason panel names the bot narrowing that did
-it, while `all` returns to meaning every bot rather than ticking today's. The **needs-a-human** pill lives at the right of
+it, while `all` returns to meaning every bot rather than ticking today's. The account popover
+carries `all` and `none` the same way, and its `none` reads `No account is selected.` in the
+empty-Book reason. The **needs-a-human** pill lives at the right of
 that same toolbar row — a dead-tinted pill with its warning glyph, its clickable counts, and the
 word `unfiltered`, said once. Its counts never follow the filters — it is the one count on this
 toolbar that does not, which is why it says so. The canceled toggle beside it **is** its own
@@ -257,6 +259,15 @@ count, so it counts what it would uncover: the canceled legs on the chains the f
 it is not drawn at all where they kept none.
 Account selection uses the stored account and brokerage together; matching account numbers at
 different brokerages remain separate filters.
+
+The symbol popover carries an **`exclude`** switch under its heading. Off, the picked symbols are
+the chains kept; on, they are the chains left out and every other symbol stays, so a pick of two
+reads `all but 2 symbols` on the trigger, each chip reads `not AKBNK`, and the picked chips are
+struck through. Flipping it keeps the pick, so it inverts what the Book draws rather than starting
+over. A chain names one symbol, so excluding is the exact complement of keeping, and a queued
+basket naming any picked symbol is left out with it. An empty pick is every symbol whichever way
+the switch sits; the empty-Book reason reads `Excluding AKBNK, GARAN leaves no chain in this
+view.`, and clearing the filter from there puts the switch back off too.
 
 The **batch range** is `components/DateRangeFilter`, and Performance draws the same control, so a
 range means the same set of sessions on both pages. The Book opens on **every loaded batch**, every
@@ -295,22 +306,15 @@ readings keep the same chains — and `clear all` turns it back off.
 
 The **time filter** uses the six clocks drawn in the grid, in column order: `created`, `sched`,
 `intent`, `sent`, `order`, and `final`. Its popover starts with `filter`, `all`, and `none`, followed
-by the clock checkboxes and two sliders. It starts off, with every clock selected and the full
-day selected. `all` and `none` change only the clocks; switching the filter off restores all clock
-checkboxes **and the leg-side defaults below**, and preserves the range. A chain qualifies where
-any of its orders has any selected clock within the range, and is drawn whole. Missing clocks
-cannot match, and queued baskets have no order clock, so they drop out while this filter is on.
-Clock comparison uses Istanbul time of day independently of the batch date, including the entire
-selected end minute: `10:00 → 10:02` keeps stamps through `10:02:59.999`.
-
-Across from the first clock checkboxes sit three **leg-side toggles** — `buys`, `sells`, and
-`include canceled` — that decide which legs the range is read against. `all` / `none` never touch
-them; only switching the filter off restores their defaults. `buys` and `sells` (both on by
-default) are an **OR**: a chain matches on any leg whose side is still ticked, and with neither
-ticked nothing matches. `include canceled` (off by default) is an **AND** laid over both: a
-canceled leg is read only while it is on and that leg's own side is ticked too. So a collapsed
-canceled tail no longer keeps a chain in the time search unless `include canceled` asks for it.
-`domain/bookTimeFilter.ts` (`BookTimeSides`, `matchesBookTime`, and `rowMatchesBookTime` for one
+by the clock checkboxes and two sliders. It starts off, with **no clock ticked** and the full day
+selected, and switching it either way puts the clocks back to none — the rule every filter behind
+a switch follows (see the canceled-status filter below) — while the range survives the switch.
+`all` and `none` change only the clocks. A chain qualifies where any of its orders the side
+toggles read (beside `matching orders only`, below) has any selected clock within the range, and
+is drawn whole. Missing clocks cannot match, and queued baskets have no order clock, so they drop
+out while this filter is on. Clock comparison uses Istanbul time of day independently of the
+batch date, including the entire selected end minute: `10:00 → 10:02` keeps stamps through
+`10:02:59.999`. `domain/bookTimeFilter.ts` (`matchesBookTime`, and `rowMatchesBookTime` for one
 leg) owns the rule.
 
 `domain/bookTimeFilter.ts` owns both matching and the slider stops: hourly from `00:00` through
@@ -333,7 +337,7 @@ away merely by rendering.
 Once active, the toolbar trigger is deliberately compact: it carries only `hh:mm-hh:mm`. The time
 range heading stays on the left of its popover; `‹`, `›`, and `reset` sit together on the right.
 `reset` changes only the two clock endpoints, restoring `00:00` through `23:59` without changing
-whether time filtering is on, which clock columns are selected, or the leg-side toggles.
+whether time filtering is on or which clock columns are selected.
 
 Each slider has its own `− / +` buttons, and `‹ / ›` move both endpoints together. Like the batch
 range, the buttons step through the allowed stops rather than adding a fixed number of minutes:
@@ -342,9 +346,8 @@ filter is off, at the day bounds, or when an individual endpoint would cross the
 endpoints, the start's `+` and end's `−` are disabled; the whole-range buttons can still move that
 single minute. A whole-range move must fit in full and never shrinks against a day boundary.
 The filter participates in active chips, empty-result recovery, and clearing the other filters
-when focusing positions without a closing order. Its chip names the range and then any way the
-leg sides depart from their default — `buys only`, `sells only`, `no side`, `with canceled` — and
-the empty-Book reason calls out an empty side selection the way it calls out an empty clock one.
+when focusing positions without a closing order. Its chip names the range alone, and the
+empty-Book reason calls out an empty clock selection (`No time column is selected.`).
 
 The **slippage filter**, beside it, is the same popover head over what the grid **flags** rather than
 over a clock range: `filter`, `all` and `none`, then six columns on the left in grid order —
@@ -352,17 +355,17 @@ over a clock range: `filter`, `all` and `none`, then six columns on the left in 
 cell draws a slip, and `sent time`, `order time` and `final time` match a leg whose clock is drawn red
 or orange — each of those three names its own threshold in the label (`sent time (10s)`, `order time
 (5s)`, `final time (10s or 2m)`), read off `bookRowFlags.ts` via `formatFlagThreshold` so the number
-can never drift from the cell it describes. Across from them sit `buys` and `sells`, an **OR** like the time filter's, which `all` /
-`none` never touch; there is no canceled opt-in, so a canceled leg counts like any other — it is where
-a skipped schedule's orange `final` lives. The match is **not** read off the colours: every column
-asks the function its cell draws from (`domain/bookRowFlags.ts`), and `domain/bookSlippageFilter.ts`
-(`matchesBookSlippage`, `rowMatchesBookSlippage` for one leg) maps each column to one. A chain qualifies where any leg on a ticked side
-flags any ticked column, and is drawn whole. It starts off with every column and both sides ticked,
-and switching it either way restores those; while on, the trigger counts the ticked columns (`6
-slips`, `1 slip`). A chain nothing flags cannot match, so switching it on narrows the Book even with
-every column ticked, and a queued basket drops out with it. Its chip reads `slippage`, then the ticked
-columns when not all are, then `buys only` / `sells only` / `no side`; the empty-Book reason names an
-empty column or side selection.
+can never drift from the cell it describes. Which legs it reads is the side toggles' call, as for
+every row filter, and a canceled leg is read by default — it is where a skipped schedule's orange
+`final` lives. The match is **not** read off the colours: every column asks the function its cell
+draws from (`domain/bookRowFlags.ts`), and `domain/bookSlippageFilter.ts` (`matchesBookSlippage`,
+`rowMatchesBookSlippage` for one leg) maps each column to one. A chain qualifies where any leg the
+side toggles read flags any ticked column, and is drawn whole. It starts off with **no column
+ticked**, and switching it either way puts them back to none; while on, the trigger counts the
+ticked columns (`0 slips`, `1 slip`, `6 slips`). A chain nothing flags cannot match, so it narrows
+the Book even with every column ticked, and a queued basket drops out with it. Its chip reads
+`slippage`, then the ticked columns when not all are (`no column` for none); the empty-Book reason
+names an empty column selection.
 
 ⚠️ The `@intent` slip comes from the minute history, read for the chains on screen. So the slippage
 filter is applied **last**, to the chains every other filter kept: those are the chains `BookPage`
@@ -380,9 +383,12 @@ then drawn whole, exactly as a symbol match draws a whole chain. **Switching it 
 narrowing** — a chain that never lost a leg has nothing that can match, so it drops out even with
 every status ticked, and a queued basket, which owns no order yet, drops with it. That is what the
 off switch leading the `all` / `none` row is for: off is not "all of them", it is the filter not
-being asked, so the boxes behind it are ticked and disabled and the trigger reads `any status` in
-placeholder ink. Off also pins the selection back to every status, so those ticked boxes are
-telling the truth rather than hiding a narrowing that would spring back on. The switch is the
+being asked, so the boxes behind it are disabled and the trigger reads `any status` in placeholder
+ink. **Switching it either way puts the selection back to none**, the way the `none` button leaves
+it: a reader switching it on ticks the statuses they came for rather than unticking the rest, the
+Book stays empty until they do (`No canceled status is selected.`), and the unticked boxes behind
+an off switch are exactly what it comes back on with. Every filter behind a switch — origin,
+canceled status, source, reason, time and slippage — comes up and clears that way. The switch is the
 `active` / `onActiveChange` pair on `components/EntityFilters`; the bot, account and symbol
 controls omit it and are always on. Where a book holds no canceled order at all the control is not
 drawn — a filter over an empty universe is not a control.
@@ -399,10 +405,10 @@ above it reads **every** row, not only the canceled ones: a chain qualifies wher
 live, scheduled, canceled, or the sell that closed a trade — carries a ticked reason, and is then
 drawn whole. Its list is built from the whole loaded book, never follows the other filters, and each
 option counts the chains it would keep rather than the rows. It carries the same off switch and for
-the same reason: a chain the server recorded nothing about cannot match, so switching it on narrows
-the Book even with every reason ticked, and a queued basket — which owns no order yet — drops with
-it. Off pins the selection back to every reason. Where no loaded row carries one, the control is not
-drawn.
+the same reason: a chain the server recorded nothing about cannot match, so it narrows the Book
+even with every reason ticked, and a queued basket — which owns no order yet — drops with it.
+Switching it either way puts the selection back to none. Where no loaded row carries one, the
+control is not drawn.
 
 Every row that carries a reason **prints it**, in the status cell's own qualifier line, after the
 verdict word: on a canceled leg the server's own `reason` leads that line in body ink, before the
@@ -462,6 +468,21 @@ aggregates, the strip's `today`, `realized`, `unrealized`, `total` and `allocate
 own `p&l` and `today` — still reads every row of each drawn chain, since a chain's budget, its
 round trip and its holding do not split by the row a filter hit. The toggle's `title` says so.
 `drawnBookView` in `BookPage` owns the rule.
+
+**The side toggles** — `buys`, `sells` and `include canceled` — sit just before it, drawn under the
+same condition, and decide **which orders every row filter reads**: canceled status, reason,
+source, origin, time and slippage alike. `buys` and `sells` are an **OR** — an order on a side
+still ticked is read, and with neither ticked none is — and `include canceled` is an **AND** laid
+over both: a canceled order is read only while it is ticked and its own side is too. All three
+start ticked, so by default every order is read and each one unticked only narrows; that default
+is also what keeps the canceled-status and source filters, which read nothing but canceled
+orders, from coming up empty. With `matching orders only` on they narrow the drawing as well: a
+row they leave out is never drawn. `domain/bookSides.ts` owns the rule, and `BookPage` asks it
+**first**, once per chain, before any row filter runs its own costlier test (an Istanbul clock, a
+slip), so those only ever run on what the toggles leave. Like `matching orders only` they take no
+chip, `clear all` puts them back, and where they are what emptied the Book the empty reason names
+`the side toggles` — `Neither buys nor sells is selected.` when neither side is ticked, `The side
+toggles leave out every order the filters would keep.` otherwise.
 
 That line carries **three inks, loudest first** (`BookRowDetailTone`, drawn by `RowDetail` for both
 the grid and the chain dialog). What the server decided — the reason and its numbers — is a fact of

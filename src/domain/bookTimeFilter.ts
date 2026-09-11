@@ -1,4 +1,4 @@
-import type { BookChain, BookChainRow } from './chains';
+import type { BookChainRow } from './chains';
 import { formatTime } from './format';
 import { CLOSE_MINUTE, CLOSING_MATCH_OFFSET_MINUTES, OPENING_MATCH_MINUTE } from './sessionHours';
 
@@ -66,25 +66,6 @@ export function bookTimeSliderSteps(range: BookTimeRange): readonly number[] {
 export type BookTimeRangeEdge = 'from' | 'to' | 'both';
 
 /**
- * Which of a chain's legs the time filter reads. `buys` and `sells` are an OR —
- * a chain matches on any leg whose side is still ticked — while `includeCanceled`
- * is an AND laid over both: a canceled leg is read only when it is on and its own
- * side is ticked too. All three are their own controls; `all` / `none` never
- * touch them. Default is both sides on and canceled legs left out.
- */
-export interface BookTimeSides {
-  buys: boolean;
-  sells: boolean;
-  includeCanceled: boolean;
-}
-
-export const BOOK_TIME_SIDES_DEFAULT: BookTimeSides = {
-  buys: true,
-  sells: true,
-  includeCanceled: false,
-};
-
-/**
  * Like the batch range, walk positions in the allowed stops. A whole-window
  * step keeps its width in stops; a step past either bound or the other edge
  * is unavailable, so its button is disabled rather than shortening the step.
@@ -106,37 +87,32 @@ export function stepBookTimeRange(
 }
 
 /**
- * Select whole chains by any chosen clock on any leg. `sides` narrows which legs
- * count: a buy leg only while `buys` is on, a sell leg only while `sells` is on,
- * and a canceled leg only while `includeCanceled` is on and its own side is too.
- * Dates stay the batch filter's concern. Both bounds include their whole minute,
- * including the final 23:59 minute without wrapping into midnight.
+ * Select a whole chain by any chosen clock on any of the rows given — the page
+ * hands over the ones its side toggles read (`bookSides.ts`). Dates stay the
+ * batch filter's concern. Both bounds include their whole minute, including the
+ * final 23:59 minute without wrapping into midnight.
  */
 export function matchesBookTime(
-  chain: BookChain,
+  rows: readonly BookChainRow[],
   fields: ReadonlySet<BookTimeField>,
   from: number,
   to: number,
-  sides: BookTimeSides,
 ): boolean {
-  return chain.rows.some((row) => rowMatchesBookTime(row, fields, from, to, sides));
+  return rows.some((row) => rowMatchesBookTime(row, fields, from, to));
 }
 
 /**
- * The same test for one leg: a leg the sides read that carries a chosen clock
- * inside the range. `matchesBookTime` keeps a chain on any such leg; the Book's
- * `matching orders only` draws just the legs that pass it.
+ * The same test for one leg: a chosen clock inside the range. `matchesBookTime`
+ * keeps a chain on any such leg; the Book's `matching orders only` draws just
+ * the legs that pass it.
  */
 export function rowMatchesBookTime(
   row: BookChainRow,
   fields: ReadonlySet<BookTimeField>,
   from: number,
   to: number,
-  sides: BookTimeSides,
 ): boolean {
   if (!isBookMinute(from) || !isBookMinute(to) || from > to) return false;
-  if (row.source === 'canceled' && !sides.includeCanceled) return false;
-  if (row.direction === 'buy' ? !sides.buys : !sides.sells) return false;
   for (const field of fields) {
     const timestamp = row[field];
     if (timestamp === null || !Number.isFinite(new Date(timestamp).getTime())) continue;

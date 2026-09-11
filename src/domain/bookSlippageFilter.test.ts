@@ -3,12 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { makeActiveOrder, makeCanceledOrder } from '../test/fixtures';
 import {
   BOOK_SLIPPAGE_FIELDS,
-  BOOK_SLIPPAGE_SIDES_DEFAULT,
   matchesBookSlippage,
   rowMatchesBookSlippage,
   type BookRowFlagContext,
   type BookSlippageField,
-  type BookSlippageSides,
 } from './bookSlippageFilter';
 import { buildBookChains } from './chains';
 
@@ -74,12 +72,9 @@ const context: BookRowFlagContext = {
   intentSlip: (row) => (row.chainId === 'intent' ? 0.5 : null),
 };
 
-function matching(
-  fields: readonly BookSlippageField[],
-  sides: BookSlippageSides = BOOK_SLIPPAGE_SIDES_DEFAULT,
-): string[] {
+function matching(fields: readonly BookSlippageField[]): string[] {
   return chains
-    .filter((chain) => matchesBookSlippage(chain, new Set(fields), sides, context))
+    .filter((chain) => matchesBookSlippage(chain.rows, new Set(fields), context))
     .map((chain) => chain.chainId ?? '')
     .sort();
 }
@@ -113,15 +108,11 @@ describe('the Book slippage filter', () => {
     expect(matching([])).toEqual([]);
   });
 
-  it('reads only the legs on a ticked side, canceled legs included', () => {
-    expect(matching(every, { buys: true, sells: false })).toEqual([
-      'created',
-      'intent',
-      'sent',
-      'slow',
-    ]);
-    expect(matching(every, { buys: false, sells: true })).toEqual(['final', 'late']);
-    expect(matching(every, { buys: false, sells: false })).toEqual([]);
+  it('reads only the rows it is handed, so the side toggles decide which legs count', () => {
+    const final = chains.find((chain) => chain.chainId === 'final')!;
+    // The skipped schedule's orange `final` sits on its canceled leg.
+    expect(matchesBookSlippage(final.rows, new Set(every), context)).toBe(true);
+    expect(matchesBookSlippage([], new Set(every), context)).toBe(false);
   });
 
   it('answers the same test one leg at a time, for the rows matching orders only draws', () => {
@@ -141,18 +132,14 @@ describe('the Book slippage filter', () => {
       positions: [],
       closedTrades: [],
     });
-    const flagged = (fields: readonly BookSlippageField[], sides = BOOK_SLIPPAGE_SIDES_DEFAULT) =>
+    const flagged = (fields: readonly BookSlippageField[]) =>
       mixed!.rows.map((row) => [
         row.direction,
-        rowMatchesBookSlippage(row, new Set(fields), sides, context),
+        rowMatchesBookSlippage(row, new Set(fields), context),
       ]);
 
     expect(flagged(every)).toEqual([
       ['buy', true],
-      ['sell', false],
-    ]);
-    expect(flagged(['orderTime'], { buys: false, sells: true })).toEqual([
-      ['buy', false],
       ['sell', false],
     ]);
     expect(flagged(['createdPrice'])).toEqual([

@@ -128,6 +128,116 @@ describe('BookFilters bot picks', () => {
   });
 });
 
+describe('BookFilters account picks', () => {
+  it('offers none beside all, an empty set rather than every account', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(
+      <BookFilters
+        filters={defaultBookFilters}
+        onChange={onChange}
+        bots={[makeBot()]}
+        accounts={[makeAccount({ brokerageId: 'BRK-1' }), makeAccount({ brokerageId: 'BRK-2' })]}
+        chains={[]}
+        rangeDates={[]}
+        batchesLoaded
+        currentSession={FIXTURE_DAY}
+        onSettleDates={vi.fn()}
+        noClosingOrderCount={0}
+        mismatchCount={0}
+        canceledCount={0}
+        canceledVisible={false}
+        manualOpenLegs={0}
+        manualClosedChains={0}
+        onToggleCanceled={vi.fn()}
+        onOpenMismatch={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: '2 accounts' }));
+    await user.click(screen.getByRole('button', { name: 'none' }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ accountIds: new Set<string>() }),
+    );
+    await user.click(screen.getByRole('button', { name: 'all' }));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ accountIds: null }));
+  });
+});
+
+describe('BookFilters symbol exclusion', () => {
+  const chains = buildBookChains({
+    activeOrders: [
+      makeActiveOrder({ id: 1, clientOrderId: 'a', chainId: 'a', symbol: 'AKBNK' }),
+      makeActiveOrder({ id: 2, clientOrderId: 'b', chainId: 'b', symbol: 'GARAN' }),
+    ],
+    canceledOrders: [],
+    positions: [],
+    closedTrades: [],
+  });
+
+  const renderFilters = (onChange: () => void, filters = defaultBookFilters) =>
+    render(
+      <BookFilters
+        filters={filters}
+        onChange={onChange}
+        bots={[makeBot()]}
+        accounts={[makeAccount()]}
+        chains={chains}
+        rangeDates={[]}
+        batchesLoaded
+        currentSession={FIXTURE_DAY}
+        onSettleDates={vi.fn()}
+        noClosingOrderCount={0}
+        mismatchCount={0}
+        canceledCount={0}
+        canceledVisible={false}
+        manualOpenLegs={0}
+        manualClosedChains={0}
+        onToggleCanceled={vi.fn()}
+        onOpenMismatch={vi.fn()}
+      />,
+    );
+
+  it('switches the pick from kept to left out, and keeps the pick', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    renderFilters(onChange, { ...defaultBookFilters, symbols: new Set(['AKBNK']) });
+
+    await user.click(screen.getByRole('button', { name: '1 symbol' }));
+    expect(screen.getByRole('checkbox', { name: 'exclude' })).not.toBeChecked();
+    await user.click(screen.getByRole('checkbox', { name: 'exclude' }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ symbols: new Set(['AKBNK']), symbolsExcluded: true }),
+    );
+  });
+
+  it('reads all but the picked symbols, striking them through', async () => {
+    const user = userEvent.setup();
+    renderFilters(vi.fn(), {
+      ...defaultBookFilters,
+      symbols: new Set(['AKBNK']),
+      symbolsExcluded: true,
+    });
+
+    await user.click(screen.getByRole('button', { name: 'all but 1 symbol' }));
+    expect(screen.getByRole('checkbox', { name: 'exclude' })).toBeChecked();
+    const picked = screen.getByRole('button', { name: 'AKBNK' });
+    expect(picked).toHaveAttribute('aria-pressed', 'true');
+    expect(picked).toHaveClass('symbol-option-excluded');
+    expect(screen.getByRole('button', { name: 'GARAN' })).not.toHaveClass('symbol-option-excluded');
+    expect(
+      screen.getByText(
+        '1 symbol excluded: AKBNK. A chain drops out if any of its orders is one of them.',
+      ),
+    ).toBeVisible();
+  });
+
+  it('reads any symbol while nothing is picked, whichever way the switch sits', () => {
+    renderFilters(vi.fn(), { ...defaultBookFilters, symbolsExcluded: true });
+    expect(screen.getByRole('button', { name: 'any symbol' })).toBeVisible();
+  });
+});
+
 describe('BookFilters canceled status filter', () => {
   // Two bots, four canceled legs, three distinct display statuses — and one
   // live chain that lost nothing, so the list can be shown to hold only what
@@ -188,20 +298,20 @@ describe('BookFilters canceled status filter', () => {
     expect(screen.getByRole('checkbox', { name: /Rejected/ })).toBeVisible();
   });
 
-  it('starts off, with every box ticked and disabled', async () => {
+  it('starts off, with no box ticked and every one disabled', async () => {
     const user = userEvent.setup();
     renderFilters(vi.fn());
 
     await user.click(screen.getByRole('button', { name: 'any status' }));
     for (const box of screen.getAllByRole('checkbox', { name: /By user|By bot|Rejected/ })) {
-      expect(box).toBeChecked();
+      expect(box).not.toBeChecked();
       expect(box).toBeDisabled();
     }
     expect(screen.getByRole('button', { name: 'all' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'none' })).toBeDisabled();
   });
 
-  it('switches on with every status still selected', async () => {
+  it('switches on with no status selected, the way none leaves it', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     renderFilters(onChange);
@@ -210,14 +320,18 @@ describe('BookFilters canceled status filter', () => {
     await user.click(screen.getByRole('checkbox', { name: 'filter' }));
 
     expect(onChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ canceledStatusFilter: true, canceledStatuses: null }),
+      expect.objectContaining({ canceledStatusFilter: true, canceledStatuses: new Set() }),
     );
   });
 
-  it('drops a status once it is on, and pins every status back when switched off', async () => {
+  it('drops a status once it is on, and puts none back when switched off', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
-    renderFilters(onChange, { ...defaultBookFilters, canceledStatusFilter: true });
+    renderFilters(onChange, {
+      ...defaultBookFilters,
+      canceledStatusFilter: true,
+      canceledStatuses: null,
+    });
 
     await user.click(screen.getByRole('button', { name: '3 statuses' }));
     await user.click(screen.getByRole('checkbox', { name: /Rejected/ }));
@@ -227,13 +341,17 @@ describe('BookFilters canceled status filter', () => {
 
     await user.click(screen.getByRole('checkbox', { name: 'filter' }));
     expect(onChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ canceledStatusFilter: false, canceledStatuses: null }),
+      expect.objectContaining({ canceledStatusFilter: false, canceledStatuses: new Set() }),
     );
   });
 
   it('counts the chains a status would keep, never the legs', async () => {
     const user = userEvent.setup();
-    renderFilters(vi.fn(), { ...defaultBookFilters, canceledStatusFilter: true });
+    renderFilters(vi.fn(), {
+      ...defaultBookFilters,
+      canceledStatusFilter: true,
+      canceledStatuses: null,
+    });
 
     await user.click(screen.getByRole('button', { name: '3 statuses' }));
 
@@ -332,7 +450,7 @@ describe('BookFilters reason filter', () => {
     expect(screen.getByRole('checkbox', { name: /TakeProfit/ })).toBeVisible();
   });
 
-  it('starts off, with every box ticked and disabled', async () => {
+  it('starts off, with no box ticked and every one disabled', async () => {
     const user = userEvent.setup();
     renderFilters(vi.fn());
 
@@ -340,12 +458,12 @@ describe('BookFilters reason filter', () => {
     for (const box of screen.getAllByRole('checkbox', {
       name: /BuyGuard|StopLoss|TakeProfit/,
     })) {
-      expect(box).toBeChecked();
+      expect(box).not.toBeChecked();
       expect(box).toBeDisabled();
     }
   });
 
-  it('switches on with every reason still selected', async () => {
+  it('switches on with no reason selected, the way none leaves it', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     renderFilters(onChange);
@@ -354,14 +472,14 @@ describe('BookFilters reason filter', () => {
     await user.click(screen.getByRole('checkbox', { name: 'filter' }));
 
     expect(onChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ reasonFilter: true, reasons: null }),
+      expect.objectContaining({ reasonFilter: true, reasons: new Set() }),
     );
   });
 
-  it('drops a reason once it is on, and pins every reason back when switched off', async () => {
+  it('drops a reason once it is on, and puts none back when switched off', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
-    renderFilters(onChange, { ...defaultBookFilters, reasonFilter: true });
+    renderFilters(onChange, { ...defaultBookFilters, reasonFilter: true, reasons: null });
 
     await user.click(screen.getByRole('button', { name: '3 reasons' }));
     await user.click(screen.getByRole('checkbox', { name: /StopLoss/ }));
@@ -371,13 +489,13 @@ describe('BookFilters reason filter', () => {
 
     await user.click(screen.getByRole('checkbox', { name: 'filter' }));
     expect(onChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ reasonFilter: false, reasons: null }),
+      expect.objectContaining({ reasonFilter: false, reasons: new Set() }),
     );
   });
 
   it('counts the chains a reason would keep, never the rows', async () => {
     const user = userEvent.setup();
-    renderFilters(vi.fn(), { ...defaultBookFilters, reasonFilter: true });
+    renderFilters(vi.fn(), { ...defaultBookFilters, reasonFilter: true, reasons: null });
 
     await user.click(screen.getByRole('button', { name: '3 reasons' }));
 
@@ -467,21 +585,21 @@ describe('BookFilters source filter', () => {
     );
   });
 
-  it('starts off, with every box ticked and disabled', async () => {
+  it('starts off, with no box ticked and every one disabled', async () => {
     const user = userEvent.setup();
     renderFilters(vi.fn());
 
     await user.click(screen.getByRole('button', { name: 'any source' }));
     for (const box of screen.getAllByRole('checkbox', { name: /Broker|Server/ })) {
-      expect(box).toBeChecked();
+      expect(box).not.toBeChecked();
       expect(box).toBeDisabled();
     }
   });
 
-  it('drops a source once it is on, and pins every source back when switched off', async () => {
+  it('drops a source once it is on, and puts none back when switched off', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
-    renderFilters(onChange, { ...defaultBookFilters, sourceFilter: true });
+    renderFilters(onChange, { ...defaultBookFilters, sourceFilter: true, sources: null });
 
     await user.click(screen.getByRole('button', { name: '2 sources' }));
     await user.click(screen.getByRole('checkbox', { name: /Broker/ }));
@@ -491,7 +609,7 @@ describe('BookFilters source filter', () => {
 
     await user.click(screen.getByRole('checkbox', { name: 'filter' }));
     expect(onChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ sourceFilter: false, sources: null }),
+      expect.objectContaining({ sourceFilter: false, sources: new Set() }),
     );
   });
 
@@ -579,21 +697,21 @@ describe('BookFilters origin filter', () => {
     );
   });
 
-  it('starts off, with every box ticked and disabled', async () => {
+  it('starts off, with no box ticked and every one disabled', async () => {
     const user = userEvent.setup();
     renderFilters(vi.fn());
 
     await user.click(screen.getByRole('button', { name: 'any origin' }));
     for (const box of screen.getAllByRole('checkbox', { name: /User|Retry|StopLoss/ })) {
-      expect(box).toBeChecked();
+      expect(box).not.toBeChecked();
       expect(box).toBeDisabled();
     }
   });
 
-  it('drops an origin once it is on, and pins every origin back when switched off', async () => {
+  it('drops an origin once it is on, and puts none back when switched off', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
-    renderFilters(onChange, { ...defaultBookFilters, originFilter: true });
+    renderFilters(onChange, { ...defaultBookFilters, originFilter: true, origins: null });
 
     await user.click(screen.getByRole('button', { name: '3 origins' }));
     await user.click(screen.getByRole('checkbox', { name: /Retry/ }));
@@ -603,7 +721,7 @@ describe('BookFilters origin filter', () => {
 
     await user.click(screen.getByRole('checkbox', { name: 'filter' }));
     expect(onChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ originFilter: false, origins: null }),
+      expect.objectContaining({ originFilter: false, origins: new Set() }),
     );
   });
 

@@ -49,10 +49,11 @@ interface MultiSelectFilterProps {
   onChange: (selection: FilterSelection) => void;
   /**
    * An off switch over the whole control, for a filter that narrows the page
-   * even with every option ticked. Off is not a selection, so every box goes
-   * ticked and disabled behind it: nothing is being excluded because nothing
-   * is being asked. Omit the pair and the control is always on, as the bot,
-   * account and symbol filters are.
+   * even with every option ticked. Off is not a selection, so every box is
+   * disabled behind it and the trigger reads `inactiveLabel`; the boxes show
+   * the selection the filter comes back on with, which the page pins. Omit the
+   * pair and the control is always on, as the bot, account and symbol filters
+   * are.
    */
   active?: boolean;
   onActiveChange?: (active: boolean) => void;
@@ -161,7 +162,7 @@ export function MultiSelectFilter({
           <input
             type="checkbox"
             disabled={off}
-            checked={off || selected === null || selected.has(option.key)}
+            checked={selected === null || selected.has(option.key)}
             onChange={() => toggle(option.key)}
           />
           <span>{option.label}</span>
@@ -182,8 +183,17 @@ interface SymbolFilterProps {
   symbols: readonly string[];
   selected: ReadonlySet<string>;
   onChange: (selection: ReadonlySet<string>) => void;
+  /**
+   * An `exclude` switch, for a page that can also leave the picked symbols out
+   * and keep every other one. Flipping it keeps the pick, so it inverts what the
+   * page shows. Omit the pair and the control only keeps, as Performance's does.
+   */
+  excluded?: boolean;
+  onExcludedChange?: (excluded: boolean) => void;
   /** What a kept symbol qualifies — a chain on the Book, a round trip on Performance. */
   keptNote: (count: number, list: string) => ReactNode;
+  /** The same, while the picked symbols are the ones left out. */
+  excludedNote?: (count: number, list: string) => ReactNode;
   emptyNote: ReactNode;
 }
 
@@ -192,7 +202,8 @@ interface SymbolFilterProps {
  * toggle, and Enter taking the first match. Toggling a symbol clears the search
  * so the next one starts fresh. It never accepts free text — a symbol the loaded
  * rows do not name cannot be filtered to, and a typed one would silently return
- * nothing.
+ * nothing. With `exclude` on, the picked chips are the ones left out: struck
+ * through, and the trigger reads `all but 2 symbols`.
  */
 export function SymbolFilter({
   name = 'symbols',
@@ -202,7 +213,10 @@ export function SymbolFilter({
   symbols,
   selected,
   onChange,
+  excluded = false,
+  onExcludedChange,
   keptNote,
+  excludedNote,
   emptyNote,
 }: SymbolFilterProps) {
   const [query, setQuery] = useState('');
@@ -243,10 +257,18 @@ export function SymbolFilter({
     }
   };
 
+  const note = excluded ? (excludedNote ?? keptNote) : keptNote;
+
   return (
     <FilterPopover
       name={name}
-      label={selected.size === 0 ? 'any symbol' : plural(selected.size, 'symbol')}
+      label={
+        selected.size === 0
+          ? 'any symbol'
+          : excluded
+            ? `all but ${plural(selected.size, 'symbol')}`
+            : plural(selected.size, 'symbol')
+      }
       open={open}
       setOpen={setOpen}
       className={`symbol-filter${selected.size === 0 ? ' filter-unset' : ''}`}
@@ -259,6 +281,18 @@ export function SymbolFilter({
       }}
     >
       <PopoverHeading label={heading} action="clear" onAction={() => onChange(new Set<string>())} />
+      {onExcludedChange ? (
+        <div className="filter-picks">
+          <label className="filter-switch">
+            <input
+              type="checkbox"
+              checked={excluded}
+              onChange={() => onExcludedChange(!excluded)}
+            />
+            <span>exclude</span>
+          </label>
+        </div>
+      ) : null}
       <input
         ref={inputRef}
         className="input symbol-search"
@@ -272,10 +306,13 @@ export function SymbolFilter({
         {matching.map((symbol, index) => (
           <button
             type="button"
-            className={`tag symbol-option${selected.has(symbol) ? ' tag-accent' : ' tag-neutral'}${
-              trimmed && index === 0 ? ' symbol-enter-target' : ''
-            }`}
+            className={`tag symbol-option${
+              selected.has(symbol)
+                ? ` tag-accent${excluded ? ' symbol-option-excluded' : ''}`
+                : ' tag-neutral'
+            }${trimmed && index === 0 ? ' symbol-enter-target' : ''}`}
             key={symbol}
+            aria-pressed={selected.has(symbol)}
             onClick={() => toggle(symbol)}
           >
             {symbol}
@@ -293,7 +330,7 @@ export function SymbolFilter({
         </p>
       ) : null}
       {selected.size > 0 ? (
-        <p className="filter-help">{keptNote(selected.size, [...selected].sort().join(', '))}</p>
+        <p className="filter-help">{note(selected.size, [...selected].sort().join(', '))}</p>
       ) : null}
     </FilterPopover>
   );

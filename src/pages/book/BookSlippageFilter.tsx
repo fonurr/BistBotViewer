@@ -1,16 +1,8 @@
 import { selectionLabel } from '../../components/EntityFilters';
 import { FilterPopover } from '../../components/FilterPopover';
-import { BOOK_SLIPPAGE_FIELDS, BOOK_SLIPPAGE_SIDES_DEFAULT } from '../../domain/bookSlippageFilter';
+import { BOOK_SLIPPAGE_FIELDS } from '../../domain/bookSlippageFilter';
 import { BookFilterChecks } from './BookFilterChecks';
-import { keptChainDrawing, type BookFilterState } from './types';
-
-type BookSlippageSideKey = 'slippageBuys' | 'slippageSells';
-
-/** The same two leg-side toggles the time filter carries, and no canceled opt-in. */
-const BOOK_SLIPPAGE_SIDES: readonly { key: BookSlippageSideKey; label: string }[] = [
-  { key: 'slippageBuys', label: 'buys' },
-  { key: 'slippageSells', label: 'sells' },
-];
+import { defaultBookFilters, keptChainDrawing, type BookFilterState } from './types';
 
 interface BookSlippageFilterProps {
   filters: BookFilterState;
@@ -39,24 +31,16 @@ export function BookSlippageFilter({ filters, onChange, open, setOpen }: BookSli
           onChange({
             ...filters,
             slippageFilter: off,
-            slippageFields: new Set(BOOK_SLIPPAGE_FIELDS.map(({ key }) => key)),
-            slippageBuys: BOOK_SLIPPAGE_SIDES_DEFAULT.buys,
-            slippageSells: BOOK_SLIPPAGE_SIDES_DEFAULT.sells,
+            slippageFields: defaultBookFilters.slippageFields,
           })
         }
         fields={BOOK_SLIPPAGE_FIELDS}
         selected={filters.slippageFields}
         onSelectedChange={(slippageFields) => onChange({ ...filters, slippageFields })}
-        sides={BOOK_SLIPPAGE_SIDES.map(({ key, label }) => ({
-          key,
-          label,
-          checked: filters[key],
-          onToggle: () => onChange({ ...filters, [key]: !filters[key] }),
-        }))}
       />
       <p className="filter-help">
-        A price matches a leg whose cell draws a slip; a time, a leg whose clock is drawn red or
-        orange. Any ticked one on a buy or sell leg you keep ticked, canceled legs included, keeps{' '}
+        A price matches an order whose cell draws a slip; a time, an order whose clock is drawn red
+        or orange. Any ticked one on an order the side toggles read keeps{' '}
         {filters.ordersOnly
           ? `the chain, which then ${keptChainDrawing(filters)}.`
           : 'the whole chain.'}

@@ -713,9 +713,13 @@ describe('the canceled status filter', () => {
 
     await user.click(screen.getByRole('button', { name: 'any status' }));
     await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    // It comes on the way `none` leaves it, so nothing matches yet.
+    expect(screen.getByRole('button', { name: '0 statuses' })).toBeVisible();
+    expect(chainsInGrid()).toEqual([]);
 
-    // Every status is still ticked, and the chain that lost nothing still goes:
-    // it owns no canceled order, so nothing in it can match.
+    // Every status ticked, and the chain that lost nothing still goes: it owns
+    // no canceled order, so nothing in it can match.
+    await user.click(screen.getByRole('button', { name: 'all' }));
     expect(screen.getByRole('button', { name: '2 statuses' })).toBeVisible();
     expect(chainsInGrid()).toEqual(['AKBNK', 'GARAN']);
     expect(screen.getByRole('button', { name: 'with a canceled leg ×' })).toBeVisible();
@@ -728,7 +732,7 @@ describe('the canceled status filter', () => {
 
     await user.click(screen.getByRole('button', { name: 'any status' }));
     await user.click(screen.getByRole('checkbox', { name: 'filter' }));
-    await user.click(screen.getByRole('checkbox', { name: /Rejected/ }));
+    await user.click(screen.getByRole('checkbox', { name: /By user/ }));
 
     expect(chainsInGrid()).toEqual(['GARAN']);
     expect(screen.getByRole('button', { name: '1 canceled status ×' })).toBeVisible();
@@ -741,7 +745,6 @@ describe('the canceled status filter', () => {
 
     await user.click(screen.getByRole('button', { name: 'any status' }));
     await user.click(screen.getByRole('checkbox', { name: 'filter' }));
-    await user.click(screen.getByRole('button', { name: 'none' }));
 
     expect(screen.getByText('No canceled status is selected.', { exact: false })).toBeVisible();
 
@@ -798,8 +801,9 @@ describe('the reason filter', () => {
 
     await user.click(screen.getByRole('button', { name: 'any reason' }));
     await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    await user.click(screen.getByRole('button', { name: 'all' }));
 
-    // GARAN goes: every reason is still ticked, but nothing on it carries one.
+    // GARAN goes: every reason is ticked, but nothing on it carries one.
     expect(chainsInGrid()).toEqual(['AKBNK', 'SISE', 'THYAO']);
     expect(screen.getByRole('button', { name: 'with a recorded reason ×' })).toBeVisible();
   });
@@ -811,7 +815,8 @@ describe('the reason filter', () => {
 
     await user.click(screen.getByRole('button', { name: 'any reason' }));
     await user.click(screen.getByRole('checkbox', { name: 'filter' }));
-    await user.click(screen.getByRole('checkbox', { name: /BuyGuard/ }));
+    await user.click(screen.getByRole('checkbox', { name: /TakeProfit/ }));
+    await user.click(screen.getByRole('checkbox', { name: /StopLoss/ }));
 
     expect(chainsInGrid()).toEqual(['AKBNK', 'THYAO']);
     expect(screen.getByRole('button', { name: '2 reasons ×' })).toBeVisible();
@@ -824,7 +829,6 @@ describe('the reason filter', () => {
 
     await user.click(screen.getByRole('button', { name: 'any reason' }));
     await user.click(screen.getByRole('checkbox', { name: 'filter' }));
-    await user.click(screen.getByRole('button', { name: 'none' }));
 
     expect(screen.getByText('No reason is selected.', { exact: false })).toBeVisible();
 
@@ -892,8 +896,9 @@ describe('the source filter', () => {
 
     await user.click(screen.getByRole('button', { name: 'any source' }));
     await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    await user.click(screen.getByRole('button', { name: 'all' }));
 
-    // THYAO goes: every source is still ticked, but it has lost nothing.
+    // THYAO goes: every source is ticked, but it has lost nothing.
     expect(chainsInGrid()).toEqual(['AKBNK', 'GARAN', 'SISE']);
     expect(screen.getByRole('button', { name: 'with a named source ×' })).toBeVisible();
 
@@ -909,7 +914,6 @@ describe('the source filter', () => {
 
     await user.click(screen.getByRole('button', { name: 'any source' }));
     await user.click(screen.getByRole('checkbox', { name: 'filter' }));
-    await user.click(screen.getByRole('button', { name: 'none' }));
 
     expect(screen.getByText('No source is selected.', { exact: false })).toBeVisible();
 
@@ -958,7 +962,6 @@ describe('the time filter', () => {
     await user.click(document.querySelector('.canceled-global')!);
     await user.click(screen.getByRole('button', { name: 'any time' }));
     await user.click(screen.getByRole('checkbox', { name: 'filter' }));
-    await user.click(screen.getByRole('button', { name: 'none' }));
     await user.click(screen.getByRole('checkbox', { name: 'final' }));
     fireEvent.change(screen.getByRole('slider', { name: 'Start time' }), {
       target: { value: BOOK_TIME_STEPS.indexOf(600) },
@@ -967,21 +970,23 @@ describe('the time filter', () => {
       target: { value: BOOK_TIME_STEPS.indexOf(602) },
     });
 
-    // The only leg AKBNK has in range is its collapsed canceled one, so it
-    // stays out until 'include canceled' asks for it, then draws whole.
-    expect(chainsInGrid()).toEqual([]);
-    await user.click(screen.getByRole('checkbox', { name: 'include canceled' }));
-
+    // The only leg AKBNK has in range is its collapsed canceled one: every order
+    // is read by default, so it keeps the chain, drawn whole, until
+    // `include canceled` leaves the canceled legs out.
     expect(chainsInGrid()).toEqual(['AKBNK']);
     expect(screen.queryByRole('region', { name: 'Queued order baskets' })).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'time 10:00 → 10:02 · with canceled ×' }),
-    ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'time 10:00 → 10:02 ×' })).toBeVisible();
+    await user.click(screen.getByRole('checkbox', { name: 'include canceled' }));
+    expect(chainsInGrid()).toEqual([]);
+    await user.click(screen.getByRole('checkbox', { name: 'include canceled' }));
+    expect(chainsInGrid()).toEqual(['AKBNK']);
 
     await user.click(screen.getByRole('button', { name: 'Close filter' }));
-    await user.click(screen.getByRole('button', { name: 'time 10:00 → 10:02 · with canceled ×' }));
+    await user.click(screen.getByRole('button', { name: 'time 10:00 → 10:02 ×' }));
     expect(chainsInGrid()).toEqual(['AKBNK', 'GARAN']);
     expect(screen.getByRole('region', { name: 'Queued order baskets' })).toBeVisible();
+    // With no row filter on, the side toggles have nothing to narrow and go.
+    expect(screen.queryByRole('checkbox', { name: 'include canceled' })).toBeNull();
     await user.click(screen.getByRole('button', { name: 'any time' }));
     expect(screen.getByRole('slider', { name: 'Start time' })).toHaveAttribute(
       'aria-valuetext',
@@ -991,17 +996,16 @@ describe('the time filter', () => {
       'aria-valuetext',
       '10:02',
     );
-    expect(screen.getByRole('checkbox', { name: 'order' })).toBeChecked();
-    // Clearing the filter also puts the leg sides back to their defaults.
-    expect(screen.getByRole('checkbox', { name: 'buys' })).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: 'include canceled' })).not.toBeChecked();
+    // Clearing it put the clocks back to none, the way it comes up.
+    expect(screen.getByRole('checkbox', { name: 'final' })).not.toBeChecked();
   });
 });
 
 describe('matching orders only', () => {
   const istanbul = (clock: string) => Date.parse(`2026-08-25T${clock}+03:00`);
   // One chain of three orders: a round trip whose two legs were both sent inside
-  // continuous trading, so each draws an @sent slip, and a sell that died on the way.
+  // continuous trading, so each draws an @sent slip, and a sell that died on the
+  // way after registering at 11:30.
   const roundTrip = () => ({
     ...emptyRead(),
     closedTrades: [
@@ -1012,7 +1016,9 @@ describe('matching orders only', () => {
         openFinalSeenTime: istanbul('10:10:03'),
       }),
     ],
-    canceledOrders: [makeCanceledOrder({ chainId: 'chain-thyao-roundtrip' })],
+    canceledOrders: [
+      makeCanceledOrder({ chainId: 'chain-thyao-roundtrip', orderTime: istanbul('11:30:00') }),
+    ],
   });
   const rowsDrawn = () => [
     ...document.querySelectorAll('article[aria-label="THYAO chain"] .book-row'),
@@ -1054,7 +1060,7 @@ describe('matching orders only', () => {
     expect(within(sell as HTMLElement).getByRole('button', { name: 'THYAO' })).toBeVisible();
     expect(within(sell as HTMLElement).getByText('sell')).toBeVisible();
     expect(sell!.querySelectorAll('[role="cell"]')[2]!.textContent).toBe('100');
-    // A canceled leg counts for the time range only with `include canceled`.
+    // The dead sell registered at 11:30, so the time range never reads it.
     expect(document.querySelector('.canceled-global')).toBeNull();
   });
 
@@ -1104,6 +1110,7 @@ describe('matching orders only', () => {
     // The dead sell is the only canceled leg, and the time range never reads it.
     await user.click(screen.getByRole('button', { name: 'any status' }));
     await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    await user.click(screen.getByRole('button', { name: 'all' }));
     await user.click(screen.getByRole('button', { name: 'Close filter' }));
     expect(rowsDrawn()).toHaveLength(3);
 
@@ -1149,6 +1156,12 @@ describe('the slippage filter', () => {
 
     await user.click(screen.getByRole('button', { name: 'any slippage' }));
     await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    // On with no column ticked yet, it matches nothing.
+    expect(chainsInGrid()).toEqual([]);
+    expect(screen.getByRole('button', { name: 'slippage · no column ×' })).toBeVisible();
+    expect(screen.getByText('No slippage column is selected.', { exact: false })).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'all' }));
     expect(chainsInGrid()).toEqual(['AKBNK']);
     expect(screen.queryByRole('region', { name: 'Queued order baskets' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'slippage ×' })).toBeVisible();
@@ -1158,16 +1171,15 @@ describe('the slippage filter', () => {
     expect(chainsInGrid()).toEqual(['AKBNK']);
     await user.click(screen.getByRole('checkbox', { name: 'buys' }));
 
-    // The only flagged leg is a buy, so reading sells alone empties the Book.
+    // The only flagged leg is a buy, so reading sells alone empties the Book —
+    // and either the filter or the side toggles, cleared, brings it back.
     expect(chainsInGrid()).toEqual([]);
-    expect(
-      screen.getByText('No chain owns an order flagged in a selected column.', { exact: false }),
-    ).toBeVisible();
+    expect(screen.getByText(/Clearing any one of these brings chains back/)).toHaveTextContent(
+      'the slippage filter, the side toggles',
+    );
 
     await user.click(screen.getByRole('button', { name: 'Close filter' }));
-    await user.click(
-      screen.getByRole('button', { name: 'slippage · order time (5s) · sells only ×' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'slippage · order time (5s) ×' }));
     expect(chainsInGrid()).toEqual(['AKBNK', 'GARAN']);
     expect(screen.getByRole('region', { name: 'Queued order baskets' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'any slippage' })).toBeVisible();
@@ -1216,5 +1228,133 @@ describe('the slippage filter', () => {
     expect(chainsInGrid()).toEqual(['AKBNK']);
     // The strip's `slip @intent` reads the same resolved slip the cell drew.
     expect(document.querySelector('.book-stat-strip')).toHaveTextContent('0,74');
+  });
+});
+
+describe('the side toggles', () => {
+  // Two chains the reason filter keeps by different legs: AKBNK by its live
+  // TakeProfit sell, SISE only by a buy BuyGuard canceled.
+  const twoChains = () => ({
+    ...emptyRead(),
+    activeOrders: [
+      makeActiveOrder({ id: 1, clientOrderId: 'a-buy', chainId: 'chain-a', symbol: 'AKBNK' }),
+      makeActiveOrder({
+        id: 2,
+        clientOrderId: 'a-sell',
+        chainId: 'chain-a',
+        symbol: 'AKBNK',
+        parentClientOrderId: 'a-buy',
+        direction: 'sell',
+        origin: 'TakeProfit',
+      }),
+      makeActiveOrder({ id: 3, clientOrderId: 'c-buy', chainId: 'chain-c', symbol: 'SISE' }),
+    ],
+    canceledOrders: [
+      makeCanceledOrder({
+        id: 401,
+        clientOrderId: 'c-dead',
+        chainId: 'chain-c',
+        symbol: 'SISE',
+        parentClientOrderId: 'c-buy',
+        direction: 'buy',
+        reason: 'BuyGuard',
+      }),
+    ],
+  });
+  const chainsInGrid = () =>
+    [...document.querySelectorAll('.book-chain')]
+      .map((chain) => chain.getAttribute('aria-label')?.replace(' chain', '') ?? '')
+      .sort();
+  const side = (name: 'buys' | 'sells' | 'include canceled') =>
+    screen.queryByRole('checkbox', { name });
+
+  async function everyReason(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole('button', { name: 'any reason' }));
+    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    await user.click(screen.getByRole('button', { name: 'all' }));
+    await user.click(screen.getByRole('button', { name: 'Close filter' }));
+  }
+
+  it('sit beside matching orders only while an order filter is on, reading every order', async () => {
+    const user = userEvent.setup();
+    book.data = twoChains();
+    renderBook();
+    expect(side('buys')).toBeNull();
+
+    await everyReason(user);
+    expect(chainsInGrid()).toEqual(['AKBNK', 'SISE']);
+    for (const name of ['buys', 'sells', 'include canceled'] as const) {
+      expect(side(name)).toBeChecked();
+    }
+    expect(
+      screen
+        .getByRole('checkbox', { name: 'matching orders only' })
+        .closest('.filter-chips-toggles'),
+    ).toContainElement(side('buys'));
+  });
+
+  it('narrow every order filter at once, and clear all reads every order again', async () => {
+    const user = userEvent.setup();
+    book.data = twoChains();
+    renderBook();
+    await everyReason(user);
+
+    // SISE's only reason sits on its canceled buy.
+    await user.click(side('include canceled')!);
+    expect(chainsInGrid()).toEqual(['AKBNK']);
+    await user.click(side('include canceled')!);
+
+    // AKBNK's reason rides on its sell.
+    await user.click(side('sells')!);
+    expect(chainsInGrid()).toEqual(['SISE']);
+    // Drawing matching orders only, SISE draws the buy BuyGuard canceled alone.
+    await user.click(screen.getByRole('checkbox', { name: 'matching orders only' }));
+    expect(document.querySelectorAll('article[aria-label="SISE chain"] .book-row')).toHaveLength(1);
+
+    await user.click(screen.getByRole('button', { name: 'clear all' }));
+    expect(side('sells')).toBeNull();
+    expect(chainsInGrid()).toEqual(['AKBNK', 'SISE']);
+    await everyReason(user);
+    expect(side('sells')).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'matching orders only' })).not.toBeChecked();
+  });
+});
+
+describe('the symbol filter', () => {
+  const chainsInGrid = () =>
+    [...document.querySelectorAll('.book-chain')]
+      .map((chain) => chain.getAttribute('aria-label')?.replace(' chain', '') ?? '')
+      .sort();
+
+  it('leaves the picked symbols out once exclude is on, and its chips say so', async () => {
+    const user = userEvent.setup();
+    book.data = {
+      ...emptyRead(),
+      activeOrders: [
+        makeActiveOrder({ id: 1, clientOrderId: 'a', chainId: 'a', symbol: 'AKBNK' }),
+        makeActiveOrder({ id: 2, clientOrderId: 'b', chainId: 'b', symbol: 'GARAN' }),
+      ],
+      // A queued THYAO basket, which only an AKBNK pick can leave out.
+      pendingRequests: [makePendingOrderRequest()],
+    };
+    renderBook();
+    const baskets = () => screen.queryByRole('region', { name: 'Queued order baskets' });
+
+    await user.click(screen.getByRole('button', { name: 'any symbol' }));
+    const popover = within(screen.getByRole('dialog', { name: 'any symbol filter' }));
+    await user.click(popover.getByRole('button', { name: 'AKBNK' }));
+    expect(chainsInGrid()).toEqual(['AKBNK']);
+    expect(baskets()).toBeNull();
+    expect(screen.getByRole('button', { name: 'AKBNK ×' })).toBeVisible();
+
+    await user.click(screen.getByRole('checkbox', { name: 'exclude' }));
+    expect(chainsInGrid()).toEqual(['GARAN']);
+    expect(baskets()).toBeVisible();
+    expect(screen.getByRole('button', { name: 'all but 1 symbol' })).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Close filter' }));
+    await user.click(screen.getByRole('button', { name: 'not AKBNK ×' }));
+    expect(chainsInGrid()).toEqual(['AKBNK', 'GARAN']);
+    expect(screen.getByRole('button', { name: 'any symbol' })).toBeVisible();
   });
 });

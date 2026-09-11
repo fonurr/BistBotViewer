@@ -4,7 +4,6 @@ import { useId } from 'react';
 import { FilterPopover } from '../../components/FilterPopover';
 import {
   BOOK_TIME_FIELDS,
-  BOOK_TIME_SIDES_DEFAULT,
   bookTimeSliderSteps,
   formatBookTime,
   stepBookTimeRange,
@@ -12,19 +11,7 @@ import {
 } from '../../domain/bookTimeFilter';
 import { BookFilterChecks } from './BookFilterChecks';
 import { BookTimeInput } from './BookTimeInput';
-import { keptChainDrawing, type BookFilterState } from './types';
-
-type BookTimeSideKey = 'timeBuys' | 'timeSells' | 'timeIncludeCanceled';
-
-/**
- * The side toggles sit across from the first clock checkboxes. `all` / `none`
- * leave them alone; only switching the filter off restores their defaults.
- */
-const BOOK_TIME_SIDES: readonly { key: BookTimeSideKey; label: string }[] = [
-  { key: 'timeBuys', label: 'buys' },
-  { key: 'timeSells', label: 'sells' },
-  { key: 'timeIncludeCanceled', label: 'include canceled' },
-];
+import { defaultBookFilters, keptChainDrawing, type BookFilterState } from './types';
 
 interface BookTimeFilterProps {
   filters: BookFilterState;
@@ -56,24 +43,13 @@ export function BookTimeFilter({ filters, onChange, open, setOpen }: BookTimeFil
       <BookFilterChecks
         active={filters.timeFilter}
         onActiveChange={() =>
-          onChange({
-            ...filters,
-            timeFilter: off,
-            timeFields: new Set(BOOK_TIME_FIELDS.map(({ key }) => key)),
-            timeBuys: BOOK_TIME_SIDES_DEFAULT.buys,
-            timeSells: BOOK_TIME_SIDES_DEFAULT.sells,
-            timeIncludeCanceled: BOOK_TIME_SIDES_DEFAULT.includeCanceled,
-          })
+          /* Either way the clocks go back to none, so switching on starts from
+             nothing ticked; the range stays where it was. */
+          onChange({ ...filters, timeFilter: off, timeFields: defaultBookFilters.timeFields })
         }
         fields={BOOK_TIME_FIELDS}
         selected={filters.timeFields}
         onSelectedChange={(timeFields) => onChange({ ...filters, timeFields })}
-        sides={BOOK_TIME_SIDES.map(({ key, label }) => ({
-          key,
-          label,
-          checked: filters[key],
-          onToggle: () => onChange({ ...filters, [key]: !filters[key] }),
-        }))}
       />
       <div className="book-time-range">
         <div className="book-time-shift">
@@ -140,12 +116,11 @@ export function BookTimeFilter({ filters, onChange, open, setOpen }: BookTimeFil
         />
       </div>
       <p className="filter-help">
-        Istanbul time. Includes the entire end minute. A selected time on any buy or sell leg you
-        keep ticked keeps{' '}
+        Istanbul time. Includes the entire end minute. A selected time on any order the side toggles
+        read keeps{' '}
         {filters.ordersOnly
-          ? `the chain, which then ${keptChainDrawing(filters)}`
-          : 'the whole chain'}
-        ; canceled legs count only with <em>include canceled</em>.
+          ? `the chain, which then ${keptChainDrawing(filters)}.`
+          : 'the whole chain.'}
       </p>
     </FilterPopover>
   );

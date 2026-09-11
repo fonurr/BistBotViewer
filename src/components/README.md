@@ -20,14 +20,19 @@ components; shared components never import a page.
   row of whole-set shortcuts; `botPicks` builds the bot row the Book and Performance share
   (`all`, `none`, `active`, `inactive`). A pick states the set it selects at the moment it is
   taken, so a bot switched on afterwards does not join a selection made as `active` — only `all`
-  keeps meaning every bot. Given `active` and `onActiveChange` it also grows an off switch leading
+  keeps meaning every bot. The Book's account control takes a lone `none` pick the same way.
+  Given `active` and `onActiveChange` it also grows an off switch leading
   that row, for a filter that narrows the page even with every option ticked — the Book's canceled
-  statuses. Off is not a selection but the filter not applying, so every box goes ticked and
-  disabled behind it and the trigger falls back to `inactiveLabel` in placeholder ink; the bot,
-  account and symbol controls omit the pair and are always on. `SymbolFilter` never accepts free
-  text: a symbol the loaded rows
-  do not name cannot be filtered to, and a typed one would silently return nothing. Toggling a
-  symbol (by click or Enter) clears the search box so the next one starts fresh.
+  statuses. Off is not a selection but the filter not applying, so every box is disabled behind
+  it, showing the selection the filter comes back on with (the page pins it; the Book pins none),
+  and the trigger falls back to `inactiveLabel` in placeholder ink; the bot, account and symbol
+  controls omit the pair and are always on. `SymbolFilter` never accepts free text: a symbol the
+  loaded rows do not name cannot be filtered to, and a typed one would silently return nothing.
+  Toggling a symbol (by click or Enter) clears the search box so the next one starts fresh. Given
+  `excluded` and `onExcludedChange` it grows an `exclude` switch under its heading: the picked
+  symbols become the ones left out, struck through, the trigger reads `all but 2 symbols`, and
+  `excludedNote` replaces `keptNote`. Flipping it keeps the pick. The Book passes the pair;
+  Performance omits it and only keeps.
 - `DateRangeFilter` is the one batch-range control, built on `FilterPopover` and shared by the
   Book and Performance so a range means the same thing on both. **Every date it can reach is a
   batch date**: the steppers walk the loaded list and the calendar disables every day no batch was
