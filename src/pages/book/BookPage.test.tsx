@@ -1154,7 +1154,7 @@ describe('the slippage filter', () => {
     expect(screen.getByRole('button', { name: 'slippage ×' })).toBeVisible();
 
     await user.click(screen.getByRole('button', { name: 'none' }));
-    await user.click(screen.getByRole('checkbox', { name: 'order time' }));
+    await user.click(screen.getByRole('checkbox', { name: 'order time (5s)' }));
     expect(chainsInGrid()).toEqual(['AKBNK']);
     await user.click(screen.getByRole('checkbox', { name: 'buys' }));
 
@@ -1165,7 +1165,9 @@ describe('the slippage filter', () => {
     ).toBeVisible();
 
     await user.click(screen.getByRole('button', { name: 'Close filter' }));
-    await user.click(screen.getByRole('button', { name: 'slippage · order time · sells only ×' }));
+    await user.click(
+      screen.getByRole('button', { name: 'slippage · order time (5s) · sells only ×' }),
+    );
     expect(chainsInGrid()).toEqual(['AKBNK', 'GARAN']);
     expect(screen.getByRole('region', { name: 'Queued order baskets' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'any slippage' })).toBeVisible();

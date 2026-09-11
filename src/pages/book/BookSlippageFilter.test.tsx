@@ -10,9 +10,9 @@ const FIELDS = [
   'created price',
   'intent price',
   'sent price',
-  'sent time',
-  'order time',
-  'final time',
+  'sent time (10s)',
+  'order time (5s)',
+  'final time (10s or 2m)',
 ] as const;
 
 const box = (name: string) => screen.getByRole<HTMLInputElement>('checkbox', { name });
@@ -41,9 +41,9 @@ describe('BookSlippageFilter', () => {
 
     await user.click(screen.getByRole('button', { name: 'none' }));
     expect(screen.getByRole('button', { name: '0 slips' })).toBeVisible();
-    await user.click(box('sent time'));
+    await user.click(box('sent time (10s)'));
     expect(screen.getByRole('button', { name: '1 slip' })).toBeVisible();
-    await user.click(box('final time'));
+    await user.click(box('final time (10s or 2m)'));
     expect(screen.getByRole('button', { name: '2 slips' })).toBeVisible();
   });
 

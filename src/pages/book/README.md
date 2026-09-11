@@ -51,7 +51,7 @@ whole cell at the seconds' strength. `sent` is drawn in dead-red (`.book-time-la
 late: it trailed **every** stamp it can be measured against (`scheduledTime`, `createdTime`) by
 more than ten seconds. `order` and `final` are drawn in orange (`.book-time-slow`, `--st-warn`)
 when the far side was slow — a step below the red, since it is the exchange or the fill notice
-lagging rather than the bot. `order` is slow when the exchange registered it more than ten seconds
+lagging rather than the bot. `order` is slow when the exchange registered it more than five seconds
 after `sent`. `final` is slow, once the order had registered (`orderTime` present, so the fill
 notice carries some lag), only when it trailed **both** the order's `intent` and its own `sent` by
 more than two minutes. On a row that never registered — a scheduled order skipped before it fired
@@ -350,7 +350,9 @@ The **slippage filter**, beside it, is the same popover head over what the grid 
 over a clock range: `filter`, `all` and `none`, then six columns on the left in grid order —
 `created price`, `intent price` and `sent price` match a leg whose `@created`, `@intent` or `@sent`
 cell draws a slip, and `sent time`, `order time` and `final time` match a leg whose clock is drawn red
-or orange. Across from them sit `buys` and `sells`, an **OR** like the time filter's, which `all` /
+or orange — each of those three names its own threshold in the label (`sent time (10s)`, `order time
+(5s)`, `final time (10s or 2m)`), read off `bookRowFlags.ts` via `formatFlagThreshold` so the number
+can never drift from the cell it describes. Across from them sit `buys` and `sells`, an **OR** like the time filter's, which `all` /
 `none` never touch; there is no canceled opt-in, so a canceled leg counts like any other — it is where
 a skipped schedule's orange `final` lives. The match is **not** read off the colours: every column
 asks the function its cell draws from (`domain/bookRowFlags.ts`), and `domain/bookSlippageFilter.ts`

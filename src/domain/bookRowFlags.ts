@@ -13,7 +13,7 @@ import { marketSlippagePercentage, sentSlipAllowed, slippagePercentage } from '.
 /** A send more than this later than its plan is drawn late. */
 export const LATE_SENT_MS = 10_000;
 /** An exchange registration more than this later than the send is drawn slow. */
-export const SLOW_ORDER_MS = 10_000;
+export const SLOW_ORDER_MS = 5_000;
 /** A fill seen this long past both the order's intent and its send, once registered, is slow. */
 export const SLOW_FINAL_MS = 120_000;
 /** With no registration to lean on, a fill this long past the order's intent is slow. */

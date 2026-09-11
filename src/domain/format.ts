@@ -192,6 +192,12 @@ export function formatScheduledDistance(timestamp: number, now = Date.now()): st
   return `in ${formatCompactDuration(timestamp - now)}`;
 }
 
+/** A flag threshold read back as `10s` or `2m` — for naming one next to the filter that reads it. */
+export function formatFlagThreshold(milliseconds: number): string {
+  if (milliseconds < 60_000) return `${Math.round(milliseconds / 1_000)}s`;
+  return `${Math.round(milliseconds / 60_000)}m`;
+}
+
 export function startOfIstanbulDay(timestamp = Date.now()): number {
   const key = toIstanbulDateKey(timestamp);
   return Date.parse(`${key}T00:00:00+03:00`);

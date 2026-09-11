@@ -92,9 +92,9 @@ describe('the Book slippage filter', () => {
       'created price',
       'intent price',
       'sent price',
-      'sent time',
-      'order time',
-      'final time',
+      'sent time (10s)',
+      'order time (5s)',
+      'final time (10s or 2m)',
     ]);
   });
 

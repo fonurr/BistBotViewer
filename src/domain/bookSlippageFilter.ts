@@ -4,22 +4,32 @@ import {
   bookRowCreatedSlip,
   bookRowSentSlip,
   finalIsSlow,
+  LATE_SENT_MS,
   orderIsSlow,
   sentIsLate,
+  SLOW_FINAL_MS,
+  SLOW_ORDER_MS,
+  SLOW_ORPHAN_FINAL_MS,
 } from './bookRowFlags';
+import { formatFlagThreshold } from './format';
 
 /**
  * What the slippage filter can select by, in the grid's column order: the three
  * reference prices whose cell draws a slip, then the three clocks the grid
- * colours — a red `sent`, an orange `order`, an orange `final`.
+ * colours — a red `sent`, an orange `order`, an orange `final`. Each clock's
+ * label names its own threshold, read off `bookRowFlags.ts` so it can never
+ * drift from the cells it describes.
  */
 export const BOOK_SLIPPAGE_FIELDS = [
   { key: 'createdPrice', label: 'created price' },
   { key: 'intentPrice', label: 'intent price' },
   { key: 'sentPrice', label: 'sent price' },
-  { key: 'sentTime', label: 'sent time' },
-  { key: 'orderTime', label: 'order time' },
-  { key: 'finalTime', label: 'final time' },
+  { key: 'sentTime', label: `sent time (${formatFlagThreshold(LATE_SENT_MS)})` },
+  { key: 'orderTime', label: `order time (${formatFlagThreshold(SLOW_ORDER_MS)})` },
+  {
+    key: 'finalTime',
+    label: `final time (${formatFlagThreshold(SLOW_ORPHAN_FINAL_MS)} or ${formatFlagThreshold(SLOW_FINAL_MS)})`,
+  },
 ] as const;
 
 export type BookSlippageField = (typeof BOOK_SLIPPAGE_FIELDS)[number]['key'];

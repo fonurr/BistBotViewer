@@ -49,9 +49,9 @@ describe('the Book row flags', () => {
     expect(sentIsLate({ sentTime: at, scheduledTime: null, createdTime: null })).toBe(false);
   });
 
-  it('draws order slow when the exchange registered it more than ten seconds after the send', () => {
-    expect(orderIsSlow({ orderTime: at + 10_001, sentTime: at })).toBe(true);
-    expect(orderIsSlow({ orderTime: at + 10_000, sentTime: at })).toBe(false);
+  it('draws order slow when the exchange registered it more than five seconds after the send', () => {
+    expect(orderIsSlow({ orderTime: at + 5_001, sentTime: at })).toBe(true);
+    expect(orderIsSlow({ orderTime: at + 5_000, sentTime: at })).toBe(false);
     // Registering ahead of the send stamp is clock skew, not a slow exchange.
     expect(orderIsSlow({ orderTime: at - 60_000, sentTime: at })).toBe(false);
     expect(orderIsSlow({ orderTime: at + 60_000, sentTime: null })).toBe(false);
