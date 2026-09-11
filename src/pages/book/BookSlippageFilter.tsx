@@ -2,7 +2,7 @@ import { selectionLabel } from '../../components/EntityFilters';
 import { FilterPopover } from '../../components/FilterPopover';
 import { BOOK_SLIPPAGE_FIELDS, BOOK_SLIPPAGE_SIDES_DEFAULT } from '../../domain/bookSlippageFilter';
 import { BookFilterChecks } from './BookFilterChecks';
-import type { BookFilterState } from './types';
+import { keptChainDrawing, type BookFilterState } from './types';
 
 type BookSlippageSideKey = 'slippageBuys' | 'slippageSells';
 
@@ -56,8 +56,10 @@ export function BookSlippageFilter({ filters, onChange, open, setOpen }: BookSli
       />
       <p className="filter-help">
         A price matches a leg whose cell draws a slip; a time, a leg whose clock is drawn red or
-        orange. Any ticked one on a buy or sell leg you keep ticked, canceled legs included, keeps
-        the whole chain.
+        orange. Any ticked one on a buy or sell leg you keep ticked, canceled legs included, keeps{' '}
+        {filters.ordersOnly
+          ? `the chain, which then ${keptChainDrawing(filters)}.`
+          : 'the whole chain.'}
       </p>
     </FilterPopover>
   );

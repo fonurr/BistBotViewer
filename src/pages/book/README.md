@@ -13,7 +13,8 @@ by the furthest stage its own life reached — it holds shares (`positions`), it
 (`canceled`, drawn as **Never Opened** — the scope key is not its word, and what the reader is
 picking is the chains that never opened a position, not the chains that own a canceled leg). A scope toggle therefore adds or removes whole chains, and a chain in view draws
 **every leg it owns** whatever kind that leg is; the only rows a toggle may withhold are the
-canceled ones, and that is the canceled toggle's job alone.
+canceled ones, and that is the canceled toggle's job alone — until a reader asks for `matching
+orders only`, below the filters, which draws just the rows that pass every filter.
 
 Grouping is date → bot → scope. The batch heading leads (`15.08.26 · batch · friday · 11
 chains`) and the column band sits **under** it, because the columns belong to the batch they
@@ -94,7 +95,8 @@ account, not hunted for at the other end of a 1440px row. Read left to right: wh
 their order asked for, what those shares really cost, and the whole order at that same asked
 price. The first two carry their share of the third, which is the only comparison the line is
 for. It is computed from the chains **actually drawn**, so every filter and every scope toggle
-decides what it counts.
+decides what it counts — each of them whole, even where `matching orders only` draws a few of its
+rows.
 
 - A resting **market** buy reserves 10% extra budget per share, so the first and third figures
   carry `× 1.1` where the buy was a market buy (`../MatriksOrder/API.md` — "Budget and limits").
@@ -306,7 +308,8 @@ default) are an **OR**: a chain matches on any leg whose side is still ticked, a
 ticked nothing matches. `include canceled` (off by default) is an **AND** laid over both: a
 canceled leg is read only while it is on and that leg's own side is ticked too. So a collapsed
 canceled tail no longer keeps a chain in the time search unless `include canceled` asks for it.
-`domain/bookTimeFilter.ts` (`BookTimeSides`, `matchesBookTime`) owns the rule.
+`domain/bookTimeFilter.ts` (`BookTimeSides`, `matchesBookTime`, and `rowMatchesBookTime` for one
+leg) owns the rule.
 
 `domain/bookTimeFilter.ts` owns both matching and the slider stops: hourly from `00:00` through
 `09:00`, then `09:50`, `09:55`, every minute through `18:05`, every five minutes through `19:00`,
@@ -349,7 +352,7 @@ or orange. Across from them sit `buys` and `sells`, an **OR** like the time filt
 `none` never touch; there is no canceled opt-in, so a canceled leg counts like any other — it is where
 a skipped schedule's orange `final` lives. The match is **not** read off the colours: every column
 asks the function its cell draws from (`domain/bookRowFlags.ts`), and `domain/bookSlippageFilter.ts`
-(`matchesBookSlippage`) maps each column to one. A chain qualifies where any leg on a ticked side
+(`matchesBookSlippage`, `rowMatchesBookSlippage` for one leg) maps each column to one. A chain qualifies where any leg on a ticked side
 flags any ticked column, and is drawn whole. It starts off with every column and both sides ticked,
 and switching it either way restores those; while on, the trigger counts the ticked columns (`6
 slips`, `1 slip`). A chain nothing flags cannot match, so switching it on narrows the Book even with
@@ -433,6 +436,28 @@ of its rows names a ticked origin and then drawn whole. Built from the whole loa
 following the other filters, counting chains not rows, off by default behind the same switch — a
 chain built only of ordinary bot orders drops out even with every origin ticked — and not drawn
 where no loaded row names one.
+
+**`matching orders only`** closes the `filtered` row, at its far end under the canceled toggle, and
+is drawn only while a filter that reads rows one at a time is on — canceled status, reason, source,
+origin, time or slippage (`rowFiltersActive`). Each of those keeps a chain on a row of its own and
+draws it whole; the switch instead draws only the rows that pass **every** filter at once. Scope,
+bot, account, symbol and the batch range — on either reading — answer for a whole chain, so they
+never split one. A kept chain is still drawn as a chain however few rows that leaves: its first
+drawn row opens it with the symbol, and a sell whose buy is not drawn writes its own size in `qty`,
+since nothing above it states that size any more. A chain none of whose rows passes them all drops
+out, because each filter kept it on a different row. The canceled tail and the canceled toggle
+count only the canceled rows drawn. The switch is part of the filter state, so `clear all` turns it
+off; where it is what emptied the Book, the empty reason names it (`clear matching orders only`);
+and each filter's note says which drawing is in force.
+
+It narrows the drawing, never the chain. The symbol still opens the chain dialog on every leg, and
+every row action and its safety bound still read the whole chain. The figures split the way the
+rows do: one counted **per order** — the strip's order count, the canceled count, the three slip
+averages — reads the rows drawn, while one counted **per chain** — the budget line, the scope
+aggregates, the strip's `today`, `realized`, `unrealized`, `total` and `allocated`, and each row's
+own `p&l` and `today` — still reads every row of each drawn chain, since a chain's budget, its
+round trip and its holding do not split by the row a filter hit. The toggle's `title` says so.
+`drawnBookView` in `BookPage` owns the rule.
 
 That line carries **three inks, loudest first** (`BookRowDetailTone`, drawn by `RowDetail` for both
 the grid and the chain dialog). What the server decided — the reason and its numbers — is a fact of

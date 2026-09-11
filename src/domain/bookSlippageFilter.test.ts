@@ -5,6 +5,7 @@ import {
   BOOK_SLIPPAGE_FIELDS,
   BOOK_SLIPPAGE_SIDES_DEFAULT,
   matchesBookSlippage,
+  rowMatchesBookSlippage,
   type BookRowFlagContext,
   type BookSlippageField,
   type BookSlippageSides,
@@ -13,6 +14,8 @@ import { buildBookChains } from './chains';
 
 const at = Date.parse('2026-08-25T07:30:00.000Z'); // a Tuesday, 10:30 Istanbul
 const scheduled = Date.parse('2026-08-25T09:00:00.000Z');
+// Registered twenty seconds after the send: an orange `order`.
+const slowOrder = { createdTime: at - 1_000, sentTime: at, orderTime: at + 20_000 };
 
 const chains = buildBookChains({
   activeOrders: [
@@ -46,15 +49,7 @@ const chains = buildBookChains({
       sentTime: at + 45_000,
       orderTime: at + 46_000,
     }),
-    // Registered 20 seconds after the send: an orange `order`.
-    makeActiveOrder({
-      id: 4,
-      clientOrderId: 'slow',
-      chainId: 'slow',
-      createdTime: at - 1_000,
-      sentTime: at,
-      orderTime: at + 20_000,
-    }),
+    makeActiveOrder({ id: 4, clientOrderId: 'slow', chainId: 'slow', ...slowOrder }),
     // Its @intent slip comes from the context, as the page resolves it.
     makeActiveOrder({ id: 5, clientOrderId: 'intent', chainId: 'intent' }),
     makeActiveOrder({ id: 6, clientOrderId: 'quiet', chainId: 'quiet' }),
@@ -127,5 +122,42 @@ describe('the Book slippage filter', () => {
     ]);
     expect(matching(every, { buys: false, sells: true })).toEqual(['final', 'late']);
     expect(matching(every, { buys: false, sells: false })).toEqual([]);
+  });
+
+  it('answers the same test one leg at a time, for the rows matching orders only draws', () => {
+    // A chain whose buy is flagged and whose sell is not.
+    const [mixed] = buildBookChains({
+      activeOrders: [
+        makeActiveOrder({ id: 7, clientOrderId: 'buy', chainId: 'mixed', ...slowOrder }),
+        makeActiveOrder({
+          id: 8,
+          clientOrderId: 'sell',
+          chainId: 'mixed',
+          parentClientOrderId: 'buy',
+          direction: 'sell',
+        }),
+      ],
+      canceledOrders: [],
+      positions: [],
+      closedTrades: [],
+    });
+    const flagged = (fields: readonly BookSlippageField[], sides = BOOK_SLIPPAGE_SIDES_DEFAULT) =>
+      mixed!.rows.map((row) => [
+        row.direction,
+        rowMatchesBookSlippage(row, new Set(fields), sides, context),
+      ]);
+
+    expect(flagged(every)).toEqual([
+      ['buy', true],
+      ['sell', false],
+    ]);
+    expect(flagged(['orderTime'], { buys: false, sells: true })).toEqual([
+      ['buy', false],
+      ['sell', false],
+    ]);
+    expect(flagged(['createdPrice'])).toEqual([
+      ['buy', false],
+      ['sell', false],
+    ]);
   });
 });

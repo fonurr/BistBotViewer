@@ -45,6 +45,12 @@ import { scopeLabels, type BookIntentCell } from './types';
 
 interface BookGridProps {
   chains: readonly BookChain[];
+  /**
+   * The rows a chain draws where `matching orders only` leaves some of its own
+   * out; a chain absent here draws every row. Only the drawing narrows: the
+   * chain's actions, its dialog, its budget and its P&L still read every row.
+   */
+  drawnRows?: ReadonlyMap<string, readonly BookChainRow[]>;
   bots: readonly Bot[];
   /**
    * The focused "no closing order" list is not a browse: it spans scopes on
@@ -279,6 +285,7 @@ export function BookGrid(props: BookGridProps) {
                           {scopeGroup.chains.map((chain) => (
                             <ChainRows
                               chain={chain}
+                              rows={props.drawnRows?.get(chain.key) ?? chain.rows}
                               pnlState={pnlState}
                               prices={props.prices}
                               pricesTrustworthy={props.pricesTrustworthy}
@@ -347,6 +354,8 @@ function without(current: ReadonlySet<string>, value: string): ReadonlySet<strin
 
 interface ChainRowsProps {
   chain: BookChain;
+  /** The rows drawn: every row it owns, or those `matching orders only` kept. */
+  rows: readonly BookChainRow[];
   pnlState: FilledPnlState;
   prices: ReadonlyMap<string, ResolvedPrice>;
   pricesTrustworthy: boolean;
@@ -368,12 +377,14 @@ interface ChainRowsProps {
 }
 
 const ChainRows = memo(function ChainRows(props: ChainRowsProps) {
-  const { chain } = props;
+  const { chain, rows } = props;
   // A scope selects whole chains, so every leg a chain owns is drawn once the
   // chain is in view. The only rows a toggle may withhold are the canceled
-  // ones, and that is the canceled toggle's own job (SPEC 3).
-  const nonCanceledRows = chain.rows.filter((row) => row.source !== 'canceled');
-  const canceledRows = chain.canceledRows;
+  // ones, and that is the canceled toggle's own job (SPEC 3) — unless
+  // `matching orders only` is on, when the page hands over just the rows that
+  // pass every filter and they are drawn as the chain, the first one opening it.
+  const nonCanceledRows = rows.filter((row) => row.source !== 'canceled');
+  const canceledRows = rows.filter((row) => row.source === 'canceled');
   const visibleCanceled = props.showCanceled !== props.canceledOpen;
 
   return (
@@ -383,6 +394,7 @@ const ChainRows = memo(function ChainRows(props: ChainRowsProps) {
           key={row.key}
           row={row}
           chain={chain}
+          drawnRows={rows}
           opener={index === 0}
           prices={props.prices}
           pnlState={props.pnlState}
@@ -408,6 +420,7 @@ const ChainRows = memo(function ChainRows(props: ChainRowsProps) {
                 key={row.key}
                 row={row}
                 chain={chain}
+                drawnRows={rows}
                 opener={nonCanceledRows.length === 0 && row === canceledRows[0]}
                 prices={props.prices}
                 pnlState={props.pnlState}
@@ -423,7 +436,7 @@ const ChainRows = memo(function ChainRows(props: ChainRowsProps) {
             ))}
             <div className="canceled-tail-footer">
               <span className="canceled-tail-notes">
-                <CanceledTailNote chain={chain} />
+                <CanceledTailNote chain={chain} rows={canceledRows} />
               </span>
               <button
                 type="button"
@@ -440,7 +453,7 @@ const ChainRows = memo(function ChainRows(props: ChainRowsProps) {
             <div className="canceled-tail-summary">
               <strong>+{canceledTailLabel(canceledRows)}</strong>
               <span className="canceled-tail-notes">
-                <CanceledTailNote chain={chain} />
+                <CanceledTailNote chain={chain} rows={canceledRows} />
               </span>
               <button
                 type="button"
@@ -468,6 +481,7 @@ function canceledTailLabel(rows: readonly BookChainRow[]): string {
 const BookRow = memo(function BookRow({
   row,
   chain,
+  drawnRows,
   opener,
   prices,
   pnlState,
@@ -482,6 +496,8 @@ const BookRow = memo(function BookRow({
 }: {
   row: BookChainRow;
   chain: BookChain;
+  /** The rows its chain draws, which is what the qty column is read against. */
+  drawnRows: readonly BookChainRow[];
   opener: boolean;
   prices: ReadonlyMap<string, ResolvedPrice>;
   pnlState: FilledPnlState;
@@ -563,7 +579,7 @@ const BookRow = memo(function BookRow({
         )}
       </div>
       <div role="cell">
-        {redundantSellQuantity(row, chain) ? (
+        {redundantSellQuantity(row, drawnRows) ? (
           ''
         ) : row.quantity === null ? (
           <span className="captured-value">auto</span>
@@ -778,18 +794,20 @@ function actionLabel(kind: OrderDialogAction['kind']): string {
 /**
  * A sell that takes the whole position adds nothing in the qty column — its
  * size is the buy's size, and an `auto` sell resolves to exactly that at fire.
- * Only a sell for less than the buy asked for writes a number here.
+ * Only a sell for less than the buy asked for writes a number here. The buy is
+ * looked for among the rows drawn: where `matching orders only` left it out,
+ * nothing above states that size, so the sell writes its own.
  */
-function redundantSellQuantity(row: BookChainRow, chain: BookChain): boolean {
+function redundantSellQuantity(row: BookChainRow, drawnRows: readonly BookChainRow[]): boolean {
   if (row.direction !== 'sell') return false;
   if (row.quantity === null) return true;
-  const buyQuantity = chainBuyQuantity(chain);
+  const buyQuantity = drawnBuyQuantity(drawnRows);
   return buyQuantity !== null && row.quantity === buyQuantity;
 }
 
-/** The quantity the chain's opening buy asked for, or null when it has no buy leg. */
-function chainBuyQuantity(chain: BookChain): number | null {
-  return chain.rows.find((row) => row.direction === 'buy')?.quantity ?? null;
+/** The quantity the chain's opening buy asked for, or null when no buy leg is drawn. */
+function drawnBuyQuantity(rows: readonly BookChainRow[]): number | null {
+  return rows.find((row) => row.direction === 'buy')?.quantity ?? null;
 }
 
 export interface RowPnlFigure {
@@ -1005,8 +1023,9 @@ function pnlClass(value: number | null, trustworthy: boolean): string {
   return value >= 0 ? 'number-positive' : 'number-negative';
 }
 
-function CanceledTailNote({ chain }: { chain: BookChain }) {
-  const blockedSells = chain.canceledRows.filter(
+/** Speaks for the canceled legs in the tail, which are the ones the chain draws. */
+function CanceledTailNote({ chain, rows }: { chain: BookChain; rows: readonly BookChainRow[] }) {
+  const blockedSells = rows.filter(
     (row) => row.direction === 'sell' && (row.quantity ?? 0) > (chain.sellableQuantity ?? 0),
   );
   const smallest = blockedSells.length
@@ -1014,7 +1033,7 @@ function CanceledTailNote({ chain }: { chain: BookChain }) {
     : null;
   return (
     <>
-      <span className="muted">{canceledByCopy(chain.canceledRows)}</span>
+      <span className="muted">{canceledByCopy(rows)}</span>
       {smallest === null ? null : (
         <span className="muted">
           none offers resend: each asks for at least {formatQuantity(smallest)} and only{' '}

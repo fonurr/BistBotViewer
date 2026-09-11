@@ -17,7 +17,7 @@ import { plural } from '../../domain/format';
 import { displayStatus } from '../../domain/status';
 import { BookSlippageFilter } from './BookSlippageFilter';
 import { BookTimeFilter } from './BookTimeFilter';
-import { defaultBookFilters, scopeLabels, type BookFilterState } from './types';
+import { defaultBookFilters, keptChainDrawing, scopeLabels, type BookFilterState } from './types';
 
 interface BookFiltersProps {
   filters: BookFilterState;
@@ -260,7 +260,7 @@ export function BookFilters(props: BookFiltersProps) {
             onChange={(origins) => onChange({ ...filters, origins, noClosingOrder: false })}
             one="origin"
             many="origins"
-            note="On, the Book keeps a chain only where one of its own rows names a ticked origin, and then draws the whole chain. A chain built only of ordinary bot orders names none, so it drops out even with every origin ticked."
+            note={`On, the Book keeps a chain only where one of its own rows names a ticked origin, and then ${keptChainDrawing(filters)}. A chain built only of ordinary bot orders names none, so it drops out even with every origin ticked.`}
           />
         ) : null}
         {canceledStatuses.length > 0 ? (
@@ -292,7 +292,11 @@ export function BookFilters(props: BookFiltersProps) {
             }
             one="status"
             many="statuses"
-            note="On, the Book keeps a chain only where one of its own canceled orders carries a ticked status — and then draws the whole chain, canceled legs and all. A chain that never lost a leg has nothing to match, so it drops out even with every status ticked."
+            note={`On, the Book keeps a chain only where one of its own canceled orders carries a ticked status — and then ${
+              filters.ordersOnly
+                ? keptChainDrawing(filters)
+                : 'draws the whole chain, canceled legs and all'
+            }. A chain that never lost a leg has nothing to match, so it drops out even with every status ticked.`}
           />
         ) : null}
         {sources.length > 0 ? (
@@ -319,7 +323,7 @@ export function BookFilters(props: BookFiltersProps) {
             onChange={(sources) => onChange({ ...filters, sources, noClosingOrder: false })}
             one="source"
             many="sources"
-            note="On, the Book keeps a chain only where one of its own dead orders names a ticked source, and then draws the whole chain. Only a stored death names who ended it, so a chain whose legs all still live has nothing to match and drops out even with every source ticked."
+            note={`On, the Book keeps a chain only where one of its own dead orders names a ticked source, and then ${keptChainDrawing(filters)}. Only a stored death names who ended it, so a chain whose legs all still live has nothing to match and drops out even with every source ticked.`}
           />
         ) : null}
         {reasons.length > 0 ? (
@@ -349,7 +353,7 @@ export function BookFilters(props: BookFiltersProps) {
             onChange={(reasons) => onChange({ ...filters, reasons, noClosingOrder: false })}
             one="reason"
             many="reasons"
-            note="On, the Book keeps a chain where any one of its rows — live, scheduled, canceled or the sell that closed a trade — carries a ticked reason, and then draws the whole chain. A chain the server recorded no reason for has nothing to match, so it drops out even with every reason ticked."
+            note={`On, the Book keeps a chain where any one of its rows — live, scheduled, canceled or the sell that closed a trade — carries a ticked reason, and then ${keptChainDrawing(filters)}. A chain the server recorded no reason for has nothing to match, so it drops out even with every reason ticked.`}
           />
         ) : null}
         <span className="book-toolbar-spacer" />

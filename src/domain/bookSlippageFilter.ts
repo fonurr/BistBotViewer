@@ -71,10 +71,21 @@ export function matchesBookSlippage(
   sides: BookSlippageSides,
   context: BookRowFlagContext,
 ): boolean {
-  if (!sides.buys && !sides.sells) return false;
-  return chain.rows.some((row) => {
-    if (row.direction === 'buy' ? !sides.buys : !sides.sells) return false;
-    for (const field of fields) if (FLAGGED[field](row, context)) return true;
-    return false;
-  });
+  return chain.rows.some((row) => rowMatchesBookSlippage(row, fields, sides, context));
+}
+
+/**
+ * The same test for one leg: a leg on a ticked side that the grid flags in a
+ * ticked column. `matchesBookSlippage` keeps a chain on any such leg; the Book's
+ * `matching orders only` draws just the legs that pass it.
+ */
+export function rowMatchesBookSlippage(
+  row: BookChainRow,
+  fields: ReadonlySet<BookSlippageField>,
+  sides: BookSlippageSides,
+  context: BookRowFlagContext,
+): boolean {
+  if (row.direction === 'buy' ? !sides.buys : !sides.sells) return false;
+  for (const field of fields) if (FLAGGED[field](row, context)) return true;
+  return false;
 }

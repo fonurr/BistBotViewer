@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { BookRowFlagContext } from '../../domain/bookSlippageFilter';
 import { buildBookChains, type BookScope } from '../../domain/chains';
 import { makeActiveOrder, makeCanceledOrder } from '../../test/fixtures';
-import { narrowingsThatEmptiedTheBook } from './BookPage';
+import { drawnBookView, narrowingsThatEmptiedTheBook } from './BookPage';
 import { defaultBookFilters } from './types';
 
 const chains = buildBookChains({
@@ -330,5 +330,82 @@ describe('the reason a filter emptied the Book', () => {
       ['bots', 1],
       ['slippage', 1],
     ]);
+  });
+
+  it('names matching orders only where each filter keeps the chain on a different row', () => {
+    // A resting buy the time range reaches, and a dead sell the status filter
+    // does — one chain, but no single order that both of them pass.
+    const split = buildBookChains({
+      activeOrders: [makeActiveOrder({ id: 1, clientOrderId: 'buy', chainId: 'split' })],
+      canceledOrders: [
+        makeCanceledOrder({
+          id: 401,
+          clientOrderId: 'sell',
+          chainId: 'split',
+          symbol: 'AKBNK',
+          parentClientOrderId: 'buy',
+          orderTime: Date.parse('2026-08-25T09:00:00.000Z'),
+        }),
+      ],
+      positions: [],
+      closedTrades: [],
+    });
+    const filters = {
+      ...defaultBookFilters,
+      canceledStatusFilter: true,
+      timeFilter: true,
+      timeFields: new Set(['orderTime'] as const),
+      timeFrom: 630,
+      timeTo: 630,
+    };
+    // Drawn whole, the chain is there.
+    expect(drawnBookView(split, filters, noFlags).chains).toHaveLength(1);
+
+    const ordersOnly = { ...filters, ordersOnly: true };
+    expect(drawnBookView(split, ordersOnly, noFlags).chains).toEqual([]);
+    const reasons = narrowingsThatEmptiedTheBook(split, ordersOnly, noAccount, noFlags);
+    expect(reasons.map(({ key, restored }) => [key, restored])).toEqual([
+      ['canceled-statuses', 1],
+      ['time', 1],
+      ['orders-only', 1],
+    ]);
+    const toggle = reasons.at(-1)!;
+    expect(toggle.phrase).toBe('matching orders only');
+    expect(toggle.sentence).toBe(
+      'No single order passes every filter at once, so matching orders only draws none.',
+    );
+    expect(toggle.clear(ordersOnly)).toEqual(filters);
+  });
+
+  it('draws only the rows that pass every filter, and leaves a chain drawn whole unnamed', () => {
+    const [chain] = buildBookChains({
+      activeOrders: [
+        makeActiveOrder({ id: 1, clientOrderId: 'buy', chainId: 'pair', origin: 'User' }),
+        makeActiveOrder({
+          id: 2,
+          clientOrderId: 'sell',
+          chainId: 'pair',
+          parentClientOrderId: 'buy',
+          direction: 'sell',
+        }),
+      ],
+      canceledOrders: [],
+      positions: [],
+      closedTrades: [],
+    });
+    const byOrigin = { ...defaultBookFilters, originFilter: true, ordersOnly: true };
+
+    const view = drawnBookView([chain!], byOrigin, noFlags);
+    expect(view.chains).toEqual([chain]);
+    expect(view.rows.get(chain!.key)?.map((row) => row.clientOrderId)).toEqual(['buy']);
+
+    // A row filter that every row passes leaves nothing to name, and with no row
+    // filter on at all the switch has nothing to narrow.
+    const byTime = { ...defaultBookFilters, timeFilter: true, ordersOnly: true };
+    expect(drawnBookView([chain!], byTime, noFlags).rows.size).toBe(0);
+    expect(drawnBookView([chain!], { ...byOrigin, originFilter: false }, noFlags)).toEqual({
+      chains: [chain],
+      rows: new Map(),
+    });
   });
 });

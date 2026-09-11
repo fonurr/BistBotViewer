@@ -12,7 +12,7 @@ import {
 } from '../../domain/bookTimeFilter';
 import { BookFilterChecks } from './BookFilterChecks';
 import { BookTimeInput } from './BookTimeInput';
-import type { BookFilterState } from './types';
+import { keptChainDrawing, type BookFilterState } from './types';
 
 type BookTimeSideKey = 'timeBuys' | 'timeSells' | 'timeIncludeCanceled';
 
@@ -141,7 +141,11 @@ export function BookTimeFilter({ filters, onChange, open, setOpen }: BookTimeFil
       </div>
       <p className="filter-help">
         Istanbul time. Includes the entire end minute. A selected time on any buy or sell leg you
-        keep ticked keeps the whole chain; canceled legs count only with <em>include canceled</em>.
+        keep ticked keeps{' '}
+        {filters.ordersOnly
+          ? `the chain, which then ${keptChainDrawing(filters)}`
+          : 'the whole chain'}
+        ; canceled legs count only with <em>include canceled</em>.
       </p>
     </FilterPopover>
   );

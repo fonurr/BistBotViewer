@@ -211,6 +211,29 @@
   font-size: var(--font-meta);
 }
 
+/* `matching orders only` closes the row at its far end, under the canceled
+   toggle that ends the toolbar: both decide which rows of a kept chain draw. */
+.filter-chips-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-left: auto;
+  color: var(--mut);
+  font-size: var(--font-leg);
+  cursor: pointer;
+}
+
+.filter-chips-toggle:has(input:checked) {
+  color: var(--color-text);
+}
+
+.filter-chips-toggle input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--color-accent);
+}
+
 .book-stat-strip {
   display: flex;
   align-items: baseline;

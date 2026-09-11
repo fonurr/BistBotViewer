@@ -1,4 +1,4 @@
-import type { BookChain } from './chains';
+import type { BookChain, BookChainRow } from './chains';
 import { formatTime } from './format';
 import { CLOSE_MINUTE, CLOSING_MATCH_OFFSET_MINUTES, OPENING_MATCH_MINUTE } from './sessionHours';
 
@@ -119,18 +119,30 @@ export function matchesBookTime(
   to: number,
   sides: BookTimeSides,
 ): boolean {
+  return chain.rows.some((row) => rowMatchesBookTime(row, fields, from, to, sides));
+}
+
+/**
+ * The same test for one leg: a leg the sides read that carries a chosen clock
+ * inside the range. `matchesBookTime` keeps a chain on any such leg; the Book's
+ * `matching orders only` draws just the legs that pass it.
+ */
+export function rowMatchesBookTime(
+  row: BookChainRow,
+  fields: ReadonlySet<BookTimeField>,
+  from: number,
+  to: number,
+  sides: BookTimeSides,
+): boolean {
   if (!isBookMinute(from) || !isBookMinute(to) || from > to) return false;
-  if (!sides.buys && !sides.sells) return false;
-  return chain.rows.some((row) => {
-    if (row.source === 'canceled' && !sides.includeCanceled) return false;
-    if (row.direction === 'buy' ? !sides.buys : !sides.sells) return false;
-    for (const field of fields) {
-      const timestamp = row[field];
-      if (timestamp === null || !Number.isFinite(new Date(timestamp).getTime())) continue;
-      const [hour, minute] = formatTime(timestamp).split(':').map(Number);
-      const clockMinute = hour! * 60 + minute!;
-      if (clockMinute >= from && clockMinute <= to) return true;
-    }
-    return false;
-  });
+  if (row.source === 'canceled' && !sides.includeCanceled) return false;
+  if (row.direction === 'buy' ? !sides.buys : !sides.sells) return false;
+  for (const field of fields) {
+    const timestamp = row[field];
+    if (timestamp === null || !Number.isFinite(new Date(timestamp).getTime())) continue;
+    const [hour, minute] = formatTime(timestamp).split(':').map(Number);
+    const clockMinute = hour! * 60 + minute!;
+    if (clockMinute >= from && clockMinute <= to) return true;
+  }
+  return false;
 }

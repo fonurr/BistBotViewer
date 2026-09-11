@@ -969,6 +969,126 @@ describe('the time filter', () => {
   });
 });
 
+describe('matching orders only', () => {
+  const istanbul = (clock: string) => Date.parse(`2026-08-25T${clock}+03:00`);
+  // One chain of three orders: a round trip whose two legs were both sent inside
+  // continuous trading, so each draws an @sent slip, and a sell that died on the way.
+  const roundTrip = () => ({
+    ...emptyRead(),
+    closedTrades: [
+      makeClosedTrade({
+        openCreatedTime: istanbul('10:09:59'),
+        openSentTime: istanbul('10:10:00'),
+        openOrderTime: istanbul('10:10:01'),
+        openFinalSeenTime: istanbul('10:10:03'),
+      }),
+    ],
+    canceledOrders: [makeCanceledOrder({ chainId: 'chain-thyao-roundtrip' })],
+  });
+  const rowsDrawn = () => [
+    ...document.querySelectorAll('article[aria-label="THYAO chain"] .book-row'),
+  ];
+  const stat = (label: string) =>
+    within(document.querySelector('.book-stat-strip')!)
+      .getByText(label, { exact: true })
+      .closest('.book-stat')!;
+  const toggle = () => screen.queryByRole('checkbox', { name: 'matching orders only' });
+
+  // Keep the chains that registered an order at 11:00, which only the closing sell did.
+  async function orderTimeAtEleven(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole('button', { name: 'any time' }));
+    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    await user.click(screen.getByRole('button', { name: 'none' }));
+    await user.click(screen.getByRole('checkbox', { name: 'order' }));
+    for (const name of ['Start time', 'End time'])
+      fireEvent.change(screen.getByRole('slider', { name }), {
+        target: { value: BOOK_TIME_STEPS.indexOf(660) },
+      });
+    await user.click(screen.getByRole('button', { name: 'Close filter' }));
+  }
+
+  it('draws only the orders that pass every filter, still as their chain', async () => {
+    const user = userEvent.setup();
+    book.data = roundTrip();
+    renderBook();
+
+    await orderTimeAtEleven(user);
+    // Kept by its sell, the chain is drawn whole: both legs and the dead sell.
+    expect(rowsDrawn()).toHaveLength(3);
+    expect(rowsDrawn()[1]!.querySelectorAll('[role="cell"]')[2]!.textContent).toBe('');
+
+    await user.click(toggle()!);
+    const [sell] = rowsDrawn();
+    expect(rowsDrawn()).toHaveLength(1);
+    // The sell opens the chain now, and says the size the undrawn buy used to.
+    expect(sell).toHaveClass('book-row-opener');
+    expect(within(sell as HTMLElement).getByRole('button', { name: 'THYAO' })).toBeVisible();
+    expect(within(sell as HTMLElement).getByText('sell')).toBeVisible();
+    expect(sell!.querySelectorAll('[role="cell"]')[2]!.textContent).toBe('100');
+    // A canceled leg counts for the time range only with `include canceled`.
+    expect(document.querySelector('.canceled-global')).toBeNull();
+  });
+
+  it('counts and averages the orders drawn, and still reads money off the whole chain', async () => {
+    const user = userEvent.setup();
+    book.data = roundTrip();
+    renderBook();
+
+    await orderTimeAtEleven(user);
+    expect(stat('visible')).toHaveTextContent('1 chain · 3 orders');
+    // (300 − 299,50) / 299,50 on the buy and (306 − 306,40) / 306,40 on the sell.
+    expect(stat('slip @sent')).toHaveTextContent('+0,02%');
+    expect(document.querySelector('.canceled-global')).toHaveTextContent('1 canceled order');
+
+    await user.click(toggle()!);
+    expect(stat('visible')).toHaveTextContent('1 chain · 1 order');
+    expect(stat('slip @sent')).toHaveTextContent('−0,13%');
+    // The round trip's result is the chain's, whichever of its legs is drawn.
+    expect(stat('realized')).toHaveTextContent('+600,00');
+    expect(document.querySelector('.book-scope-heading')).toHaveTextContent('+600,00');
+  });
+
+  it('is offered only while a filter reads rows, and clear all switches it off', async () => {
+    const user = userEvent.setup();
+    book.data = roundTrip();
+    renderBook();
+    expect(toggle()).toBeNull();
+
+    await orderTimeAtEleven(user);
+    expect(toggle()).not.toBeChecked();
+    await user.click(toggle()!);
+    expect(toggle()).toBeChecked();
+
+    await user.click(screen.getByRole('button', { name: 'clear all' }));
+    expect(toggle()).toBeNull();
+    expect(rowsDrawn()).toHaveLength(3);
+    await orderTimeAtEleven(user);
+    expect(toggle()).not.toBeChecked();
+  });
+
+  it('names itself when no single order passes every filter, and draws the chain back', async () => {
+    const user = userEvent.setup();
+    book.data = roundTrip();
+    renderBook();
+
+    await orderTimeAtEleven(user);
+    // The dead sell is the only canceled leg, and the time range never reads it.
+    await user.click(screen.getByRole('button', { name: 'any status' }));
+    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    await user.click(screen.getByRole('button', { name: 'Close filter' }));
+    expect(rowsDrawn()).toHaveLength(3);
+
+    await user.click(toggle()!);
+    expect(rowsDrawn()).toHaveLength(0);
+    expect(screen.getByText(/Clearing any one of these brings chains back/)).toHaveTextContent(
+      'matching orders only',
+    );
+    await user.click(screen.getByRole('button', { name: 'clear matching orders only' }));
+    expect(rowsDrawn()).toHaveLength(3);
+    expect(toggle()).not.toBeChecked();
+  });
+});
+
 describe('the slippage filter', () => {
   const chainsInGrid = () =>
     [...document.querySelectorAll('.book-chain')]

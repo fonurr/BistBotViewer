@@ -16,9 +16,10 @@ import { bookRowCreatedSlip, bookRowSentSlip } from '../../domain/bookRowFlags';
 import {
   BOOK_SLIPPAGE_FIELDS,
   matchesBookSlippage,
+  rowMatchesBookSlippage,
   type BookRowFlagContext,
 } from '../../domain/bookSlippageFilter';
-import { formatBookTime, matchesBookTime } from '../../domain/bookTimeFilter';
+import { formatBookTime, matchesBookTime, rowMatchesBookTime } from '../../domain/bookTimeFilter';
 import { activeSessionDates, withinBatchRange } from '../../domain/batchRange';
 import { bookAllocation } from '../../domain/budget';
 import {
@@ -29,7 +30,13 @@ import {
 } from '../../domain/calendar';
 import { intentBarLookup, intentPriceReference, intentSlipAllowed } from '../../domain/intentPrice';
 import { useIntentPrices } from '../../app/useIntentPrices';
-import { buildBookChains, rowReasons, type BookChain, type BookScope } from '../../domain/chains';
+import {
+  buildBookChains,
+  rowReasons,
+  type BookChain,
+  type BookChainRow,
+  type BookScope,
+} from '../../domain/chains';
 import {
   formatDate,
   formatNumber,
@@ -52,7 +59,12 @@ import { BookFilters } from './BookFilters';
 import { BookGrid, ColumnDivider, summarizeBookToday } from './BookGrid';
 import { OrderDialog, type OrderDialogAction } from './OrderDialog';
 import { rangeLabel } from '../../components/DateRangeFilter';
-import { defaultBookFilters, type BookFilterState, type BookIntentCell } from './types';
+import {
+  defaultBookFilters,
+  rowFiltersActive,
+  type BookFilterState,
+  type BookIntentCell,
+} from './types';
 import './book.css';
 
 interface OpenChainState {
@@ -182,10 +194,24 @@ export function BookPage() {
     () => ({ calendar, intentSlip: (row) => intentCells.get(row.key)?.slip ?? null }),
     [calendar, intentCells],
   );
-  const visibleChains = useMemo(
-    () => filteredChains.filter((chain) => chainMatchesSlippage(chain, filters, rowFlags)),
+  /*
+   * What is drawn: the chains every filter kept, and — with `matching orders
+   * only` on — just the rows of each that pass every filter at once. From here
+   * on a figure is read one of two ways. One counted per order (the order count,
+   * the canceled toggle, the slip averages) reads the rows drawn; one counted per
+   * chain (budget, allocation, P&L) still reads every row of each drawn chain,
+   * since a chain's budget or round trip does not split by the row a filter hit.
+   */
+  const view = useMemo(
+    () =>
+      drawnBookView(
+        filteredChains.filter((chain) => chainMatchesSlippage(chain, filters, rowFlags)),
+        filters,
+        rowFlags,
+      ),
     [filteredChains, filters, rowFlags],
   );
+  const visibleChains = view.chains;
   const visiblePending = useMemo(
     () =>
       /* A queued basket has no order yet, so it owns no canceled leg, no
@@ -226,12 +252,12 @@ export function BookPage() {
    * unfiltered, and it says so in its own words.
    */
   const visibleCanceledCount = useMemo(
-    () => visibleChains.reduce((count, chain) => count + chain.canceledRows.length, 0),
-    [visibleChains],
+    () => visibleChains.reduce((count, chain) => count + drawnCanceledRows(view, chain).length, 0),
+    [view, visibleChains],
   );
   const summary = useMemo(
-    () => summarize(visibleChains, priceFeed.prices, priceFeed.trustworthy, botById, calendar),
-    [botById, calendar, priceFeed.prices, priceFeed.trustworthy, visibleChains],
+    () => summarize(view, priceFeed.prices, priceFeed.trustworthy, botById, calendar),
+    [botById, calendar, priceFeed.prices, priceFeed.trustworthy, view],
   );
 
   // The `today` column reads each chain's P&L from the start of today's Istanbul calendar
@@ -285,13 +311,13 @@ export function BookPage() {
   // and so is every row the slippage filter set aside.
   const avgSlipIntent = useMemo(() => {
     const slips = visibleChains.flatMap((chain) =>
-      chain.rows.flatMap((row) => {
+      drawnRowsOf(view, chain).flatMap((row) => {
         const slip = rowFlags.intentSlip(row);
         return slip === null ? [] : [slip];
       }),
     );
     return slips.length ? slips.reduce((sum, value) => sum + value, 0) / slips.length : null;
-  }, [rowFlags, visibleChains]);
+  }, [rowFlags, view, visibleChains]);
   /*
    * An empty `@intent` column has two very different causes, and the reader has
    * to be able to tell them apart: the rules withheld every figure, or the
@@ -478,12 +504,10 @@ export function BookPage() {
         manualOpenLegs={
           showCanceled
             ? 0
-            : [...canceledOverrides].reduce(
-                (count, key) =>
-                  count +
-                  (visibleChains.find((chain) => chain.key === key)?.canceledRows.length ?? 0),
-                0,
-              )
+            : [...canceledOverrides].reduce((count, key) => {
+                const chain = visibleChains.find((candidate) => candidate.key === key);
+                return count + (chain ? drawnCanceledRows(view, chain).length : 0);
+              }, 0)
         }
         manualClosedChains={
           showCanceled
@@ -514,6 +538,18 @@ export function BookPage() {
           <button type="button" className="btn btn-ghost" onClick={clearFilters}>
             clear all
           </button>
+          {/* Drawn only where it can change something: a filter that reads rows
+              one at a time is on, and every one of those carries a chip here. */}
+          {rowFiltersActive(filters) ? (
+            <label className="filter-chips-toggle" title={ORDERS_ONLY_TITLE}>
+              <input
+                type="checkbox"
+                checked={filters.ordersOnly}
+                onChange={() => applyFilters({ ...filters, ordersOnly: !filters.ordersOnly })}
+              />
+              <span>matching orders only</span>
+            </label>
+          ) : null}
         </div>
       ) : null}
       {snapshotAvailable && !genuineEmpty ? (
@@ -581,6 +617,7 @@ export function BookPage() {
       {snapshotAvailable && filters.scopes.size > 0 && visibleChains.length > 0 ? (
         <BookGrid
           chains={visibleChains}
+          drawnRows={view.rows}
           showScopeHeadings={!filters.noClosingOrder}
           bots={data.bots}
           accounts={data.accounts}
@@ -848,15 +885,106 @@ export function narrowingsThatEmptiedTheBook(
     });
   }
 
+  /* Last, since it narrows only by what the others leave: every filter can keep
+     a chain on a row of its own, and then no single row passes them all. */
+  if (filters.ordersOnly) {
+    candidates.push({
+      key: 'orders-only',
+      phrase: 'matching orders only',
+      sentence: 'No single order passes every filter at once, so matching orders only draws none.',
+      clear: (current) => ({ ...current, ordersOnly: false }),
+    });
+  }
+
   return candidates.flatMap((candidate) => {
     const relaxed = candidate.clear(filters);
-    const restored = chains.filter(
-      (chain) =>
-        chainMatches(chain, relaxed, accountKeyFor(chain)) &&
-        chainMatchesSlippage(chain, relaxed, rowFlags),
-    ).length;
+    const restored = drawnBookView(
+      chains.filter(
+        (chain) =>
+          chainMatches(chain, relaxed, accountKeyFor(chain)) &&
+          chainMatchesSlippage(chain, relaxed, rowFlags),
+      ),
+      relaxed,
+      rowFlags,
+    ).chains.length;
     return restored > 0 ? [{ ...candidate, restored }] : [];
   });
+}
+
+/**
+ * The chains the filters kept, and the rows each one draws. `rows` names only a
+ * chain that draws fewer rows than it owns; every other chain draws them all.
+ */
+export interface BookView {
+  chains: readonly BookChain[];
+  rows: ReadonlyMap<string, readonly BookChainRow[]>;
+}
+
+/**
+ * Off, `matching orders only` changes nothing: every kept chain is drawn whole.
+ * On, each draws the rows that pass every filter at once and keeps its place as
+ * a chain however few that leaves; one with no such row is dropped, since the
+ * other filters kept it on rows that each fail a different one.
+ */
+export function drawnBookView(
+  kept: readonly BookChain[],
+  filters: BookFilterState,
+  rowFlags: BookRowFlagContext,
+): BookView {
+  if (!filters.ordersOnly || !rowFiltersActive(filters)) return { chains: kept, rows: new Map() };
+  const rows = new Map<string, readonly BookChainRow[]>();
+  const chains = kept.filter((chain) => {
+    const matching = chain.rows.filter((row) => rowMatchesFilters(row, filters, rowFlags));
+    if (matching.length < chain.rows.length) rows.set(chain.key, matching);
+    return matching.length > 0;
+  });
+  return { chains, rows };
+}
+
+function drawnRowsOf(view: BookView, chain: BookChain): readonly BookChainRow[] {
+  return view.rows.get(chain.key) ?? chain.rows;
+}
+
+function drawnCanceledRows(view: BookView, chain: BookChain): readonly BookChainRow[] {
+  const rows = view.rows.get(chain.key);
+  return rows === undefined ? chain.canceledRows : rows.filter((row) => row.source === 'canceled');
+}
+
+/**
+ * Whether one row passes every filter that reads rows one at a time. The rest —
+ * scope, bot, account, symbol, the batch range — already answered for its whole
+ * chain, and a chain is only asked this once they kept it.
+ */
+function rowMatchesFilters(
+  row: BookChainRow,
+  filters: BookFilterState,
+  rowFlags: BookRowFlagContext,
+): boolean {
+  if (filters.canceledStatusFilter && !rowMatchesCanceledStatus(row, filters.canceledStatuses))
+    return false;
+  if (filters.reasonFilter && !rowMatchesReason(row, filters.reasons)) return false;
+  if (filters.sourceFilter && !rowMatchesSource(row, filters.sources)) return false;
+  if (filters.originFilter && !rowMatchesOrigin(row, filters.origins)) return false;
+  if (
+    filters.timeFilter &&
+    !rowMatchesBookTime(row, filters.timeFields, filters.timeFrom, filters.timeTo, {
+      buys: filters.timeBuys,
+      sells: filters.timeSells,
+      includeCanceled: filters.timeIncludeCanceled,
+    })
+  )
+    return false;
+  if (
+    filters.slippageFilter &&
+    !rowMatchesBookSlippage(
+      row,
+      filters.slippageFields,
+      { buys: filters.slippageBuys, sells: filters.slippageSells },
+      rowFlags,
+    )
+  )
+    return false;
+  return true;
 }
 
 /** Off, with every field and both sides back — the state the filter comes up in. */
@@ -953,8 +1081,15 @@ function rangeNarrowed(filters: BookFilterState, rangeDates: readonly string[]):
  * that is what the off switch beside them is for.
  */
 function matchesCanceledStatus(chain: BookChain, statuses: ReadonlySet<string> | null): boolean {
-  return chain.canceledRows.some(
-    (row) => statuses === null || statuses.has(displayStatus(row.status)),
+  return chain.canceledRows.some((row) => rowMatchesCanceledStatus(row, statuses));
+}
+
+function rowMatchesCanceledStatus(
+  row: BookChainRow,
+  statuses: ReadonlySet<string> | null,
+): boolean {
+  return (
+    row.source === 'canceled' && (statuses === null || statuses.has(displayStatus(row.status)))
   );
 }
 
@@ -966,9 +1101,11 @@ function matchesCanceledStatus(chain: BookChain, statuses: ReadonlySet<string> |
  * even with every reason ticked.
  */
 function matchesReason(chain: BookChain, reasons: ReadonlySet<string> | null): boolean {
-  return chain.rows.some((row) =>
-    rowReasons(row).some((reason) => reasons === null || reasons.has(reason)),
-  );
+  return chain.rows.some((row) => rowMatchesReason(row, reasons));
+}
+
+function rowMatchesReason(row: BookChainRow, reasons: ReadonlySet<string> | null): boolean {
+  return rowReasons(row).some((reason) => reasons === null || reasons.has(reason));
 }
 
 /**
@@ -977,9 +1114,11 @@ function matchesReason(chain: BookChain, reasons: ReadonlySet<string> | null): b
  * with every source ticked.
  */
 function matchesSource(chain: BookChain, sources: ReadonlySet<string> | null): boolean {
-  return chain.rows.some(
-    (row) => row.statusSource !== null && (sources === null || sources.has(row.statusSource)),
-  );
+  return chain.rows.some((row) => rowMatchesSource(row, sources));
+}
+
+function rowMatchesSource(row: BookChainRow, sources: ReadonlySet<string> | null): boolean {
+  return row.statusSource !== null && (sources === null || sources.has(row.statusSource));
 }
 
 /**
@@ -988,9 +1127,11 @@ function matchesSource(chain: BookChain, sources: ReadonlySet<string> | null): b
  * narrows the Book even with every origin ticked.
  */
 function matchesOrigin(chain: BookChain, origins: ReadonlySet<string> | null): boolean {
-  return chain.rows.some(
-    (row) => row.origin !== null && (origins === null || origins.has(row.origin)),
-  );
+  return chain.rows.some((row) => rowMatchesOrigin(row, origins));
+}
+
+function rowMatchesOrigin(row: BookChainRow, origins: ReadonlySet<string> | null): boolean {
+  return row.origin !== null && (origins === null || origins.has(row.origin));
 }
 
 function accountKeyForBot(bot: Bot | undefined): string | null {
@@ -999,13 +1140,19 @@ function accountKeyForBot(bot: Bot | undefined): string | null {
     : null;
 }
 
+/**
+ * The strip. The money is read off every row of each drawn chain — a chain's
+ * P&L, cost and allocation do not split by the row a filter hit — while the
+ * order count and the slip averages read only the rows actually drawn.
+ */
 function summarize(
-  chains: readonly BookChain[],
+  view: BookView,
   prices: ReturnType<typeof useFleetPrices>['prices'],
   pricesTrustworthy: boolean,
   botById: ReadonlyMap<string, ReturnType<typeof useBookData>['bots'][number]>,
   calendar: HolidayCalendar,
 ) {
+  const { chains } = view;
   const trades = new Map(
     chains.flatMap((chain) => chain.sources.closedTrades).map((trade) => [trade.id, trade]),
   );
@@ -1051,7 +1198,7 @@ function summarize(
   }
   // Exactly the slips the rows drew: a send outside continuous trading withholds
   // the row's `@sent` slip, so it leaves that average too.
-  const rows = chains.flatMap((chain) => chain.rows);
+  const rows = chains.flatMap((chain) => drawnRowsOf(view, chain));
   const createdSlips = rows
     .map((row) => bookRowCreatedSlip(row))
     .filter((value): value is number => value !== null);
@@ -1060,11 +1207,8 @@ function summarize(
     .filter((value): value is number => value !== null);
   return {
     chains: chains.length,
-    orders: chains.reduce(
-      (sum, chain) =>
-        sum + chain.activeRows.length + chain.canceledRows.length + chain.tradeRows.length,
-      0,
-    ),
+    // A Positions row is the holding its buy left, not an order of its own.
+    orders: rows.filter((row) => row.source !== 'position').length,
     realized,
     unrealized,
     unrealizedKnown: hasEveryPrice,
@@ -1176,6 +1320,10 @@ function StatStrip({
 const ALLOCATED_TITLE =
   'Held positions: quantity × average cost, forbidden stocks excluded.\n' +
   'Buys still to open, resting or scheduled: order quantity × order price, × 1.1 for a market buy.';
+
+const ORDERS_ONLY_TITLE =
+  'Draw only the orders that pass every filter at once, each still inside its chain.\n' +
+  'The order count, the canceled count and the slip averages follow the orders drawn; budget, allocated, P&L and today still read each drawn chain whole.';
 
 function Stat({
   label,

@@ -13,6 +13,7 @@ import {
   formatBookTime,
   matchesBookTime,
   parseBookTimeInput,
+  rowMatchesBookTime,
   stepBookTimeRange,
   type BookTimeField,
 } from './bookTimeFilter';
@@ -386,5 +387,22 @@ describe('time matching by leg side', () => {
     expect(at(720, 720, { buys: true })).toBe(false);
     expect(at(720, 720, { buys: true, includeCanceled: true })).toBe(true);
     expect(at(720, 720, { sells: true, includeCanceled: true })).toBe(false);
+  });
+
+  it('answers the same test one leg at a time, for the rows matching orders only draws', () => {
+    const legs = (from: number, to: number, sides: Partial<typeof allSides>) =>
+      legChain.rows.map((row) =>
+        rowMatchesBookTime(row, allFields, from, to, {
+          buys: false,
+          sells: false,
+          includeCanceled: false,
+          ...sides,
+        }),
+      );
+
+    expect(legs(600, 720, { buys: true, sells: true })).toEqual([true, true, false]);
+    expect(legs(600, 720, { sells: true })).toEqual([false, true, false]);
+    expect(legs(600, 720, { buys: true, includeCanceled: true })).toEqual([true, false, true]);
+    expect(legs(720, 600, { buys: true, sells: true })).toEqual([false, false, false]);
   });
 });

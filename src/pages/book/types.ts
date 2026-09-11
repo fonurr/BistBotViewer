@@ -105,6 +105,14 @@ export interface BookFilterState {
    */
   batchBasis: BatchRangeBasis;
   noClosingOrder: boolean;
+  /**
+   * How a kept chain is drawn. Off, it is drawn whole: every filter selects
+   * chains, never rows. On, a chain draws only the rows that pass every filter
+   * at once — still as a chain, however few — and drops out where none does.
+   * Only the row filters (`rowFiltersActive`) can tell one row of a chain from
+   * another, so with none of them on this changes nothing.
+   */
+  ordersOnly: boolean;
 }
 
 export const defaultBookFilters: BookFilterState = {
@@ -141,7 +149,35 @@ export const defaultBookFilters: BookFilterState = {
   batchTo: null,
   batchBasis: 'batch',
   noClosingOrder: false,
+  ordersOnly: false,
 };
+
+/**
+ * What becomes of a chain a row filter kept, in the words each filter's note
+ * uses: drawn whole, or only as far as its rows pass every filter at once.
+ */
+export function keptChainDrawing(filters: Pick<BookFilterState, 'ordersOnly'>): string {
+  return filters.ordersOnly
+    ? 'draws only its orders that pass every filter, since matching orders only is on'
+    : 'draws the whole chain';
+}
+
+/**
+ * Whether a filter that reads rows one at a time is on — the ones that can keep
+ * a chain by one of its rows and not another. Scope, bot, account, symbol and
+ * the batch range answer for the whole chain at once.
+ */
+export function rowFiltersActive(filters: BookFilterState): boolean {
+  return (
+    !filters.noClosingOrder &&
+    (filters.canceledStatusFilter ||
+      filters.reasonFilter ||
+      filters.sourceFilter ||
+      filters.originFilter ||
+      filters.timeFilter ||
+      filters.slippageFilter)
+  );
+}
 
 /**
  * `canceled` is the scope's key, not its word. A chain only lands there when

@@ -675,6 +675,45 @@ describe('BookGrid scope groups', () => {
   });
 });
 
+describe('BookGrid with matching orders only', () => {
+  it('draws only the rows it is handed as the chain, and reads the chain whole', async () => {
+    const user = userEvent.setup();
+    const position = makePosition();
+    const chains = buildBookChains({
+      activeOrders: [
+        makeActiveOrder({
+          id: 200,
+          clientOrderId: 'client-thyao-exit',
+          symbol: 'THYAO',
+          chainId: position.chainId,
+          parentClientOrderId: position.clientOrderId,
+          direction: 'sell',
+          orderQuantity: position.quantity,
+        }),
+      ],
+      canceledOrders: [],
+      positions: [position],
+      closedTrades: [],
+    });
+    const chain = chains[0]!;
+    const sell = chain.rows.find((row) => row.direction === 'sell')!;
+    const onOpenChain = vi.fn();
+    renderGrid({ chains, drawnRows: new Map([[chain.key, [sell]]]), onOpenChain });
+
+    const rows = document.querySelectorAll('article[aria-label="THYAO chain"] .book-row');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveClass('book-row-opener');
+    // The buy above it is not drawn, so nothing states the size the sell repeats.
+    expect(rows[0]!.querySelectorAll('[role="cell"]')[2]!.textContent).toBe('100');
+    // The heading's unrealized is the chain's: 100 × (305,50 − 301,50) on the undrawn position.
+    expect(document.querySelector('.book-scope-heading')).toHaveTextContent('+400');
+
+    // The symbol opens the whole chain, every leg and action with it.
+    await user.click(screen.getByRole('button', { name: 'THYAO' }));
+    expect(onOpenChain).toHaveBeenCalledWith(chain);
+  });
+});
+
 describe('BookGrid batches', () => {
   const DAY_MS = 24 * 60 * 60 * 1_000;
 
