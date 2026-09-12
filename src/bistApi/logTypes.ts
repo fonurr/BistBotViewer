@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 export const logSourceSchema = z.enum(['errors', 'wire', 'api']);
 export const trafficLogTypeSchema = z.enum(['routine', 'action', 'unexpected', 'error']);
+export const wireDirectionSchema = z.enum(['out', 'in']);
 export const storedErrorTypeSchema = z.enum([
   'MatriksConnectionError',
   'MatriksFieldNotFound',
@@ -14,10 +15,12 @@ export const storedErrorTypeSchema = z.enum([
 ]);
 
 export const trafficLogTypes = trafficLogTypeSchema.options;
+export const wireDirections = wireDirectionSchema.options;
 export const storedErrorTypes = storedErrorTypeSchema.options;
 
 export type LogSource = z.infer<typeof logSourceSchema>;
 export type TrafficLogType = z.infer<typeof trafficLogTypeSchema>;
+export type WireDirection = z.infer<typeof wireDirectionSchema>;
 export type StoredErrorType = z.infer<typeof storedErrorTypeSchema>;
 
 /**
@@ -58,7 +61,9 @@ const wireLogQuerySchema = z
     source: z.literal('wire'),
     ...queryWindowShape,
     types: z.array(trafficLogTypeSchema).min(1).max(trafficLogTypes.length).optional(),
+    directions: z.array(wireDirectionSchema).min(1).max(wireDirections.length).optional(),
     operations: logValueFilterSchema.optional(),
+    accountIds: logValueFilterSchema.optional(),
   })
   .strict();
 
@@ -88,12 +93,36 @@ export const logQuerySchema = z
         message: 'Log types must not be repeated.',
       });
     }
-    const values =
-      query.source === 'wire' ? query.operations : query.source === 'api' ? query.paths : undefined;
-    if (values && new Set(values).size !== values.length) {
+    if (query.source === 'wire') {
+      if (query.directions && new Set(query.directions).size !== query.directions.length) {
+        context.addIssue({
+          code: 'custom',
+          path: ['directions'],
+          message: 'Directions must not be repeated.',
+        });
+      }
+      if (query.operations && new Set(query.operations).size !== query.operations.length) {
+        context.addIssue({
+          code: 'custom',
+          path: ['operations'],
+          message: 'Filter values must not be repeated.',
+        });
+      }
+      if (query.accountIds && new Set(query.accountIds).size !== query.accountIds.length) {
+        context.addIssue({
+          code: 'custom',
+          path: ['accountIds'],
+          message: 'Filter values must not be repeated.',
+        });
+      }
+    } else if (
+      query.source === 'api' &&
+      query.paths &&
+      new Set(query.paths).size !== query.paths.length
+    ) {
       context.addIssue({
         code: 'custom',
-        path: [query.source === 'wire' ? 'operations' : 'paths'],
+        path: ['paths'],
         message: 'Filter values must not be repeated.',
       });
     }
@@ -158,7 +187,7 @@ export const wireLogRowSchema = z
     at: safeUnsignedIntegerSchema,
     atText: z.string(),
     target: z.enum(['matriks', 'quotes']),
-    direction: z.enum(['out', 'in']),
+    direction: wireDirectionSchema,
     type: trafficLogTypeSchema,
     operation: z.string(),
     apiCommand: z.number().int().nullable(),
@@ -221,6 +250,13 @@ const trafficLogCountsSchema = z
   })
   .strict();
 
+const wireDirectionCountsSchema = z
+  .object({
+    out: safeUnsignedIntegerSchema,
+    in: safeUnsignedIntegerSchema,
+  })
+  .strict();
+
 /**
  * Rows per distinct wire operation or API path in the range, most frequent
  * first. Like the type counts, they ignore every selection.
@@ -255,7 +291,9 @@ const wireLogQueryResultSchema = z
     source: z.literal('wire'),
     rows: z.array(wireLogRowSchema).max(200),
     countsByType: trafficLogCountsSchema,
+    countsByDirection: wireDirectionCountsSchema,
     operationCounts: logValueCountsSchema,
+    accountIdCounts: logValueCountsSchema,
     ...resultMetadataShape,
   })
   .strict();

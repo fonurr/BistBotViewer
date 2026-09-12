@@ -88,7 +88,9 @@ function wireResult(): WireLogQueryResult {
     ],
     total: 1,
     countsByType: TRAFFIC_COUNTS,
+    countsByDirection: { out: 1, in: 0 },
     operationCounts: { values: [{ value: 'GetOrders', count: 1 }], complete: true },
+    accountIdCounts: { values: [], complete: true },
     extent: extents.wire,
   };
 }
@@ -410,6 +412,108 @@ describe('LogsDrawer', () => {
     await screen.findByRole('button', { name: '1 path' });
     expect(logClient.query).toHaveBeenLastCalledWith(
       expect.not.objectContaining({ paths: expect.anything() }),
+    );
+  });
+
+  it('filters the wire log by account id on the server, independently of operation', async () => {
+    const accountIds = [
+      { value: 'ACC-2', count: 5 },
+      { value: 'ACC-1', count: 3 },
+      { value: 'ACC-3', count: 1 },
+    ];
+    vi.mocked(logClient.query).mockImplementation(async (rawInput) => {
+      const input = rawInput as LogQueryInput;
+      if (input.source === 'errors') return errorResult() as LogQueryResult;
+      if (input.source === 'api') return apiResult() as LogQueryResult;
+      const base = wireResult();
+      const kept = accountIds.filter(
+        (entry) => !input.accountIds || input.accountIds.includes(entry.value),
+      );
+      return {
+        ...base,
+        rows: kept.map((entry, index) => ({
+          ...base.rows[0]!,
+          id: 30 + index,
+          accountId: entry.value,
+        })),
+        total: kept.reduce((total, entry) => total + entry.count, 0),
+        accountIdCounts: { values: accountIds, complete: true },
+      } as LogQueryResult;
+    });
+    const user = userEvent.setup();
+    render(<LogsDrawer open onClose={vi.fn()} />);
+
+    await user.click(screen.getByRole('tab', { name: 'Wire log' }));
+    const trigger = await screen.findByRole('button', { name: '3 account ids' });
+    // The operation filter, over the same rows, stays a separate control.
+    expect(screen.getByRole('button', { name: '1 operation' })).toBeInTheDocument();
+    await user.click(trigger);
+    const popover = screen.getByRole('dialog', { name: '3 account ids filter' });
+    expect(
+      within(popover)
+        .getAllByRole('checkbox')
+        .map((box) => box.closest('label')?.textContent),
+    ).toEqual(['ACC-13', 'ACC-25', 'ACC-31']);
+
+    await user.click(within(popover).getByRole('button', { name: 'none' }));
+    expect(
+      await screen.findByText(`No account id is ticked, so no row in ${formatToday()} is shown.`),
+    ).toBeInTheDocument();
+    expect(logClient.query).toHaveBeenLastCalledWith(
+      expect.objectContaining({ source: 'wire', accountIds: [] }),
+    );
+
+    await user.click(within(popover).getByRole('checkbox', { name: /^ACC-3/ }));
+    await screen.findByText(`1 of 1 in ${formatToday()} · newest first`);
+    expect(logClient.query).toHaveBeenLastCalledWith(
+      expect.objectContaining({ source: 'wire', accountIds: ['ACC-3'], operations: undefined }),
+    );
+  });
+
+  it('filters the wire log by direction using the chip row', async () => {
+    const outRow = {
+      ...wireResult().rows[0]!,
+      id: 40,
+      direction: 'out' as const,
+      operation: 'SendOrder',
+    };
+    const inRow = {
+      ...wireResult().rows[0]!,
+      id: 41,
+      direction: 'in' as const,
+      operation: 'GetOrders',
+    };
+    vi.mocked(logClient.query).mockImplementation(async (rawInput) => {
+      const input = rawInput as LogQueryInput;
+      if (input.source === 'errors') return errorResult() as LogQueryResult;
+      if (input.source === 'api') return apiResult() as LogQueryResult;
+      const base = wireResult();
+      const rows = [outRow, inRow].filter(
+        (row) => !input.directions || input.directions.includes(row.direction),
+      );
+      return {
+        ...base,
+        rows,
+        total: rows.length,
+        countsByDirection: { out: 1, in: 1 },
+      } as LogQueryResult;
+    });
+    const user = userEvent.setup();
+    render(<LogsDrawer open onClose={vi.fn()} />);
+    await user.click(screen.getByRole('tab', { name: 'Wire log' }));
+    await screen.findByText(`2 of 2 in ${formatToday()} · newest first`);
+
+    await user.click(screen.getByRole('button', { name: 'out 1' }));
+    await screen.findByText(`1 of 1 in ${formatToday()} · newest first`);
+    expect(logClient.query).toHaveBeenLastCalledWith(
+      expect.objectContaining({ source: 'wire', directions: ['out'] }),
+    );
+    expect(screen.getByText('SendOrder')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'All directions' }));
+    await screen.findByText(`2 of 2 in ${formatToday()} · newest first`);
+    expect(logClient.query).toHaveBeenLastCalledWith(
+      expect.objectContaining({ source: 'wire', directions: undefined }),
     );
   });
 

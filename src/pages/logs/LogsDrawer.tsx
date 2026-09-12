@@ -22,13 +22,16 @@ import {
   type LogValueCounts,
   type StoredErrorType,
   type TrafficLogType,
+  type WireDirection,
 } from '../../bistApi/logTypes';
 import { LogsTable } from './LogsTable';
 import {
   ERROR_TYPES,
   LOG_TABS,
   TRAFFIC_TYPES,
+  VALUE_FILTER_KEYS_BY_TAB,
   VALUE_FILTER_NOUNS,
+  WIRE_DIRECTIONS,
   clampRangeToExtent,
   columnsFor,
   daysBetween,
@@ -50,7 +53,7 @@ import {
   type LogRange,
   type LogsTab,
   type SortDirection,
-  type ValueFilterTab,
+  type ValueFilterKey,
 } from './logsModel';
 
 import './logs.css';
@@ -65,8 +68,10 @@ interface SourcePage {
   rows: LogEnvelope[];
   total: number;
   countsByType: Record<string, number>;
-  /** Operation (wire) or path (API) counts; the error log has no such column. */
-  valueCounts: LogValueCounts | null;
+  /** Operation/account id (wire) or path (API) counts; the error log has none. */
+  valueCounts: Partial<Record<ValueFilterKey, LogValueCounts>>;
+  /** Wire-only: rows per direction in the range, ignoring every selection. */
+  directionCounts: Record<WireDirection, number> | null;
   extent: LogExtent;
   exhausted: boolean;
 }
@@ -74,11 +79,13 @@ interface SourcePage {
 /** What one server read is narrowed by. Search is not here: it never leaves the browser. */
 interface PageFilter {
   types: readonly string[];
-  /** `null` asks for every operation or path; an empty list for none. */
-  values: readonly string[] | null;
+  /** Wire-only. */
+  directions: readonly WireDirection[];
+  /** `null` asks for every value of that filter; an empty list for none. */
+  values: Partial<Record<ValueFilterKey, readonly string[] | null>>;
 }
 
-const NO_FILTER: PageFilter = { types: [], values: null };
+const NO_FILTER: PageFilter = { types: [], directions: [], values: {} };
 
 interface ViewState {
   signature: string;
@@ -95,14 +102,14 @@ type TypeSelections = {
   api: TrafficLogType[];
 };
 
-type ValueSelections = Record<ValueFilterTab, FilterSelection>;
+type ValueSelections = Record<ValueFilterKey, FilterSelection>;
 
 /**
- * The last operation or path counts per tab, kept by the range they counted.
- * They ignore the selection, so ticking a box — which reloads the page — does
- * not empty the list the next box is being picked from.
+ * The last operation, account id, or path counts per filter, kept by the range
+ * they counted. They ignore the selection, so ticking a box — which reloads
+ * the page — does not empty the list the next box is being picked from.
  */
-type RangeValueCounts = Record<ValueFilterTab, { rangeKey: string; counts: LogValueCounts } | null>;
+type RangeValueCounts = Record<ValueFilterKey, { rangeKey: string; counts: LogValueCounts } | null>;
 
 type SortByTab = Record<LogsTab, { key: string; direction: SortDirection }>;
 
@@ -166,18 +173,21 @@ function errorMessage(error: unknown): string {
 
 function toPage(result: LogQueryResult): SourcePage {
   let rows: LogEnvelope[];
-  let valueCounts: LogValueCounts | null = null;
+  const valueCounts: Partial<Record<ValueFilterKey, LogValueCounts>> = {};
+  let directionCounts: Record<WireDirection, number> | null = null;
   if (result.source === 'errors') {
     const errorRows = result.rows;
     rows = errorRows.map((row) => ({ source: 'errors', row }));
   } else if (result.source === 'wire') {
     const wireRows = result.rows;
     rows = wireRows.map((row) => ({ source: 'wire', row }));
-    valueCounts = result.operationCounts;
+    valueCounts.operation = result.operationCounts;
+    valueCounts.accountId = result.accountIdCounts;
+    directionCounts = result.countsByDirection;
   } else {
     const apiRows = result.rows;
     rows = apiRows.map((row) => ({ source: 'api', row }));
-    valueCounts = result.pathCounts;
+    valueCounts.path = result.pathCounts;
   }
   return {
     source: result.source,
@@ -185,15 +195,22 @@ function toPage(result: LogQueryResult): SourcePage {
     total: result.total,
     countsByType: { ...result.countsByType },
     valueCounts,
+    directionCounts,
     extent: result.extent,
     exhausted: rows.length < PAGE_SIZE || rows.length >= result.total,
   };
 }
 
+/** `null` asks the server for every value of that filter; `undefined` means the filter does not apply here. */
+function queryValues(values: PageFilter['values'], key: ValueFilterKey): string[] | undefined {
+  const selection = values[key];
+  return selection === undefined || selection === null ? undefined : [...selection];
+}
+
 async function readPage(
   source: LogSource,
   range: LogRange,
-  { types, values }: PageFilter,
+  { types, directions, values }: PageFilter,
   beforeId?: number,
   limit = PAGE_SIZE,
 ): Promise<SourcePage> {
@@ -210,14 +227,15 @@ async function readPage(
     );
   }
   const trafficTypes = types.length > 0 ? (types as TrafficLogType[]) : undefined;
-  const selectedValues = values === null ? undefined : [...values];
   if (source === 'wire') {
     return toPage(
       await logClient.query({
         source,
         ...window,
         types: trafficTypes,
-        operations: selectedValues,
+        directions: directions.length > 0 ? [...directions] : undefined,
+        operations: queryValues(values, 'operation'),
+        accountIds: queryValues(values, 'accountId'),
         beforeId,
         limit,
       }),
@@ -228,7 +246,7 @@ async function readPage(
       source,
       ...window,
       types: trafficTypes,
-      paths: selectedValues,
+      paths: queryValues(values, 'path'),
       beforeId,
       limit,
     }),
@@ -287,11 +305,19 @@ function selectedFilterFor(
   source: LogSource,
   activeTab: LogsTab,
   types: TypeSelections,
+  directions: readonly WireDirection[],
   values: ValueSelections,
 ): PageFilter {
   if (activeTab !== source) return NO_FILTER;
-  const selection = source === 'errors' ? null : values[source];
-  return { types: types[source], values: selectionList(selection) };
+  const valueMap: Partial<Record<ValueFilterKey, readonly string[] | null>> = {};
+  for (const key of VALUE_FILTER_KEYS_BY_TAB[source]) {
+    valueMap[key] = selectionList(values[key]);
+  }
+  return {
+    types: types[source],
+    directions: source === 'wire' ? directions : [],
+    values: valueMap,
+  };
 }
 
 /** Sorted, so one selection always makes the same request and the same signature. */
@@ -337,13 +363,17 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
     api: [],
   });
   const [valueSelections, setValueSelections] = useState<ValueSelections>({
-    wire: null,
-    api: null,
+    operation: null,
+    accountId: null,
+    path: null,
   });
   const [rangeValueCounts, setRangeValueCounts] = useState<RangeValueCounts>({
-    wire: null,
-    api: null,
+    operation: null,
+    accountId: null,
+    path: null,
   });
+  /** Wire-only: the wire log is the only tab with a direction column. */
+  const [directionSelection, setDirectionSelection] = useState<WireDirection[]>([]);
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   const [sorts, setSorts] = useState<SortByTab>(INITIAL_SORTS);
   const [widths, setWidths] = useState<Record<LogsTab, Record<string, number>>>({
@@ -392,10 +422,13 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
       ? typeSelections[activeTab]
       : [];
   const typeSignature = activeTypes.join(',');
-  const valueTab: ValueFilterTab | null = activeTab === 'errors' ? null : activeTab;
-  const activeValueSelection = valueTab === null ? null : valueSelections[valueTab];
-  const valueSignature = JSON.stringify(selectionList(activeValueSelection));
-  const viewSignature = `${activeTab}:${currentRange.from}:${currentRange.to}:${typeSignature}:${valueSignature}:${queryReload}`;
+  const activeValueFilterKeys = VALUE_FILTER_KEYS_BY_TAB[activeTab];
+  const activeDirections = activeTab === 'wire' ? directionSelection : [];
+  const directionSignature = [...activeDirections].sort().join(',');
+  const valueSignature = JSON.stringify(
+    activeValueFilterKeys.map((key) => selectionList(valueSelections[key])),
+  );
+  const viewSignature = `${activeTab}:${currentRange.from}:${currentRange.to}:${typeSignature}:${directionSignature}:${valueSignature}:${queryReload}`;
 
   useEffect(() => {
     if (!open) return;
@@ -435,21 +468,20 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
         readPage(
           source,
           currentRange,
-          selectedFilterFor(source, activeTab, typeSelections, valueSelections),
+          selectedFilterFor(source, activeTab, typeSelections, directionSelection, valueSelections),
         ),
       ),
     )
       .then((pages) => {
         if (generation !== queryGeneration.current) return;
-        const counted = pages.filter(
-          (page): page is SourcePage & { source: ValueFilterTab; valueCounts: LogValueCounts } =>
-            page.source !== 'errors' && page.valueCounts !== null,
-        );
+        const counted = pages.filter((page) => Object.keys(page.valueCounts).length > 0);
         if (counted.length > 0) {
           setRangeValueCounts((current) => {
             const next = { ...current };
             for (const page of counted) {
-              next[page.source] = { rangeKey: rangeKeyOf(currentRange), counts: page.valueCounts };
+              for (const key of Object.keys(page.valueCounts) as ValueFilterKey[]) {
+                next[key] = { rangeKey: rangeKeyOf(currentRange), counts: page.valueCounts[key]! };
+              }
             }
             return next;
           });
@@ -479,6 +511,7 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
     activeTab,
     currentRange.from,
     currentRange.to,
+    directionSignature,
     extents,
     extentsError,
     extentsLoading,
@@ -682,7 +715,13 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
           readPage(
             page.source,
             currentRange,
-            selectedFilterFor(page.source, activeTab, typeSelections, valueSelections),
+            selectedFilterFor(
+              page.source,
+              activeTab,
+              typeSelections,
+              directionSelection,
+              valueSelections,
+            ),
             idOf(page.rows[page.rows.length - 1]!),
           ),
         ),
@@ -725,6 +764,7 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
   }, [
     activeTab,
     currentRange,
+    directionSelection,
     scopeSources,
     typeSelections,
     valueSelections,
@@ -830,6 +870,14 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
     });
   };
 
+  const toggleDirection = (direction: WireDirection) => {
+    setDirectionSelection((current) =>
+      current.includes(direction)
+        ? current.filter((value) => value !== direction)
+        : [...current, direction],
+    );
+  };
+
   const toggleSort = (key: string) => {
     setSorts((current) => {
       const selected = current[activeTab];
@@ -900,6 +948,11 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
   const offeredTypeList = selectedTypeList.filter(
     (type) => (typeCounts[type] ?? 0) > 0 || activeTypes.includes(type as never),
   );
+  const directionCounts = sourcePage?.directionCounts ?? null;
+  /* Same rule as the type chips: an unrepresented direction is not offered. */
+  const offeredDirectionList = WIRE_DIRECTIONS.filter(
+    (direction) => (directionCounts?.[direction] ?? 0) > 0 || activeDirections.includes(direction),
+  );
   const hasEscalation = loadedRows.some(
     (entry) =>
       entry.source === 'errors' &&
@@ -916,10 +969,6 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
     currentRange.to === lastSevenRange.to &&
     !exactTodayRange;
   const activeLogName = sourceLogName(activeTab);
-  const cachedValueCounts = valueTab === null ? null : rangeValueCounts[valueTab];
-  const knownValueCounts =
-    cachedValueCounts?.rangeKey === rangeKeyOf(currentRange) ? cachedValueCounts.counts : null;
-  const valueNouns = valueTab === null ? null : VALUE_FILTER_NOUNS[valueTab];
 
   return (
     <div className="logs-backdrop" onPointerDown={backdropPointerDown}>
@@ -972,34 +1021,40 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
           <div className="logs-toolbar-spacer" />
 
           {/* Offered once the range is counted, or while a selection needs a
-              way back to `all`. */}
-          {valueTab !== null &&
-            valueNouns !== null &&
-            (knownValueCounts !== null || activeValueSelection !== null) && (
-              <div className="logs-value-filter">
+              way back to `all`. Wire offers both operation and account id. */}
+          {activeValueFilterKeys.map((key) => {
+            const nouns = VALUE_FILTER_NOUNS[key];
+            const selection = valueSelections[key];
+            const cached = rangeValueCounts[key];
+            const knownCounts =
+              cached?.rangeKey === rangeKeyOf(currentRange) ? cached.counts : null;
+            if (knownCounts === null && selection === null) return null;
+            return (
+              <div className="logs-value-filter" key={key}>
                 <MultiSelectFilter
-                  name="values"
-                  open={openFilter === 'values'}
+                  name={`values-${key}`}
+                  open={openFilter === `values-${key}`}
                   setOpen={openFilterPopover}
-                  heading={`${valueNouns.many} in these days`}
+                  heading={`${nouns.many} in these days`}
                   help="Counted across these days whatever the type chips keep. Unlike search, this asks the log itself, so totals and older pages follow it."
                   note={
-                    knownValueCounts && !knownValueCounts.complete
-                      ? `These days hold more than ${LOG_VALUE_COUNT_LIMIT} ${valueNouns.many}; only the most frequent are listed, and a narrowed selection keeps only the ticked ones.`
+                    knownCounts && !knownCounts.complete
+                      ? `These days hold more than ${LOG_VALUE_COUNT_LIMIT} ${nouns.many}; only the most frequent are listed, and a narrowed selection keeps only the ticked ones.`
                       : undefined
                   }
-                  options={valueFilterOptions(knownValueCounts, activeValueSelection)}
+                  options={valueFilterOptions(knownCounts, selection)}
                   picks={VALUE_FILTER_PICKS}
-                  selected={activeValueSelection}
-                  onChange={(selection) =>
-                    setValueSelections((current) => ({ ...current, [valueTab]: selection }))
+                  selected={selection}
+                  onChange={(next) =>
+                    setValueSelections((current) => ({ ...current, [key]: next }))
                   }
-                  one={valueNouns.one}
-                  many={valueNouns.many}
+                  one={nouns.one}
+                  many={nouns.many}
                   align="right"
                 />
               </div>
-            )}
+            );
+          })}
 
           <div className="logs-range-wrap">
             <button
@@ -1171,6 +1226,32 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
                 ))}
               </div>
 
+              {activeTab === 'wire' && (
+                <div className="logs-filter-row" aria-label="Wire direction filters">
+                  <button
+                    type="button"
+                    className={`tag ${activeDirections.length === 0 ? 'tag-accent' : 'tag-neutral'}`}
+                    aria-pressed={activeDirections.length === 0}
+                    onClick={() => setDirectionSelection([])}
+                  >
+                    All directions
+                  </button>
+                  {offeredDirectionList.map((direction) => (
+                    <button
+                      key={direction}
+                      type="button"
+                      className={`tag ${activeDirections.includes(direction) ? 'tag-accent' : 'tag-neutral'}`}
+                      aria-pressed={activeDirections.includes(direction)}
+                      aria-label={`${direction} ${directionCounts?.[direction] ?? 0}`}
+                      onClick={() => toggleDirection(direction)}
+                    >
+                      {direction}
+                      <span className="logs-chip-count">{directionCounts?.[direction] ?? 0}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {hasEscalation && (
                 <div className="logs-escalation" role="status">
                   This range contains an account mismatch or silent account feed. Those conditions
@@ -1215,11 +1296,13 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
                       totalCount={totalCount}
                       unfilteredRangeCount={unfilteredRangeCount}
                       hasTypeFilter={activeTypes.length > 0}
-                      valueFilter={
-                        valueNouns !== null && activeValueSelection !== null
-                          ? { ...valueNouns, none: activeValueSelection.size === 0 }
-                          : null
-                      }
+                      hasDirectionFilter={activeDirections.length > 0}
+                      valueFilters={activeValueFilterKeys.flatMap((key) => {
+                        const selection = valueSelections[key];
+                        return selection === null
+                          ? []
+                          : [{ ...VALUE_FILTER_NOUNS[key], none: selection.size === 0 }];
+                      })}
                       range={currentRange}
                       extent={activeExtent}
                       nearestDay={
@@ -1311,7 +1394,8 @@ function EmptyLogState({
   totalCount,
   unfilteredRangeCount,
   hasTypeFilter,
-  valueFilter,
+  hasDirectionFilter,
+  valueFilters,
   range,
   extent,
   nearestDay,
@@ -1322,8 +1406,10 @@ function EmptyLogState({
   totalCount: number;
   unfilteredRangeCount: number;
   hasTypeFilter: boolean;
-  /** The operation or path selection, when one narrows the read. */
-  valueFilter: { one: string; many: string; none: boolean } | null;
+  /** Wire-only. */
+  hasDirectionFilter: boolean;
+  /** The operation, account id, and/or path selections that narrow the read. */
+  valueFilters: readonly { one: string; many: string; none: boolean }[];
   range: LogRange;
   extent: LogExtent;
   nearestDay: string | null;
@@ -1337,22 +1423,34 @@ function EmptyLogState({
       </p>
     );
   }
-  if (valueFilter && totalCount === 0 && unfilteredRangeCount > 0) {
+  const emptyValueFilter = valueFilters.find((filter) => filter.none);
+  if (emptyValueFilter && totalCount === 0 && unfilteredRangeCount > 0) {
     return (
       <p className="logs-empty" role="status">
-        {valueFilter.none
-          ? `No ${valueFilter.one} is ticked, so no row in ${formatRange(range)} is shown.`
-          : `No row in ${formatRange(range)} matches the ticked ${valueFilter.many}${
-              hasTypeFilter ? ' and the selected types' : ''
-            }. The counts show what these days hold.`}
+        {`No ${emptyValueFilter.one} is ticked, so no row in ${formatRange(range)} is shown.`}
       </p>
     );
   }
-  if (hasTypeFilter && totalCount === 0 && unfilteredRangeCount > 0) {
+  const narrowedValueFilters = valueFilters.filter((filter) => !filter.none);
+  if (narrowedValueFilters.length > 0 && totalCount === 0 && unfilteredRangeCount > 0) {
+    const namedFilters = narrowedValueFilters.map((filter) => filter.many).join(' and ');
+    const chipSuffix = hasTypeFilter || hasDirectionFilter ? ' and the selected chips' : '';
     return (
       <p className="logs-empty" role="status">
-        No selected type has a row in {formatRange(range)}. The type counts show what these days
-        hold.
+        {`No row in ${formatRange(range)} matches the ticked ${namedFilters}${chipSuffix}. The counts show what these days hold.`}
+      </p>
+    );
+  }
+  if ((hasTypeFilter || hasDirectionFilter) && totalCount === 0 && unfilteredRangeCount > 0) {
+    const label =
+      hasTypeFilter && hasDirectionFilter
+        ? 'type or direction'
+        : hasTypeFilter
+          ? 'type'
+          : 'direction';
+    return (
+      <p className="logs-empty" role="status">
+        {`No selected ${label} has a row in ${formatRange(range)}. The counts show what these days hold.`}
       </p>
     );
   }

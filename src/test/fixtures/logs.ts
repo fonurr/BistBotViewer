@@ -93,7 +93,9 @@ export function makeLogReadFixture(): LogReadFixture {
     ],
     total: 1,
     countsByType: trafficCounts,
+    countsByDirection: { out: 0, in: 1 },
     operationCounts: { values: [{ value: 'GetBots', count: 1 }], complete: true },
+    accountIdCounts: { values: [], complete: true },
     extent: extents.wire,
   };
 

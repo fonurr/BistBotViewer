@@ -110,10 +110,12 @@ test('mouse wheel over the log grid scrolls the drawer body', async ({ page, saf
     source: 'wire',
     rows: wireRows,
     countsByType: { routine: wireRows.length, action: 0, unexpected: 0, error: 0 },
+    countsByDirection: { out: 0, in: wireRows.length },
     operationCounts: {
       values: wireRows.map((row) => ({ value: row.operation, count: 1 })),
       complete: true,
     },
+    accountIdCounts: { values: [], complete: true },
     total: wireRows.length,
     extent: {
       minMs: wireRows[wireRows.length - 1]!.at,

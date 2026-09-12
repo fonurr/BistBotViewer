@@ -23,14 +23,21 @@ session. Nothing is persisted.
   A type with no row in the chosen range is not offered as a chip at all — a count within the
   range is what makes a chip a filter worth pressing — but a type the user has already selected
   stays, so the control they just pressed never vanishes under them.
-- The wire log filters by `operation` and the API log by `path`, through the shared
-  `MultiSelectFilter` in the toolbar. Like the type chips, the filter is applied by the database —
-  totals and older pages follow it — and each tab keeps its own selection. `null` asks for every
-  value, and the `none` shortcut is the deliberate empty list, which matches no row. The options are
-  every value counted in the range, most frequent first up to 200, sorted by name for display, plus
-  any value already ticked. Their counts ignore every selection, types included, and are kept per
-  tab by range, so ticking a box — which reloads the page — never empties the list the next box is
-  picked from. A range holding more than 200 distinct values says so in the popover.
+- The wire log filters by `operation` and `accountId`, and the API log by `path`, each through its
+  own `MultiSelectFilter` in the toolbar — the wire log offers both at once. Like the type chips,
+  every one of these filters is applied by the database — totals and older pages follow it — and
+  each keeps its own selection independent of the others. `null` asks for every value, and the
+  `none` shortcut is the deliberate empty list, which matches no row. The options are every value
+  counted in the range, most frequent first up to 200, sorted by name for display, plus any value
+  already ticked. A row with no stored account id is never offered as an account id option and
+  never matches a narrowed account id selection; it still counts under `all`. Their counts ignore
+  every selection, types and directions included, and are kept per filter by range, so ticking a
+  box — which reloads the page — never empties the list the next box is picked from. A range
+  holding more than 200 distinct values says so in the popover.
+- The wire log also filters by `direction` (`in`/`out`) through a chip row under the type chips,
+  the same shape and rule as the type chips: a direction with no row in the range is not offered,
+  a selected one always stays, and the counts ignore every selection including the type chips and
+  the value filters.
 - Both grouping and filtering ignore everything from `?` on: the quotes producer's `operation`
   carries its query string (`/api/quotes?symbols=...`), one call per distinct symbol set, so
   without this every symbol list would be its own filter option. `/api/quotes` is one option

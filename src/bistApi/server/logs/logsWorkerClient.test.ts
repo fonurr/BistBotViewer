@@ -223,6 +223,97 @@ describe('LogsWorkerClient', () => {
     }
   });
 
+  it('filters the wire log by account id while excluding unset accounts from the count', async () => {
+    const accountPath = path.join(fixtureDirectory, 'account-wire-log.db');
+    createDatabase(
+      accountPath,
+      `
+        ${WIRE_TABLE}
+        INSERT INTO WireLog (at, atText, target, direction, type, operation, accountId, truncated) VALUES
+          (10, 'fixture', 'matriks', 'out', 'routine', 'SendOrder', 'ACC-1', 0),
+          (20, 'fixture', 'matriks', 'in',  'routine', 'GetOrders', 'ACC-2', 0),
+          (30, 'fixture', 'matriks', 'in',  'routine', 'GetOrders', NULL, 0);
+      `,
+    );
+    const client = new LogsWorkerClient({ ...databasePaths, wire: accountPath });
+    try {
+      const everyAccount = await client.query({
+        source: 'wire',
+        fromMs: 0,
+        untilMs: 100,
+        limit: 10,
+      });
+      expect(everyAccount.total).toBe(3);
+      expect(everyAccount.accountIdCounts).toEqual({
+        values: [
+          { value: 'ACC-1', count: 1 },
+          { value: 'ACC-2', count: 1 },
+        ],
+        complete: true,
+      });
+
+      const filtered = await client.query({
+        source: 'wire',
+        fromMs: 0,
+        untilMs: 100,
+        accountIds: ['ACC-1'],
+        limit: 10,
+      });
+      expect(filtered.total).toBe(1);
+      expect(filtered.rows.map((row) => row.accountId)).toEqual(['ACC-1']);
+
+      const none = await client.query({
+        source: 'wire',
+        fromMs: 0,
+        untilMs: 100,
+        accountIds: [],
+        limit: 10,
+      });
+      expect(none.rows).toEqual([]);
+      expect(none.total).toBe(0);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('filters the wire log by direction while counting every direction in the range', async () => {
+    const client = new LogsWorkerClient(databasePaths);
+    try {
+      const result = await client.query({
+        source: 'wire',
+        fromMs: 100,
+        untilMs: 300,
+        limit: 10,
+      });
+      expect(result.countsByDirection).toEqual({ out: 1, in: 2 });
+
+      const outOnly = await client.query({
+        source: 'wire',
+        fromMs: 100,
+        untilMs: 300,
+        directions: ['out'],
+        limit: 10,
+      });
+      expect(outOnly.rows.map((row) => row.at)).toEqual([150]);
+      expect(outOnly.total).toBe(1);
+      // Direction counts ignore the direction selection, like the type counts.
+      expect(outOnly.countsByDirection).toEqual({ out: 1, in: 2 });
+
+      const combined = await client.query({
+        source: 'wire',
+        fromMs: 100,
+        untilMs: 300,
+        directions: ['in'],
+        operations: ['GetOrders'],
+        limit: 10,
+      });
+      expect(combined.rows.map((row) => row.at)).toEqual([200]);
+      expect(combined.total).toBe(1);
+    } finally {
+      await client.close();
+    }
+  });
+
   it('filters the API log by path', async () => {
     const client = new LogsWorkerClient(databasePaths);
     try {
@@ -280,6 +371,33 @@ describe('LogsWorkerClient', () => {
           fromMs: 100,
           untilMs: 300,
           operations: ['GetOrders', 'GetOrders'],
+          limit: 10,
+        }),
+      ).toThrow();
+      expect(() =>
+        client.query({
+          source: 'api',
+          fromMs: 100,
+          untilMs: 300,
+          accountIds: ['ACC-1'],
+          limit: 10,
+        } as never),
+      ).toThrow();
+      expect(() =>
+        client.query({
+          source: 'errors',
+          fromMs: 100,
+          untilMs: 300,
+          directions: ['out'],
+          limit: 10,
+        } as never),
+      ).toThrow();
+      expect(() =>
+        client.query({
+          source: 'wire',
+          fromMs: 100,
+          untilMs: 300,
+          directions: ['out', 'out'],
           limit: 10,
         }),
       ).toThrow();

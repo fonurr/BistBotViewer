@@ -7,6 +7,7 @@ import type {
   LogValueCounts,
   StoredErrorType,
   TrafficLogType,
+  WireDirection,
   WireLogRow,
 } from '../../bistApi/logTypes';
 
@@ -14,10 +15,23 @@ export type LogsTab = LogSource;
 /** The tabs with a column worth a multi-select filter: wire operation, API path. */
 export type ValueFilterTab = Exclude<LogsTab, 'errors'>;
 
-export const VALUE_FILTER_NOUNS: Readonly<Record<ValueFilterTab, { one: string; many: string }>> = {
-  wire: { one: 'operation', many: 'operations' },
-  api: { one: 'path', many: 'paths' },
+/** The multi-select filters offered anywhere, keyed by their own name rather than by tab. */
+export type ValueFilterKey = 'operation' | 'accountId' | 'path';
+
+/** Which value-filter keys a tab offers, and in what order they are shown. */
+export const VALUE_FILTER_KEYS_BY_TAB: Readonly<Record<LogsTab, readonly ValueFilterKey[]>> = {
+  errors: [],
+  wire: ['operation', 'accountId'],
+  api: ['path'],
 };
+
+export const VALUE_FILTER_NOUNS: Readonly<Record<ValueFilterKey, { one: string; many: string }>> = {
+  operation: { one: 'operation', many: 'operations' },
+  accountId: { one: 'account id', many: 'account ids' },
+  path: { one: 'path', many: 'paths' },
+};
+
+export const WIRE_DIRECTIONS: readonly WireDirection[] = ['out', 'in'];
 
 export type SortDirection = 'ascending' | 'descending';
 

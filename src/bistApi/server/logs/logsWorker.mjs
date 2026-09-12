@@ -13,6 +13,7 @@ const ERROR_TYPES = [
   'OrderAccountMismatch',
 ];
 const TRAFFIC_TYPES = ['routine', 'action', 'unexpected', 'error'];
+const WIRE_DIRECTIONS = ['out', 'in'];
 // Mirrors LOG_VALUE_COUNT_LIMIT and LOG_VALUE_FILTER_LIMIT in bistApi/logTypes.ts.
 const VALUE_COUNT_LIMIT = 200;
 const VALUE_FILTER_LIMIT = 500;
@@ -22,7 +23,8 @@ const SOURCE_CONFIG = {
     table: 'Errors',
     timeColumn: 'time',
     types: ERROR_TYPES,
-    valueFilter: null,
+    directionValues: null,
+    valueFilters: [],
     columns: [
       ['id', 'INTEGER', 0, 1],
       ['time', 'INTEGER', 1, 0],
@@ -37,7 +39,23 @@ const SOURCE_CONFIG = {
     table: 'WireLog',
     timeColumn: 'at',
     types: TRAFFIC_TYPES,
-    valueFilter: { column: 'operation', queryKey: 'operations', resultKey: 'operationCounts' },
+    directionValues: WIRE_DIRECTIONS,
+    valueFilters: [
+      {
+        column: 'operation',
+        queryKey: 'operations',
+        resultKey: 'operationCounts',
+        group: true,
+        nullable: false,
+      },
+      {
+        column: 'accountId',
+        queryKey: 'accountIds',
+        resultKey: 'accountIdCounts',
+        group: false,
+        nullable: true,
+      },
+    ],
     columns: [
       ['id', 'INTEGER', 0, 1],
       ['at', 'INTEGER', 1, 0],
@@ -64,7 +82,10 @@ const SOURCE_CONFIG = {
     table: 'ApiLog',
     timeColumn: 'at',
     types: TRAFFIC_TYPES,
-    valueFilter: { column: 'path', queryKey: 'paths', resultKey: 'pathCounts' },
+    directionValues: null,
+    valueFilters: [
+      { column: 'path', queryKey: 'paths', resultKey: 'pathCounts', group: true, nullable: false },
+    ],
     columns: [
       ['id', 'INTEGER', 0, 1],
       ['at', 'INTEGER', 1, 0],
@@ -133,8 +154,10 @@ function validateQuery(value) {
     'fromMs',
     'untilMs',
     'types',
+    'directions',
     'operations',
     'paths',
+    'accountIds',
     'limit',
     'beforeId',
   ]);
@@ -175,10 +198,11 @@ function validateQuery(value) {
       throw new WorkerRequestError('INVALID_INPUT', 'The selected log types are invalid.');
     }
   }
-  for (const key of ['operations', 'paths']) {
+  const allowedValueFilterKeys = new Set(config.valueFilters.map((filter) => filter.queryKey));
+  for (const key of ['operations', 'paths', 'accountIds']) {
     const values = value[key];
     if (values === undefined) continue;
-    if (config.valueFilter?.queryKey !== key) {
+    if (!allowedValueFilterKeys.has(key)) {
       throw new WorkerRequestError('INVALID_INPUT', `This log cannot be filtered by ${key}.`);
     }
     if (
@@ -188,6 +212,18 @@ function validateQuery(value) {
       new Set(values).size !== values.length
     ) {
       throw new WorkerRequestError('INVALID_INPUT', `The selected log ${key} are invalid.`);
+    }
+  }
+  if (value.directions !== undefined) {
+    if (
+      !config.directionValues ||
+      !Array.isArray(value.directions) ||
+      value.directions.length === 0 ||
+      value.directions.length > config.directionValues.length ||
+      new Set(value.directions).size !== value.directions.length ||
+      value.directions.some((direction) => !config.directionValues.includes(direction))
+    ) {
+      throw new WorkerRequestError('INVALID_INPUT', 'The selected directions are invalid.');
     }
   }
   return value;
@@ -331,15 +367,18 @@ function valueGroupExpression(column) {
   return `CASE WHEN instr(${quoted}, '?') > 0 THEN substr(${quoted}, 1, instr(${quoted}, '?') - 1) ELSE ${quoted} END`;
 }
 
-function readValueCounts(database, config, clauses, params) {
+function readValueCounts(database, config, filter, clauses, params) {
   const table = quoteIdentifier(config.table);
-  const group = valueGroupExpression(config.valueFilter.column);
-  const label = `${config.table}.${config.valueFilter.column}`;
+  const group = filter.group ? valueGroupExpression(filter.column) : quoteIdentifier(filter.column);
+  const label = `${config.table}.${filter.column}`;
+  const allClauses = filter.nullable
+    ? [...clauses, `${quoteIdentifier(filter.column)} IS NOT NULL`]
+    : clauses;
   const rows = database
     .prepare(
       `SELECT ${group} AS value, COUNT(*) AS count
          FROM ${table}
-        WHERE ${clauses.join(' AND ')}
+        WHERE ${allClauses.join(' AND ')}
         GROUP BY ${group}
         ORDER BY COUNT(*) DESC, ${group}
         LIMIT ?`,
@@ -374,14 +413,21 @@ function querySource(query) {
         matchingParams.push(...query.types);
       }
 
-      const { valueFilter } = config;
-      const selectedValues = valueFilter ? query[valueFilter.queryKey] : undefined;
-      if (selectedValues !== undefined) {
+      if (query.directions !== undefined) {
+        matchingClauses.push(
+          `${quoteIdentifier('direction')} IN (${query.directions.map(() => '?').join(', ')})`,
+        );
+        matchingParams.push(...query.directions);
+      }
+
+      for (const filter of config.valueFilters) {
+        const selectedValues = query[filter.queryKey];
+        if (selectedValues === undefined) continue;
         // An empty selection is the deliberate none: no row matches it.
         matchingClauses.push(
           selectedValues.length === 0
             ? '0'
-            : `${valueGroupExpression(valueFilter.column)} IN (${selectedValues.map(() => '?').join(', ')})`,
+            : `${filter.group ? valueGroupExpression(filter.column) : quoteIdentifier(filter.column)} IN (${selectedValues.map(() => '?').join(', ')})`,
         );
         matchingParams.push(...selectedValues);
       }
@@ -433,14 +479,47 @@ function querySource(query) {
       }
 
       const result = { source: query.source, rows, total, countsByType };
-      if (valueFilter) {
-        result[valueFilter.resultKey] = readValueCounts(
+
+      if (config.directionValues) {
+        const countsByDirection = Object.fromEntries(
+          config.directionValues.map((direction) => [direction, 0]),
+        );
+        const directionCountRows = database
+          .prepare(
+            `SELECT ${quoteIdentifier('direction')} AS direction, COUNT(*) AS count
+               FROM ${table}
+              WHERE ${rangeClauses.join(' AND ')}
+              GROUP BY ${quoteIdentifier('direction')}`,
+          )
+          .all(...rangeParams);
+        for (const row of directionCountRows) {
+          if (
+            typeof row.direction !== 'string' ||
+            !config.directionValues.includes(row.direction)
+          ) {
+            throw new WorkerRequestError(
+              'SCHEMA_MISMATCH',
+              `${config.table} contains an unsupported direction in the selected range.`,
+            );
+          }
+          countsByDirection[row.direction] = readCount(
+            row.count,
+            `${config.table} direction count`,
+          );
+        }
+        result.countsByDirection = countsByDirection;
+      }
+
+      for (const filter of config.valueFilters) {
+        result[filter.resultKey] = readValueCounts(
           database,
           config,
+          filter,
           rangeClauses,
           rangeParams,
         );
       }
+
       result.extent = readExtent(database, config);
       database.exec('COMMIT');
       return result;
