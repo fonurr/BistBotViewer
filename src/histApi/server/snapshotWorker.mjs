@@ -10,13 +10,28 @@
  * can outlive the run.
  *
  * Everything the running app reads comes from the SQLite cache this writes.
+ *
+ * BistData runs two entirely separate provider pipelines — yfinance and Twelve
+ * Data — each with its own minute/scale files, and deliberately never lets one
+ * overwrite the other's bars: that separation is what lets BistData measure both
+ * against the bulletin independently, and this file must never touch it. The
+ * merge belongs here instead, at read time: every snapshot pulls both providers
+ * read-only and, per `(symbol, ts)`, keeps yfinance's bar when it is present and
+ * clean, falling back to Twelve Data's otherwise. A bar that is unusable in both
+ * is left out entirely rather than guessed at. Because the whole cache is
+ * rebuilt from scratch every run, there is no separate "repair" step: a day
+ * yfinance corrects tomorrow, or a day Twelve Data's data ages out of
+ * consideration once yfinance catches up, both resolve on the very next
+ * snapshot with no state carried between runs.
  */
 import { parentPort, workerData } from 'node:worker_threads';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, renameSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
-const SCHEMA_VERSION = 1;
+// Version 2 adds the `source` audit column to `intent_bar` and `scale_used`,
+// once a snapshot could be built from either provider.
+const SCHEMA_VERSION = 2;
 /** Ten tries a quarter-second apart: long enough for a bounded read to finish. */
 const SWAP_ATTEMPTS = 10;
 const SWAP_RETRY_MS = 250;
@@ -130,8 +145,8 @@ function readUniverse(orderDbPath) {
 
 const quoted = (values) => values.map((value) => `'${value}'`).join(',');
 
-async function pullFromDuckDb({ minuteDbPath, scaleDbPath, sessions }) {
-  const { DuckDBInstance } = await import('@duckdb/node-api');
+/** One provider's read-only pull: its own minute bars plus its own scale index. */
+async function pullFromProvider(DuckDBInstance, source, { minuteDbPath, scaleDbPath, sessions }) {
   const symbols = [...sessions.keys()].sort();
 
   const minuteInstance = await DuckDBInstance.create(minuteDbPath, { access_mode: 'READ_ONLY' });
@@ -154,7 +169,7 @@ async function pullFromDuckDb({ minuteDbPath, scaleDbPath, sessions }) {
             AND CAST(ts AS DATE) IN (${quoted(days)})`,
         [symbol],
       );
-      for (const row of reader.getRowObjectsJson()) bars.push({ symbol, ...row });
+      for (const row of reader.getRowObjectsJson()) bars.push({ symbol, source, ...row });
     }
   } finally {
     minuteConnection?.closeSync();
@@ -170,28 +185,81 @@ async function pullFromDuckDb({ minuteDbPath, scaleDbPath, sessions }) {
     scaleConnection = await scaleInstance.connect();
     const symbolList = quoted(symbols);
     const read = async (sql) => (await scaleConnection.runAndReadAll(sql)).getRowObjectsJson();
-    ranges = await read(
-      `SELECT scope, symbol,
+    ranges = (
+      await read(
+        `SELECT scope, symbol,
               CAST(start_date AS VARCHAR) AS start_date,
               CAST(end_date AS VARCHAR) AS end_date,
               CAST(factor AS DOUBLE) AS factor,
               confidence
          FROM scale_range WHERE symbol IN (${symbolList})`,
-    );
-    exceptions = await read(
-      `SELECT scope, symbol, CAST(session_date AS VARCHAR) AS session_date
+      )
+    ).map((row) => ({ source, ...row }));
+    exceptions = (
+      await read(
+        `SELECT scope, symbol, CAST(session_date AS VARCHAR) AS session_date
          FROM scale_exception WHERE symbol IN (${symbolList})`,
-    );
-    findings = await read(
-      `SELECT scope, symbol, CAST(session_date AS VARCHAR) AS session_date
+      )
+    ).map((row) => ({ source, ...row }));
+    findings = (
+      await read(
+        `SELECT scope, symbol, CAST(session_date AS VARCHAR) AS session_date
          FROM data_quality_finding WHERE symbol IN (${symbolList})`,
-    );
+      )
+    ).map((row) => ({ source, ...row }));
   } finally {
     scaleConnection?.closeSync();
     scaleInstance.closeSync();
   }
 
   return { bars, ranges, exceptions, findings };
+}
+
+/**
+ * Pull both providers, yfinance first. Twelve Data is the established source and
+ * must always be reachable; yfinance's files are newer and optional, so a missing
+ * or unreadable yfinance database only drops the fallback priority for this run
+ * rather than failing the whole snapshot — `buildRows` then has Twelve Data alone
+ * to work with, exactly as it did before yfinance existed.
+ */
+async function pullFromDuckDb({
+  minuteDbPath,
+  scaleDbPath,
+  yahooMinuteDbPath,
+  yahooScaleDbPath,
+  sessions,
+}) {
+  const { DuckDBInstance } = await import('@duckdb/node-api');
+
+  let yahoo = { bars: [], ranges: [], exceptions: [], findings: [] };
+  if (yahooMinuteDbPath && yahooScaleDbPath) {
+    try {
+      yahoo = await pullFromProvider(DuckDBInstance, 'yahoo', {
+        minuteDbPath: yahooMinuteDbPath,
+        scaleDbPath: yahooScaleDbPath,
+        sessions,
+      });
+    } catch (error) {
+      console.warn(
+        `[hist] yfinance source unavailable for this snapshot, falling back to Twelve Data only: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  const twelvedata = await pullFromProvider(DuckDBInstance, 'twelvedata', {
+    minuteDbPath,
+    scaleDbPath,
+    sessions,
+  });
+
+  return {
+    bars: [...yahoo.bars, ...twelvedata.bars],
+    ranges: [...yahoo.ranges, ...twelvedata.ranges],
+    exceptions: [...yahoo.exceptions, ...twelvedata.exceptions],
+    findings: [...yahoo.findings, ...twelvedata.findings],
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -203,10 +271,13 @@ async function pullFromDuckDb({ minuteDbPath, scaleDbPath, sessions }) {
  * price onto the BIST daily bulletin's raw scale — which is the scale MatriksOrder's
  * fill prices are already on, so this is what makes the two comparable. Auction rows
  * are synthesized from the daily file and carry its vintage, hence the `daily` scope.
+ * Each provider measured its own factor against the bulletin independently, so the
+ * lookup is scoped by `source` too rather than assuming the two ever agree.
  */
-function factorFor(ranges, symbol, scope, sessionDate) {
+function factorFor(ranges, source, symbol, scope, sessionDate) {
   const covering = ranges.find(
     (range) =>
+      range.source === source &&
       range.symbol === symbol &&
       range.scope === scope &&
       String(range.start_date) <= sessionDate &&
@@ -225,10 +296,15 @@ function factorFor(ranges, symbol, scope, sessionDate) {
 function buildRows({ bars, ranges, exceptions, findings, holidays }) {
   const untrusted = new Set(
     [...exceptions, ...findings].map(
-      (row) => `${row.scope}|${row.symbol}|${String(row.session_date)}`,
+      (row) => `${row.source}|${row.scope}|${row.symbol}|${String(row.session_date)}`,
     ),
   );
 
+  // `bars` is ordered yfinance-first (see `pullFromDuckDb`), and a key is only
+  // ever written once below, so the first clean bar found for a given
+  // `(symbol, ts)` wins. That gives yfinance priority when it has a usable bar
+  // and falls through to Twelve Data only where yfinance's is missing or
+  // rejected — never the reverse, and never a mix of the two for one point.
   const rows = new Map();
   for (const bar of bars) {
     const wall = String(bar.ts).replace(' ', 'T');
@@ -238,13 +314,13 @@ function buildRows({ bars, ranges, exceptions, findings, holidays }) {
     const scope = isAuction ? 'daily' : 'minute';
     // An exception says the multiplier cannot be trusted; a finding says the bar
     // itself is wrong. Either way the session is left out rather than guessed at.
-    if (untrusted.has(`${scope}|${bar.symbol}|${sessionDate}`)) continue;
+    if (untrusted.has(`${bar.source}|${scope}|${bar.symbol}|${sessionDate}`)) continue;
 
     const open = Number(bar.open);
     const close = Number(bar.close);
     if (!Number.isFinite(open) || !Number.isFinite(close) || open <= 0 || close <= 0) continue;
 
-    const factor = factorFor(ranges, bar.symbol, scope, sessionDate);
+    const factor = factorFor(ranges, bar.source, bar.symbol, scope, sessionDate);
     if (!Number.isFinite(factor) || factor <= 0) continue;
 
     const minute = Number(wall.slice(11, 13)) * 60 + Number(wall.slice(14, 16));
@@ -265,13 +341,16 @@ function buildRows({ bars, ranges, exceptions, findings, holidays }) {
       ts = istanbulMinuteAt(sessionDate, minute);
     }
 
-    rows.set(`${bar.symbol}|${ts}`, {
+    const key = `${bar.symbol}|${ts}`;
+    if (rows.has(key)) continue;
+    rows.set(key, {
       symbol: bar.symbol,
       sessionDate,
       ts,
       open: open * factor,
       close: close * factor,
       isAuction: isAuction ? 1 : 0,
+      source: bar.source,
     });
   }
   return [...rows.values()];
@@ -293,12 +372,13 @@ function writeCache({ cachePath, rows, ranges, snapshotFor }) {
         open REAL NOT NULL,
         close REAL NOT NULL,
         is_auction INTEGER NOT NULL,
+        source TEXT NOT NULL,
         PRIMARY KEY (symbol, ts)
       );
       CREATE TABLE scale_used (
         symbol TEXT NOT NULL, scope TEXT NOT NULL,
         start_date TEXT NOT NULL, end_date TEXT NOT NULL,
-        factor REAL NOT NULL, confidence TEXT NOT NULL
+        factor REAL NOT NULL, confidence TEXT NOT NULL, source TEXT NOT NULL
       );
       CREATE TABLE meta (
         schema_version INTEGER NOT NULL,
@@ -308,16 +388,25 @@ function writeCache({ cachePath, rows, ranges, snapshotFor }) {
       );
     `);
     const insertBar = database.prepare(
-      'INSERT INTO intent_bar (symbol, session_date, ts, open, close, is_auction) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO intent_bar (symbol, session_date, ts, open, close, is_auction, source) VALUES (?, ?, ?, ?, ?, ?, ?)',
     );
     database.exec('BEGIN');
     for (const row of rows) {
-      insertBar.run(row.symbol, row.sessionDate, row.ts, row.open, row.close, row.isAuction);
+      insertBar.run(
+        row.symbol,
+        row.sessionDate,
+        row.ts,
+        row.open,
+        row.close,
+        row.isAuction,
+        row.source,
+      );
     }
     // Audit only: never read on a request path, but it is what makes a surprising
-    // figure explainable without opening DuckDB again.
+    // figure explainable without opening DuckDB again -- including which provider
+    // won the precedence for that point.
     const insertScale = database.prepare(
-      'INSERT INTO scale_used (symbol, scope, start_date, end_date, factor, confidence) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO scale_used (symbol, scope, start_date, end_date, factor, confidence, source) VALUES (?, ?, ?, ?, ?, ?, ?)',
     );
     for (const range of ranges) {
       insertScale.run(
@@ -327,6 +416,7 @@ function writeCache({ cachePath, rows, ranges, snapshotFor }) {
         String(range.end_date),
         Number(range.factor),
         String(range.confidence),
+        String(range.source),
       );
     }
     database
@@ -366,6 +456,8 @@ async function run(options) {
   const pulled = await pullFromDuckDb({
     minuteDbPath: options.minuteDbPath,
     scaleDbPath: options.scaleDbPath,
+    yahooMinuteDbPath: options.yahooMinuteDbPath,
+    yahooScaleDbPath: options.yahooScaleDbPath,
     sessions,
   });
   const rows = buildRows({ ...pulled, holidays });

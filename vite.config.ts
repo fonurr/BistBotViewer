@@ -36,6 +36,12 @@ export default defineConfig(({ mode }) => {
           environment.BIST_VIEWER_BISTDATA_MINUTE_DB ?? '../BistData/data/minute.duckdb',
         scaleDatabasePath:
           environment.BIST_VIEWER_BISTDATA_SCALE_DB ?? '../BistData/data/scale.duckdb',
+        yahooMinuteDatabasePath:
+          environment.BIST_VIEWER_BISTDATA_YAHOO_MINUTE_DB ??
+          '../BistData/data/yahoo-minute.duckdb',
+        yahooScaleDatabasePath:
+          environment.BIST_VIEWER_BISTDATA_YAHOO_SCALE_DB ??
+          '../BistData/data/yahoo-scale.duckdb',
         cacheDatabasePath: environment.BIST_VIEWER_INTENT_CACHE_DB ?? 'data/intent-bars.db',
         fixtureMode,
       }),

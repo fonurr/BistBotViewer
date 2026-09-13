@@ -7,6 +7,29 @@ It answers one question: **what was this stock trading at, at one exact minute i
 The source is the sibling `../BistData` pipeline. Unlike the other two boundaries, this one has no
 upstream on a request path at all.
 
+## Two providers, merged here, never inside BistData
+
+BistData runs two independent provider pipelines — yfinance and Twelve Data — each with its own
+minute/scale files, and BistData itself deliberately never lets one overwrite the other's bars: that
+separation is what lets it measure both against the bulletin independently. **This repo never writes
+to BistData or blurs that separation.** The merge happens only here, at snapshot time, as a pure read:
+
+- `snapshotWorker.mjs` pulls both providers read-only (`BIST_VIEWER_BISTDATA_YAHOO_MINUTE_DB` /
+  `_YAHOO_SCALE_DB` alongside the existing Twelve Data pair) and, per `(symbol, ts)`, keeps yfinance's
+  bar when it is present, passes the same basic sanity check every bar already gets (positive
+  open/close), and is not listed in yfinance's own `scale_exception`/`data_quality_finding`. Twelve
+  Data's bar for that same point is used only when yfinance's is missing or rejected. A point rejected
+  by both is left out of the cache entirely rather than guessed at — the same "absent means nothing
+  traded" contract the rest of this boundary already keeps.
+- Nothing about this needs a migration or a repair pass: the cache is rebuilt from scratch every
+  snapshot (see below), so a day yfinance corrects tomorrow, or a day Twelve Data's row stops being
+  used because yfinance now covers it cleanly, both take effect on the very next snapshot automatically.
+- The yfinance files are optional. If either is missing or fails to open, that snapshot logs a warning
+  and falls back to Twelve Data alone, exactly as every snapshot behaved before yfinance existed.
+- `intent_bar` and `scale_used` both carry a `source` column (`'yahoo'` or `'twelvedata'`) recording
+  which provider's bar or scale factor won. It is audit-only, exactly like `scale_used` itself — never
+  read on a request path, but what makes a surprising figure explainable without opening DuckDB again.
+
 ## The once-a-night contract
 
 `../BistData/docs/database-guide.md` is blunt about the cost of opening its DuckDB files: **any**

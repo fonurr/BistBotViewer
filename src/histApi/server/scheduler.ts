@@ -23,6 +23,9 @@ export interface SnapshotSchedulerOptions {
   orderDbPath: string;
   minuteDbPath: string;
   scaleDbPath: string;
+  /** Optional yfinance minute/scale files. Missing either skips it for this run. */
+  yahooMinuteDbPath?: string;
+  yahooScaleDbPath?: string;
   cachePath: string;
   /** What the cache says it already holds, so a fresh snapshot day is not rebuilt. */
   readSnapshotFor: () => Promise<string | null>;
@@ -129,6 +132,8 @@ export class SnapshotScheduler {
             orderDbPath: this.options.orderDbPath,
             minuteDbPath: this.options.minuteDbPath,
             scaleDbPath: this.options.scaleDbPath,
+            yahooMinuteDbPath: this.options.yahooMinuteDbPath,
+            yahooScaleDbPath: this.options.yahooScaleDbPath,
             cachePath: this.options.cachePath,
             snapshotFor,
             // The worker is plain Node and keeps no copy of the exchange's hours.

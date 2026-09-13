@@ -29,6 +29,9 @@ export interface HistBridgeOptions {
   orderDatabasePath: string;
   minuteDatabasePath: string;
   scaleDatabasePath: string;
+  /** Optional yfinance minute/scale files, preferred over Twelve Data when clean. */
+  yahooMinuteDatabasePath?: string;
+  yahooScaleDatabasePath?: string;
   /** The viewer's own SQLite cache — the only thing a request ever reads. */
   cacheDatabasePath: string;
   fixtureMode?: boolean;
@@ -130,6 +133,12 @@ export function createHistBridgePlugin(options: HistBridgeOptions): Plugin {
         orderDbPath: path.resolve(process.cwd(), options.orderDatabasePath),
         minuteDbPath: path.resolve(process.cwd(), options.minuteDatabasePath),
         scaleDbPath: path.resolve(process.cwd(), options.scaleDatabasePath),
+        yahooMinuteDbPath: options.yahooMinuteDatabasePath
+          ? path.resolve(process.cwd(), options.yahooMinuteDatabasePath)
+          : undefined,
+        yahooScaleDbPath: options.yahooScaleDatabasePath
+          ? path.resolve(process.cwd(), options.yahooScaleDatabasePath)
+          : undefined,
         cachePath,
         readSnapshotFor: async () => (await activeWorker.queryStamp())?.snapshotFor ?? null,
       });
