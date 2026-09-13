@@ -574,10 +574,10 @@ function normalizeCanceledOrder(
 
 function normalizePosition(position: Position, calendar: HolidayCalendar): BookPositionRow {
   return {
-    key: `position:${stableSourceIdentity(
-      position.positionId ?? position.clientOrderId,
-      position.id,
-    )}`,
+    // `positionId` is the broker's handle for a symbol's net position, so every bot
+    // holding that symbol reports the same one — it cannot identify a row. The
+    // opening order's `clientOrderId` can, and matches the unlinked key above.
+    key: `position:${stableSourceIdentity(position.clientOrderId, position.id)}`,
     rawId: position.id,
     source: 'position',
     raw: position,

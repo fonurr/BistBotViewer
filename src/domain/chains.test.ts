@@ -607,6 +607,22 @@ describe('buildBookChains', () => {
     expect(intentByClient['dead']).toBeNull();
   });
 
+  it('keys two bots holding one symbol apart, though the broker gives them one positionId', () => {
+    const chains = build({
+      positions: [
+        position({ id: 671, botId: 'bot-a', clientOrderId: 'buy-a', chainId: 'buy-a' }),
+        position({ id: 692, botId: 'bot-b', clientOrderId: 'buy-b', chainId: 'buy-b' }),
+      ],
+    });
+    const keys = chains.flatMap((chain) => chain.rows.map((row) => row.key));
+
+    // `positionId` is the net position in a symbol, not a row: sharing it must not
+    // collapse two rows onto one key, or everything read by key — the `@intent`
+    // cell, the order dialog's target — resolves to whichever was normalized last.
+    expect(keys).toHaveLength(2);
+    expect(new Set(keys).size).toBe(2);
+  });
+
   it('files every chain under exactly one scope, by the stage its own life reached', () => {
     const waitingOnly = build({
       activeOrders: [active({ id: 1, chainId: 'w', clientOrderId: 'w' })],
