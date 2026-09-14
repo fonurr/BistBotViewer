@@ -185,6 +185,35 @@ function reasonPart(reason: string | null, data: ReasonData | null): BookRowDeta
 }
 
 /**
+ * How many shares a row states in the qty column. Every row states its own
+ * count rather than the order's: a position states what is still held, a closed
+ * trade what the round trip moved, and a canceled leg what actually died. That
+ * last one only differs after a partial fill — the exchange filled part of the
+ * order and killed the rest, and the filled part is already drawn on the chain
+ * as its position or closed trade, so stating the asked-for size here would
+ * count the same shares twice down one chain. `null` is `auto`, a size nothing
+ * has resolved yet; `canceledQuantity` is 0 on an order whose size was resolved
+ * at fire time, and that 0 is not a count, so the asked-for size stands.
+ */
+export function rowQuantity(row: BookChainRow): number | null {
+  return canceledRemainder(row) ?? row.quantity;
+}
+
+/**
+ * What a canceled leg killed, when that is not what it asked for — the figure
+ * {@link rowQuantity} states in its place, and the one case where the qty
+ * column is not the row's `quantity`. `null` on every other row, so the
+ * "a sell that takes the whole position says nothing" rule keeps reading the
+ * asked-for size and never blanks a partial cancel against a position.
+ */
+export function canceledRemainder(row: BookChainRow): number | null {
+  if (row.source !== 'canceled') return null;
+  const canceled = row.canceledQuantity;
+  if (canceled === null || canceled <= 0 || canceled === row.quantity) return null;
+  return canceled;
+}
+
+/**
  * Where the order came from, as one phrase in a reason's `key · pairs` shape —
  * `Retry · count: 0`, `TakeProfit · limit: ceilingAtClosingDay`, `External`.
  * `undefined` for the ordinary bot order, which names no origin. `RowVerdict`

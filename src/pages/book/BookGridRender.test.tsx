@@ -523,6 +523,40 @@ describe('BookGrid row vocabulary', () => {
     expect(props.onOpenChain).toHaveBeenCalled();
   });
 
+  /*
+   * A partial fill splits one order across three rows: what traded is the
+   * closed trade, what is still held the position, and what the exchange killed
+   * the canceled leg. Each states its own count, so the legs add back up to the
+   * order the chain asked for instead of repeating its size on every row.
+   */
+  it('states what a canceled leg killed, not what its order asked for', () => {
+    renderGrid(
+      { showCanceled: true },
+      {
+        activeOrders: [],
+        canceledOrders: [
+          makeCanceledOrder({
+            orderQuantity: 1_001,
+            canceledQuantity: 375,
+            type: 'market',
+            intentType: 'market',
+            orderPrice: null,
+            status: 'Canceled',
+            source: 'Broker',
+            reason: 'PartiallyCanceled',
+            explanation: 'Kalanı iptal edildi',
+          }),
+        ],
+        positions: [makePosition({ orderQuantity: 1_001, quantity: 375 })],
+        closedTrades: [makeClosedTrade({ chainId: 'chain-thyao', quantity: 626 })],
+      },
+    );
+
+    const canceledRow = screen.getByText(/Kalanı iptal edildi/).closest('.book-row')!;
+    expect(within(canceledRow as HTMLElement).getByText('375')).toBeVisible();
+    expect(within(canceledRow as HTMLElement).queryByText('1.001')).toBeNull();
+  });
+
   it('holds every row action while writes are held, with the hold as the reason', () => {
     renderGrid({ writesHeldReason: 'The order stream is not live.' });
 

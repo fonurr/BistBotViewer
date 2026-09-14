@@ -138,7 +138,15 @@ Row vocabulary follows the visual reference: an opener carries its symbol alone 
 nothing in that column — the opener above already said the symbol and the hairline says where the
 chain ends, so a leg only speaks its symbol to a screen reader. A **sell row leaves the qty column
 empty** when its size is the buy's whole size — an `auto` sell, or one whose quantity equals the
-chain's opening buy; only a partial sell writes a number there. **No id is printed in the grid.**
+chain's opening buy; only a partial sell writes a number there. **Every row states its own share
+count in `qty`, never its order's**: a position states what is still held, a closed trade what the
+round trip moved, and a **canceled leg what actually died** (`canceledQuantity`). Those differ only
+after a partial fill, where one order becomes three rows — filled shares as the trade or position,
+the killed remainder as the canceled leg — and stating the asked-for size on the dead leg would
+count the same shares twice down one chain. `canceledQuantity` is `0` on an order whose size was
+resolved at fire time; that `0` is not a count, so the stored size stands. `rowQuantity` in
+[rowPresentation.ts](rowPresentation.ts) is the one place that decides this, so the grid and the
+chain dialog always say the same number. **No id is printed in the grid.**
 Both the chain id and every order's client-order id are read in the chain dialog, opened from the
 symbol, and there they are given in full rather than abbreviated to a tail. The
 **The `side` column carries only `buy` / `sell`, inked** — the order type is no longer written

@@ -7,7 +7,12 @@ import {
   makeClosedTrade,
   makePosition,
 } from '../../test/fixtures';
-import { bookRowPresentation, type BookRowPresentation } from './rowPresentation';
+import {
+  bookRowPresentation,
+  canceledRemainder,
+  rowQuantity,
+  type BookRowPresentation,
+} from './rowPresentation';
 
 /** The qualifier line as one sentence, for the assertions that are about words. */
 function text(presentation: BookRowPresentation): string | undefined {
@@ -21,8 +26,7 @@ function inked(presentation: BookRowPresentation): string[] {
 
 /** The whole status cell, origin first, for the assertions about that order. */
 function cell(presentation: BookRowPresentation): string {
-  const verdict =
-    presentation.label + (presentation.source ? ` by ${presentation.source}` : '');
+  const verdict = presentation.label + (presentation.source ? ` by ${presentation.source}` : '');
   const head = presentation.origin ? `${presentation.origin} · ${verdict}` : verdict;
   const tail = text(presentation);
   return tail ? `${head} · ${tail}` : head;
@@ -212,5 +216,47 @@ describe('bookRowPresentation source', () => {
 
   it('says nothing where the server named nobody', () => {
     expect(canceledRow({ source: null }).source).toBeUndefined();
+  });
+});
+
+describe('rowQuantity', () => {
+  function row(overrides: Parameters<typeof makeCanceledOrder>[0]) {
+    const [chain] = buildBookChains({
+      activeOrders: [],
+      canceledOrders: [makeCanceledOrder(overrides)],
+      positions: [makePosition({ chainId: 'chain-thyao' })],
+      closedTrades: [],
+    });
+    return chain!.rows.find((candidate) => candidate.source === 'canceled')!;
+  }
+
+  it('states what a partly canceled order killed, not what it asked for', () => {
+    expect(rowQuantity(row({ orderQuantity: 1_001, canceledQuantity: 375 }))).toBe(375);
+    expect(canceledRemainder(row({ orderQuantity: 1_001, canceledQuantity: 375 }))).toBe(375);
+  });
+
+  it('keeps the order size where the whole order died', () => {
+    expect(rowQuantity(row({ orderQuantity: 120, canceledQuantity: 120 }))).toBe(120);
+    expect(canceledRemainder(row({ orderQuantity: 120, canceledQuantity: 120 }))).toBeNull();
+  });
+
+  /* `canceledQuantity` is 0 on an order whose size was resolved at fire time.
+     That 0 is not a count of shares, so it never displaces the stored size. */
+  it('ignores the zero a fire-time-resolved order records', () => {
+    expect(rowQuantity(row({ orderQuantity: 60, canceledQuantity: 0 }))).toBe(60);
+    expect(canceledRemainder(row({ orderQuantity: 60, canceledQuantity: 0 }))).toBeNull();
+  });
+
+  it('leaves every other kind of row stating its own quantity', () => {
+    const [chain] = buildBookChains({
+      activeOrders: [makeActiveOrder({ chainId: 'chain-thyao', orderQuantity: 40 })],
+      canceledOrders: [],
+      positions: [makePosition({ chainId: 'chain-thyao', orderQuantity: 1_001, quantity: 375 })],
+      closedTrades: [],
+    });
+    for (const candidate of chain!.rows) {
+      expect(canceledRemainder(candidate)).toBeNull();
+      expect(rowQuantity(candidate)).toBe(candidate.quantity);
+    }
   });
 });

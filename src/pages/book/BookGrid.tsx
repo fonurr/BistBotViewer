@@ -39,7 +39,7 @@ import {
 import { statusClass } from '../../domain/status';
 import { useMinuteClock } from '../../components/useMinuteClock';
 import { RowDetail, RowVerdict } from './RowDetail';
-import { bookRowPresentation } from './rowPresentation';
+import { bookRowPresentation, canceledRemainder } from './rowPresentation';
 import { orderActionsForRow, type OrderDialogAction } from './orderActions';
 import { scopeLabels, type BookIntentCell } from './types';
 
@@ -537,6 +537,9 @@ const BookRow = memo(function BookRow({
   const status = bookRowPresentation(row, chain, now, opener);
   const actionButtons = orderActionsForRow(row, chain);
   const capturedPrice = displayType === 'market' && row.orderPrice !== null;
+  // Set only where a canceled leg killed less than it asked for; then it, and
+  // not the asked-for size, is what this row is about.
+  const killed = canceledRemainder(row);
   const pnlTrusted = pnlFigure?.marketBased !== true || pricesTrustworthy;
   const batchDate = chain.batchDate ?? '';
   const signature = rowFlashSignature(row);
@@ -579,7 +582,9 @@ const BookRow = memo(function BookRow({
         )}
       </div>
       <div role="cell">
-        {redundantSellQuantity(row, drawnRows) ? (
+        {killed !== null ? (
+          formatQuantity(killed)
+        ) : redundantSellQuantity(row, drawnRows) ? (
           ''
         ) : row.quantity === null ? (
           <span className="captured-value">auto</span>

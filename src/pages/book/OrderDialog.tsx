@@ -72,7 +72,7 @@ import { resolveSchedule } from '../../domain/schedule';
 import { statusClass } from '../../domain/status';
 import { orderActionsForRow, type OrderDialogAction } from './orderActions';
 import { RowDetail, RowVerdict } from './RowDetail';
-import { bookRowPresentation } from './rowPresentation';
+import { bookRowPresentation, rowQuantity } from './rowPresentation';
 
 export type { OrderDialogAction } from './orderActions';
 
@@ -706,7 +706,8 @@ function sellClaims(chain: BookChain): string {
 
 /** `sell 60 limit 39,90` — the terms, in the order the sentence reads. */
 function legTerms(row: BookChain['rows'][number]): string {
-  const quantity = row.quantity === null ? 'auto' : formatQuantity(row.quantity);
+  const shares = rowQuantity(row);
+  const quantity = shares === null ? 'auto' : formatQuantity(shares);
   const price = row.orderPrice === null ? '' : ` ${formatNumber(row.orderPrice)}`;
   return `${row.direction} ${quantity}${row.orderType ? ` ${row.orderType}` : ''}${price}`;
 }
@@ -725,8 +726,9 @@ function ChainOpener({
 }) {
   const actions = orderActionsForRow(row, chain);
   const presentation = bookRowPresentation(row, chain, Date.now(), true);
+  const shares = rowQuantity(row);
   const stats: Array<{ label: string; value: string; muted?: boolean }> = [
-    { label: 'qty', value: row.quantity === null ? 'auto' : formatQuantity(row.quantity) },
+    { label: 'qty', value: shares === null ? 'auto' : formatQuantity(shares) },
     {
       label: row.orderType === 'limit' ? 'limit' : 'order',
       value: row.orderPrice === null ? '' : formatNumber(row.orderPrice),
