@@ -2,11 +2,16 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { parentPort, workerData } from 'node:worker_threads';
 
+// Mirrors storedErrorTypeSchema in bistApi/logTypes.ts: the types known by name,
+// counted even at zero. The Errors table is open-ended — MatriksOrder stores a new
+// type whenever it learns to report something new — so an unknown one is counted
+// beside these rather than refused (`openTypes`).
 const ERROR_TYPES = [
   'MatriksConnectionError',
   'MatriksFieldNotFound',
   'Unspecified',
   'BarsDataError',
+  'UnclassifiedExplanation',
   'AccountNotFound',
   'AccountInformationUnavailable',
   'AccountFeedSilent',
@@ -14,15 +19,18 @@ const ERROR_TYPES = [
 ];
 const TRAFFIC_TYPES = ['routine', 'action', 'unexpected', 'error'];
 const WIRE_DIRECTIONS = ['out', 'in'];
-// Mirrors LOG_VALUE_COUNT_LIMIT and LOG_VALUE_FILTER_LIMIT in bistApi/logTypes.ts.
+// Mirrors LOG_VALUE_COUNT_LIMIT, LOG_VALUE_FILTER_LIMIT and LOG_TYPE_FILTER_LIMIT
+// in bistApi/logTypes.ts.
 const VALUE_COUNT_LIMIT = 200;
 const VALUE_FILTER_LIMIT = 500;
+const TYPE_FILTER_LIMIT = 64;
 
 const SOURCE_CONFIG = {
   errors: {
     table: 'Errors',
     timeColumn: 'time',
     types: ERROR_TYPES,
+    openTypes: true,
     directionValues: null,
     valueFilters: [],
     columns: [
@@ -39,6 +47,7 @@ const SOURCE_CONFIG = {
     table: 'WireLog',
     timeColumn: 'at',
     types: TRAFFIC_TYPES,
+    openTypes: false,
     directionValues: WIRE_DIRECTIONS,
     valueFilters: [
       {
@@ -82,6 +91,7 @@ const SOURCE_CONFIG = {
     table: 'ApiLog',
     timeColumn: 'at',
     types: TRAFFIC_TYPES,
+    openTypes: false,
     directionValues: null,
     valueFilters: [
       { column: 'path', queryKey: 'paths', resultKey: 'pathCounts', group: true, nullable: false },
@@ -188,12 +198,18 @@ function validateQuery(value) {
     );
   }
   if (value.types !== undefined) {
+    // An open-typed log is filtered by whatever it stores, so the values are
+    // bounded strings rather than a closed list; a closed one still is one.
+    const limit = config.openTypes ? TYPE_FILTER_LIMIT : config.types.length;
+    const allowed = config.openTypes
+      ? (type) => typeof type === 'string' && type.trim().length > 0
+      : (type) => config.types.includes(type);
     if (
       !Array.isArray(value.types) ||
       value.types.length === 0 ||
-      value.types.length > config.types.length ||
+      value.types.length > limit ||
       new Set(value.types).size !== value.types.length ||
-      value.types.some((type) => !config.types.includes(type))
+      !value.types.every(allowed)
     ) {
       throw new WorkerRequestError('INVALID_INPUT', 'The selected log types are invalid.');
     }
@@ -469,7 +485,11 @@ function querySource(query) {
         )
         .all(...rangeParams);
       for (const row of countRows) {
-        if (typeof row.type !== 'string' || !config.types.includes(row.type)) {
+        const known = typeof row.type === 'string' && config.types.includes(row.type);
+        // A stored type this build has never heard of is counted under its own
+        // name on an open-typed log, so the drawer can offer it and its rows
+        // stay readable. Only a closed vocabulary makes one a schema mismatch.
+        if (!known && !(config.openTypes && typeof row.type === 'string' && row.type.length > 0)) {
           throw new WorkerRequestError(
             'SCHEMA_MISMATCH',
             `${config.table} contains an unsupported type in the selected range.`,

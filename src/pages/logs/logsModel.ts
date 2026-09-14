@@ -1,3 +1,4 @@
+import { storedErrorTypes } from '../../bistApi/logTypes';
 import type {
   ApiLogRow,
   ErrorLogRow,
@@ -59,16 +60,12 @@ export const LOG_TABS: readonly { key: LogsTab; label: string }[] = [
   { key: 'api', label: 'API log' },
 ];
 
-export const ERROR_TYPES: readonly StoredErrorType[] = [
-  'MatriksConnectionError',
-  'MatriksFieldNotFound',
-  'Unspecified',
-  'BarsDataError',
-  'AccountNotFound',
-  'AccountInformationUnavailable',
-  'AccountFeedSilent',
-  'OrderAccountMismatch',
-];
+/**
+ * The chips offered first, in the boundary's own order. A range may hold a type
+ * this list does not name — the drawer offers that one after these rather than
+ * hiding rows it cannot label.
+ */
+export const ERROR_TYPES: readonly StoredErrorType[] = storedErrorTypes;
 
 export const TRAFFIC_TYPES: readonly TrafficLogType[] = [
   'routine',

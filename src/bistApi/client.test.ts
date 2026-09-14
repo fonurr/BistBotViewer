@@ -217,6 +217,37 @@ describe('bistApi write errors', () => {
   });
 });
 
+describe('bistApi reads', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  /*
+   * MatriksOrder stores a new error type whenever it learns to report something
+   * new. The day `UnclassifiedExplanation` was first written, an enum here
+   * rejected the whole GetErrors read and the Book drew "The order snapshot is
+   * incomplete." over a page whose orders were perfectly readable.
+   */
+  it('keeps an error type this build does not know rather than failing the read', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse([
+        {
+          id: 521,
+          time: 1_789_398_347_996,
+          type: 'SomethingTheServerLearnedLater',
+          information: 'No rule classifies it',
+          accountId: null,
+          brokerageId: null,
+          context: 'Kalanı iptal edildi',
+        },
+      ]),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(bistApi.getErrors({ limit: 1 })).resolves.toMatchObject([
+      { id: 521, type: 'SomethingTheServerLearnedLater' },
+    ]);
+  });
+});
+
 function jsonResponse(value: unknown): Response {
   return new Response(JSON.stringify(value), {
     status: 200,

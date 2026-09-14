@@ -176,6 +176,56 @@ describe('LogsWorkerClient', () => {
     }
   });
 
+  /*
+   * The Errors table is MatriksOrder's, and it stores a type whenever it learns
+   * to report something new. Refusing the range for one this build cannot name
+   * would hide every other row in it, so an unknown type is counted and
+   * filtered under the server's own key.
+   */
+  it('counts and filters a stored error type this build does not know by name', async () => {
+    const unknownPath = path.join(fixtureDirectory, 'unknown-type-errors.db');
+    createDatabase(
+      unknownPath,
+      `
+        CREATE TABLE Errors (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          time INTEGER NOT NULL,
+          type TEXT NOT NULL,
+          information TEXT NOT NULL,
+          accountId TEXT,
+          brokerageId TEXT,
+          context TEXT
+        );
+        INSERT INTO Errors (time, type, information) VALUES
+          (10, 'AccountNotFound', 'known'),
+          (20, 'SomethingTheServerLearnedLater', 'unknown to this build');
+      `,
+    );
+    const client = new LogsWorkerClient({ ...databasePaths, errors: unknownPath });
+    try {
+      const everyType = await client.query({ source: 'errors', fromMs: 0, untilMs: 100, limit: 10 });
+      expect(everyType.total).toBe(2);
+      expect(everyType.countsByType).toMatchObject({
+        AccountNotFound: 1,
+        SomethingTheServerLearnedLater: 1,
+      });
+
+      const narrowed = await client.query({
+        source: 'errors',
+        fromMs: 0,
+        untilMs: 100,
+        types: ['SomethingTheServerLearnedLater'],
+        limit: 10,
+      });
+      expect(narrowed.rows.map((row) => row.information)).toEqual(['unknown to this build']);
+      expect(narrowed.total).toBe(1);
+      // The counts still ignore the selection, as they do for a known type.
+      expect(narrowed.countsByType).toMatchObject({ AccountNotFound: 1 });
+    } finally {
+      await client.close();
+    }
+  });
+
   it('filters the wire log by operation while counting every operation in the range', async () => {
     const client = new LogsWorkerClient(databasePaths);
     try {

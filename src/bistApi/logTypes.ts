@@ -3,16 +3,30 @@ import { z } from 'zod';
 export const logSourceSchema = z.enum(['errors', 'wire', 'api']);
 export const trafficLogTypeSchema = z.enum(['routine', 'action', 'unexpected', 'error']);
 export const wireDirectionSchema = z.enum(['out', 'in']);
+/**
+ * The stored error types this viewer knows by name. MatriksOrder writes a new
+ * one whenever it learns to report something new, so this is the list the
+ * drawer offers first — never the list a row is allowed to carry. What is read
+ * back out of the database is {@link errorLogTypeSchema}, a free string.
+ */
 export const storedErrorTypeSchema = z.enum([
   'MatriksConnectionError',
   'MatriksFieldNotFound',
   'Unspecified',
   'BarsDataError',
+  'UnclassifiedExplanation',
   'AccountNotFound',
   'AccountInformationUnavailable',
   'AccountFeedSilent',
   'OrderAccountMismatch',
 ]);
+
+/**
+ * A stored type as it comes out of the log database, read as loosely as the
+ * order status is: a type this file does not list must cost nothing but its own
+ * chip label, never the whole page of logs.
+ */
+export const errorLogTypeSchema = z.string().trim().min(1);
 
 export const trafficLogTypes = trafficLogTypeSchema.options;
 export const wireDirections = wireDirectionSchema.options;
@@ -34,6 +48,12 @@ export const LOG_VALUE_COUNT_LIMIT = 200;
  * count limit because a narrowed selection keeps values an earlier range listed.
  */
 export const LOG_VALUE_FILTER_LIMIT = 500;
+/**
+ * The most stored error types one filter may name. It is above the known list
+ * because the chips grow with whatever the database actually holds, and it is
+ * bounded so a filter can never become an unbounded query.
+ */
+export const LOG_TYPE_FILTER_LIMIT = 64;
 
 const safeUnsignedIntegerSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const positiveSafeIntegerSchema = safeUnsignedIntegerSchema.min(1);
@@ -52,7 +72,7 @@ const errorsLogQuerySchema = z
   .object({
     source: z.literal('errors'),
     ...queryWindowShape,
-    types: z.array(storedErrorTypeSchema).min(1).max(storedErrorTypes.length).optional(),
+    types: z.array(errorLogTypeSchema).min(1).max(LOG_TYPE_FILTER_LIMIT).optional(),
   })
   .strict();
 
@@ -173,7 +193,7 @@ export const errorLogRowSchema = z
   .object({
     id: positiveSafeIntegerSchema,
     time: safeUnsignedIntegerSchema,
-    type: storedErrorTypeSchema,
+    type: errorLogTypeSchema,
     information: z.string(),
     accountId: z.string().nullable(),
     brokerageId: z.string().nullable(),
@@ -228,18 +248,24 @@ export type ErrorLogRow = z.infer<typeof errorLogRowSchema>;
 export type WireLogRow = z.infer<typeof wireLogRowSchema>;
 export type ApiLogRow = z.infer<typeof apiLogRowSchema>;
 
+/**
+ * Every known type is counted, at zero when the range holds none, and a type
+ * this viewer has never heard of is counted beside them rather than refused —
+ * that count is what lets the drawer offer it as a chip.
+ */
 const storedErrorCountsSchema = z
   .object({
     MatriksConnectionError: safeUnsignedIntegerSchema,
     MatriksFieldNotFound: safeUnsignedIntegerSchema,
     Unspecified: safeUnsignedIntegerSchema,
     BarsDataError: safeUnsignedIntegerSchema,
+    UnclassifiedExplanation: safeUnsignedIntegerSchema,
     AccountNotFound: safeUnsignedIntegerSchema,
     AccountInformationUnavailable: safeUnsignedIntegerSchema,
     AccountFeedSilent: safeUnsignedIntegerSchema,
     OrderAccountMismatch: safeUnsignedIntegerSchema,
   })
-  .strict();
+  .catchall(safeUnsignedIntegerSchema);
 
 const trafficLogCountsSchema = z
   .object({

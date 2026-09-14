@@ -11,6 +11,7 @@ import type {
   LogQueryResult,
   WireLogQueryResult,
 } from '../../bistApi/logTypes';
+import { zeroErrorCounts } from '../../test/fixtures/logs';
 import { LogsDrawer } from './LogsDrawer';
 import { formatDateKey, rangeToMilliseconds, shiftDateKey, todayInIstanbul } from './logsModel';
 
@@ -21,16 +22,7 @@ vi.mock('../../bistApi/logClient', () => ({
   },
 }));
 
-const ERROR_COUNTS = {
-  MatriksConnectionError: 0,
-  MatriksFieldNotFound: 0,
-  Unspecified: 0,
-  BarsDataError: 0,
-  AccountNotFound: 1,
-  AccountInformationUnavailable: 0,
-  AccountFeedSilent: 0,
-  OrderAccountMismatch: 0,
-};
+const ERROR_COUNTS = { ...zeroErrorCounts(), AccountNotFound: 1 };
 const TRAFFIC_COUNTS = {
   routine: 1,
   action: 0,
@@ -171,6 +163,54 @@ describe('LogsDrawer', () => {
     await user.click(screen.getByRole('button', { name: 'Copy' }));
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining('"botId": "viewer"'));
     expect(await screen.findByText('Copied')).toBeInTheDocument();
+  });
+
+  /*
+   * A stored type this build cannot name is still the server's own key, so it
+   * is offered after the known chips under that key — never hidden, which would
+   * hide its rows from every narrowed selection.
+   */
+  it('offers a chip for a stored error type it does not know, and filters by it', async () => {
+    const unknownType = 'SomethingTheServerLearnedLater';
+    const unknownResult: ErrorLogQueryResult = {
+      source: 'errors',
+      rows: [
+        {
+          id: 4,
+          time: dayStart + 4_000,
+          type: unknownType,
+          information: 'no rule classifies it',
+          accountId: null,
+          brokerageId: null,
+          context: 'Kalanı iptal edildi',
+        },
+      ],
+      total: 1,
+      countsByType: { ...ERROR_COUNTS, [unknownType]: 1 },
+      extent: extents.errors,
+    };
+    vi.mocked(logClient.query).mockImplementation(async (rawInput) => {
+      const input = rawInput as LogQueryInput;
+      if (input.source === 'errors') return unknownResult as LogQueryResult;
+      if (input.source === 'wire') return wireResult() as LogQueryResult;
+      return apiResult() as LogQueryResult;
+    });
+    const user = userEvent.setup();
+    render(<LogsDrawer open onClose={vi.fn()} />);
+
+    expect(await screen.findByText('no rule classifies it')).toBeInTheDocument();
+    const chip = screen.getByRole('button', { name: `${unknownType} 1` });
+    expect(
+      screen.getByRole('button', { name: 'AccountNotFound 1' }).compareDocumentPosition(chip) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await user.click(chip);
+    await waitFor(() =>
+      expect(logClient.query).toHaveBeenCalledWith(
+        expect.objectContaining({ source: 'errors', types: [unknownType] }),
+      ),
+    );
   });
 
   it('pages with the final server-ordered id while keeping totals and counts stable', async () => {

@@ -621,22 +621,37 @@ export const pendingOrderRequestSchema = z
 
 export type PendingOrderRequest = z.infer<typeof pendingOrderRequestSchema>;
 
+/**
+ * The stored types this viewer knows by name — what a `GetErrors` request may
+ * ask for, and the order the log drawer offers them in.
+ */
 export const errorTypeSchema = z.enum([
   'MatriksConnectionError',
   'MatriksFieldNotFound',
   'Unspecified',
   'BarsDataError',
+  'UnclassifiedExplanation',
   'AccountNotFound',
   'AccountInformationUnavailable',
   'AccountFeedSilent',
   'OrderAccountMismatch',
 ]);
 
+/**
+ * What comes back, read as a free string for the reason `orderStatusSchema` is
+ * one: MatriksOrder stores a new type whenever it learns to report something
+ * new, and an unknown one must cost the word on one row, never the whole read.
+ * The day `UnclassifiedExplanation` was first written — a broker explanation no
+ * reason key covered — the enum above rejected the read and took the Book's
+ * whole snapshot down with it.
+ */
+export const errorRowTypeSchema = z.string().trim().min(1);
+
 export const errorRowSchema = z
   .object({
     id: z.number(),
     time: z.number(),
-    type: errorTypeSchema,
+    type: errorRowTypeSchema,
     information: z.string(),
     accountId: z.string().nullable(),
     brokerageId: z.string().nullable(),

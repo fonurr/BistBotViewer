@@ -20,7 +20,6 @@ import {
   type LogQueryResult,
   type LogSource,
   type LogValueCounts,
-  type StoredErrorType,
   type TrafficLogType,
   type WireDirection,
 } from '../../bistApi/logTypes';
@@ -97,7 +96,9 @@ interface ViewState {
 }
 
 type TypeSelections = {
-  errors: StoredErrorType[];
+  /** A stored type, not necessarily one this build knows by name — the Errors
+   * table is the boundary's, and it stores new types without asking. */
+  errors: string[];
   wire: TrafficLogType[];
   api: TrafficLogType[];
 };
@@ -220,7 +221,7 @@ async function readPage(
       await logClient.query({
         source,
         ...window,
-        types: types.length > 0 ? (types as StoredErrorType[]) : undefined,
+        types: types.length > 0 ? [...types] : undefined,
         beforeId,
         limit,
       }),
@@ -860,7 +861,7 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
     });
   };
 
-  const toggleType = (type: StoredErrorType | TrafficLogType) => {
+  const toggleType = (type: string) => {
     setTypeSelections((current) => {
       const selected = current[activeTab] as string[];
       const next = selected.includes(type)
@@ -939,13 +940,22 @@ export function LogsDrawer({ open, onClose }: LogsDrawerProps) {
   const sourcePage = view.pages[activeTab];
   const typeCounts = sourcePage?.countsByType ?? {};
   const unfilteredRangeCount = Object.values(typeCounts).reduce((total, count) => total + count, 0);
-  const selectedTypeList = activeTab === 'errors' ? ERROR_TYPES : TRAFFIC_TYPES;
+  const knownTypeList: readonly string[] = activeTab === 'errors' ? ERROR_TYPES : TRAFFIC_TYPES;
+  /*
+   * The Errors table stores whatever MatriksOrder has learned to report, so a
+   * range may hold a type this build does not name. It is counted like any
+   * other and offered after the known ones under the server's own key — hiding
+   * it would hide its rows from every narrowed selection.
+   */
+  const extraTypeList = Object.keys(typeCounts)
+    .filter((type) => !knownTypeList.includes(type))
+    .sort();
   /*
    * A chip counts within the current range (SCREEN-MAP), so a type with no
    * row in it is not a filter worth offering. A selected chip always stays,
    * or the control the user just pressed would vanish under them.
    */
-  const offeredTypeList = selectedTypeList.filter(
+  const offeredTypeList = [...knownTypeList, ...extraTypeList].filter(
     (type) => (typeCounts[type] ?? 0) > 0 || activeTypes.includes(type as never),
   );
   const directionCounts = sourcePage?.directionCounts ?? null;

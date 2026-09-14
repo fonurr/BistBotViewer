@@ -1,3 +1,4 @@
+import { storedErrorTypes } from '../../bistApi/logTypes';
 import type {
   ApiLogQueryResult,
   ErrorLogQueryResult,
@@ -9,16 +10,14 @@ import type {
 
 export const FIXTURE_LOG_DAY_START_MS = Date.parse('2026-08-24T21:00:00.000Z');
 
-const errorCounts = {
-  MatriksConnectionError: 0,
-  MatriksFieldNotFound: 0,
-  Unspecified: 1,
-  BarsDataError: 0,
-  AccountNotFound: 0,
-  AccountInformationUnavailable: 0,
-  AccountFeedSilent: 0,
-  OrderAccountMismatch: 0,
-};
+/** Every known type counted, as the worker answers: zero where the range is empty. */
+export function zeroErrorCounts(): ErrorLogQueryResult['countsByType'] {
+  return Object.fromEntries(
+    storedErrorTypes.map((type) => [type, 0]),
+  ) as ErrorLogQueryResult['countsByType'];
+}
+
+const errorCounts = { ...zeroErrorCounts(), Unspecified: 1 };
 
 const trafficCounts = {
   routine: 1,

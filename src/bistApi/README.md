@@ -20,6 +20,14 @@ Rules:
   the JSON string the request supplied, on active, scheduled and canceled orders, and `closePrice`
   alone on a position. `storedPriceRuleSchema` therefore stays lenient — a shape we do not
   recognize costs one rule, never a whole table read; `domain/priceRules.ts` decides what it means.
+- Every open-ended wire vocabulary is read as a free string, never as an enum: an order `status`,
+  an `origin`, a cancel `source`, and the stored error `type` in `GetErrors` and the log drawer.
+  MatriksOrder adds a value whenever it learns to report something new, and an unknown one must
+  cost the word on one row — the first `UnclassifiedExplanation` ever written failed the whole
+  errors read and drew "The order snapshot is incomplete." over a Book whose orders were fine.
+  The enums that remain (`errorTypeSchema`, `storedErrorTypeSchema`) say what this viewer knows by
+  name — what a request may ask for and the order the chips are offered in — never what a row may
+  carry.
 - The write schemas carry the server's acceptance rules, so a rule it would refuse never leaves the
   browser. On `EditOrders` an omitted rule leaves the stored one alone and an explicit `null` clears
   it; that null is the only way to disarm a guard, so it is never sent by accident.

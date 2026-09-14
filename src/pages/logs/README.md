@@ -23,6 +23,10 @@ session. Nothing is persisted.
   A type with no row in the chosen range is not offered as a chip at all — a count within the
   range is what makes a chip a filter worth pressing — but a type the user has already selected
   stays, so the control they just pressed never vanishes under them.
+- The Errors table's types are MatriksOrder's, and it stores a new one whenever it learns to report
+  something new. A stored type this build does not know by name is counted, listed after the known
+  chips under the server's own key, and filters like any other — refusing the range for it would
+  hide every other row in it.
 - The wire log filters by `operation` and `accountId`, and the API log by `path`, each through its
   own `MultiSelectFilter` in the toolbar — the wire log offers both at once. Like the type chips,
   every one of these filters is applied by the database — totals and older pages follow it — and
