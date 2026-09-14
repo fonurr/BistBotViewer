@@ -33,6 +33,15 @@ minutes past the close) stays in `calendar.ts`, and MatriksOrder's own send time
 order (09:00, and thirty seconds past the opening match or the close) stay in `schedule.ts`,
 since neither is the exchange's.
 
+`chains.ts` keys every `BookChainRow` — the identity the Book, the order dialog, and every
+`intentCells`/`sellEditCeilingByRowKey` lookup index by — off `stableSourceIdentity(clientOrderId,
+id)`. Only `clientOrderId` is guaranteed one order: `positionId` names the broker's net position in
+a symbol, not a row, so every bot holding the same symbol reports the same `positionId` on its
+`Positions` row (confirmed against `../MatriksOrder/API.md`'s "one row per bot **per symbol**").
+Keying on it once collapsed two bots' rows onto one cache key and one drew the other's `@intent`
+price and slip. Never fall back to `positionId`, `chainId`, or any other cross-row field for a row
+key — only a field the exchange or MatriksOrder scopes to one order is safe to use.
+
 `batchRange.ts` owns the two ways a batch range is read. `batch` keeps what was filed under one of
 its sessions; `active` keeps an `ActiveSpan` — from the batch through the session of the newest
 thing recorded, open-ended while still alive — that touches any of them. Both pages build their
