@@ -72,7 +72,7 @@ import { resolveSchedule } from '../../domain/schedule';
 import { statusClass } from '../../domain/status';
 import { orderActionsForRow, type OrderDialogAction } from './orderActions';
 import { RowDetail, RowVerdict } from './RowDetail';
-import { bookRowPresentation, rowQuantity } from './rowPresentation';
+import { bookRowPresentation, canceledRemainder, rowQuantity } from './rowPresentation';
 
 export type { OrderDialogAction } from './orderActions';
 
@@ -866,6 +866,7 @@ function ActionForm({
   const direction = actionDirection(action);
   const sameModeUnavailable =
     action.kind === 'resend' ? resendSameUnavailableReason(action, chain) : null;
+  const remainder = canceledRemainder(action.row);
   const linkedClose =
     action.kind === 'resend' && action.row.direction === 'buy'
       ? linkedReversingSell(action.row, chain)
@@ -886,7 +887,7 @@ function ActionForm({
           <div className="stored-spec">
             <span className="kicker">stored canceled order</span>
             <strong>
-              {formatQuantity(action.row.quantity ?? 0)} shares ·{' '}
+              {formatQuantity(rowQuantity(action.row) ?? 0)} shares ·{' '}
               {action.row.orderType ?? action.row.intentType} ·{' '}
               {action.row.orderPrice === null
                 ? 'no stored price'
@@ -898,6 +899,13 @@ function ActionForm({
                 : 'The canceled-order read does not preserve the original fire-time spec.'}
               {linkedClose
                 ? ' A linked reversing sell existed, but its reusable closeTime is not preserved.'
+                : ''}
+              {remainder !== null && action.row.quantity !== null
+                ? ` Only ${formatQuantity(remainder)} of its ${formatQuantity(
+                    action.row.quantity,
+                  )} shares were canceled — the rest filled — so a resend asks for the ${formatQuantity(
+                    remainder,
+                  )} that were left.`
                 : ''}
             </span>
           </div>
@@ -1442,13 +1450,13 @@ function EarlyByLine({ scheduledTime }: { scheduledTime: number | null }) {
 }
 
 function SendingState({ action }: { action: OrderDialogAction }) {
+  const shares = rowQuantity(action.row);
   return (
     <div className="sending-panel" aria-live="polite">
       <div className="sending-previous">
         <strong>{action.row.symbol}</strong>
         <span>
-          {actionDirection(action)} ·{' '}
-          {action.row.quantity === null ? 'auto' : formatQuantity(action.row.quantity)} · previous
+          {actionDirection(action)} · {shares === null ? 'auto' : formatQuantity(shares)} · previous
           value
         </span>
       </div>
@@ -1498,8 +1506,10 @@ function validateDraft(
     action.kind === 'resend' && draft.resendMode === 'same' ? draftFor(action, chain) : draft;
   const finalPrice =
     action.kind === 'resend' && draft.resendMode === 'same' ? action.row.orderPrice : price;
+  // A leg that died after a partial fill is resent for what it killed, not
+  // for the size its order first asked — the filled part already traded.
   const finalQuantity =
-    action.kind === 'resend' && draft.resendMode === 'same' ? action.row.quantity : quantity;
+    action.kind === 'resend' && draft.resendMode === 'same' ? rowQuantity(action.row) : quantity;
   const priceRequired = effectiveDraft.type === 'limit' || direction === 'buy';
   if (action.kind === 'resend' && draft.resendMode === 'same') {
     const unavailableReason = resendSameUnavailableReason(action, chain);
@@ -2295,9 +2305,9 @@ function draftFor(action: OrderDialogAction | undefined, chain?: BookChain): Dra
     quantity:
       action.kind === 'sell'
         ? String(chain?.sellableQuantity ?? action.row.quantity ?? '')
-        : action.row.quantity === null
+        : rowQuantity(action.row) === null
           ? ''
-          : String(action.row.quantity),
+          : String(rowQuantity(action.row)),
     scheduled: action.kind === 'edit' && action.row.source === 'scheduled',
     day:
       action.kind === 'edit' && action.row.scheduledTime

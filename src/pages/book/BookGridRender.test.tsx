@@ -557,6 +557,55 @@ describe('BookGrid row vocabulary', () => {
     expect(within(canceledRow as HTMLElement).queryByText('1.001')).toBeNull();
   });
 
+  /*
+   * A sell for the whole position normally leaves qty empty — its size is the
+   * buy's. After a partial fill the chain has no one size to read off, so the
+   * sell that retries the killed remainder writes its own quantity.
+   */
+  it('writes every sell quantity on a chain where something filled only in part', () => {
+    const retrySell = makeActiveOrder({
+      id: 1_924,
+      symbol: 'THYAO',
+      chainId: 'chain-thyao',
+      clientOrderId: 'client-thyao-retry',
+      parentClientOrderId: 'client-thyao-open-000001',
+      direction: 'sell',
+      type: 'market',
+      intentType: 'market',
+      orderPrice: null,
+      orderQuantity: 375,
+      origin: 'Retry',
+    });
+    const partialCancel = makeCanceledOrder({
+      orderQuantity: 1_001,
+      canceledQuantity: 375,
+      status: 'Canceled',
+      source: 'Broker',
+      reason: 'PartiallyCanceled',
+    });
+    const position = makePosition({ orderQuantity: 1_001, quantity: 375 });
+    const retryRow = () => screen.getByText(/^Retry/).closest('.book-row') as HTMLElement;
+
+    const { unmount } = renderGrid(
+      {},
+      {
+        activeOrders: [retrySell],
+        canceledOrders: [partialCancel],
+        positions: [position],
+        closedTrades: [],
+      },
+    );
+    expect(within(retryRow()).getByText('375')).toBeVisible();
+    unmount();
+
+    // The same sell on a chain that filled whole says nothing: its size is the buy's.
+    renderGrid(
+      {},
+      { activeOrders: [retrySell], canceledOrders: [], positions: [position], closedTrades: [] },
+    );
+    expect(within(retryRow()).queryByText('375')).toBeNull();
+  });
+
   it('holds every row action while writes are held, with the hold as the reason', () => {
     renderGrid({ writesHeldReason: 'The order stream is not live.' });
 

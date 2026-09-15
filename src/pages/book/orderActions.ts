@@ -4,6 +4,7 @@ import type {
   BookChain,
   BookPositionRow,
 } from '../../domain/chains';
+import { rowQuantity } from './rowPresentation';
 
 interface ActionBase {
   disabled?: boolean;
@@ -46,8 +47,9 @@ export function orderActionsForRow(
     return (chain.sellableQuantity ?? 0) > 0 ? [{ kind: 'sell', row }] : [];
   }
   if (row.source === 'canceled') {
+    // A leg that died after a partial fill resends only what it killed.
     const canResendSell =
-      row.direction === 'buy' || (chain.sellableQuantity ?? 0) >= (row.quantity ?? 0);
+      row.direction === 'buy' || (chain.sellableQuantity ?? 0) >= (rowQuantity(row) ?? 0);
     return canResendSell ? [{ kind: 'resend', row }] : [];
   }
   return [];

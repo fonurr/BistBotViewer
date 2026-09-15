@@ -10,6 +10,7 @@ import {
 import {
   bookRowPresentation,
   canceledRemainder,
+  chainHasPartialFill,
   rowQuantity,
   type BookRowPresentation,
 } from './rowPresentation';
@@ -258,5 +259,55 @@ describe('rowQuantity', () => {
       expect(canceledRemainder(candidate)).toBeNull();
       expect(rowQuantity(candidate)).toBe(candidate.quantity);
     }
+  });
+});
+
+describe('chainHasPartialFill', () => {
+  const chainOf = (input: Partial<Parameters<typeof buildBookChains>[0]>) =>
+    buildBookChains({
+      activeOrders: [],
+      canceledOrders: [],
+      positions: [],
+      closedTrades: [],
+      ...input,
+    })[0]!;
+
+  it('sees a leg the exchange killed after part of it filled', () => {
+    expect(
+      chainHasPartialFill(
+        chainOf({
+          canceledOrders: [makeCanceledOrder({ orderQuantity: 1_001, canceledQuantity: 375 })],
+          positions: [makePosition({ quantity: 375 })],
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it('sees an order still resting with part of it filled', () => {
+    expect(
+      chainHasPartialFill(
+        chainOf({
+          activeOrders: [
+            makeActiveOrder({ status: 'PartiallyFilled', orderQuantity: 40, filledQuantity: 15 }),
+          ],
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it('stays false where every order filled or died whole', () => {
+    expect(
+      chainHasPartialFill(
+        chainOf({
+          canceledOrders: [makeCanceledOrder({ orderQuantity: 120, canceledQuantity: 120 })],
+          positions: [makePosition()],
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      chainHasPartialFill(
+        chainOf({ activeOrders: [makeActiveOrder({ orderQuantity: 40, filledQuantity: 40 })] }),
+      ),
+    ).toBe(false);
   });
 });

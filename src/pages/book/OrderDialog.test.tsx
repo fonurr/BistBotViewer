@@ -452,6 +452,60 @@ describe('OrderDialog write safety', () => {
     expect(api.sendOrders).toHaveBeenCalledTimes(1);
   });
 
+  /*
+   * A sell of 1.001 filled 626 and the exchange killed the rest. Resending it
+   * "as it was" asks for the 375 that were left — the 626 already traded, and
+   * the stored 1.001 is more than the position holds.
+   */
+  it('resends a partly canceled sell for what it killed, not what it asked', async () => {
+    const user = userEvent.setup();
+    const chain = chainFor({
+      positions: [
+        makePosition({
+          symbol: 'AKBNK',
+          chainId: 'partial',
+          clientOrderId: 'open-buy',
+          orderQuantity: 1_001,
+          quantity: 375,
+        }),
+      ],
+      canceledOrders: [
+        canceledOrder({
+          clientOrderId: 'sell-dead',
+          chainId: 'partial',
+          parentClientOrderId: 'open-buy',
+          direction: 'sell',
+          type: 'market',
+          intentType: 'market',
+          orderPrice: null,
+          orderQuantity: 1_001,
+          canceledQuantity: 375,
+          reason: 'PartiallyCanceled',
+        }),
+      ],
+    });
+    api.sendOrders.mockResolvedValue({
+      toOrder: [{ symbol: 'AKBNK', quantity: 375 }],
+      skippedList: [],
+    });
+    renderDialog(chain, { kind: 'resend', row: chain.canceledRows[0]! });
+
+    expect(screen.getByRole('radio', { name: 'Resend as it was' })).toBeChecked();
+    expect(screen.getByText(/375 shares/)).toBeVisible();
+    expect(
+      screen.getByText(/Only 375 of its 1\.001 shares were canceled — the rest filled/),
+    ).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'resend' }));
+
+    await waitFor(() => expect(api.sendOrders).toHaveBeenCalledTimes(1));
+    expect(api.sendOrders).toHaveBeenCalledWith(
+      expect.objectContaining({
+        direction: 'sell',
+        stocks: [expect.objectContaining({ symbol: 'AKBNK', quantity: 375 })],
+      }),
+    );
+  });
+
   it('forces an explicit replacement when a canceled buy had a reversing sell', () => {
     const buy = canceledOrder({ clientOrderId: 'buy-dead', chainId: 'buy-dead' });
     const close = canceledOrder({

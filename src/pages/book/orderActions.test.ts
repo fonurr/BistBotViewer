@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { activeOrderSchema } from '../../bistApi/types';
 import { buildBookChains } from '../../domain/chains';
-import { makeActiveOrder } from '../../test/fixtures';
+import { makeActiveOrder, makeCanceledOrder, makePosition } from '../../test/fixtures';
 import { orderActionsForRow } from './orderActions';
 
 describe('Book order action eligibility', () => {
@@ -37,3 +37,28 @@ describe('Book order action eligibility', () => {
 function chains(activeOrders: ReturnType<typeof makeActiveOrder>[]) {
   return buildBookChains({ activeOrders, canceledOrders: [], positions: [], closedTrades: [] });
 }
+
+describe('Book resend eligibility after a partial fill', () => {
+  const partialChain = (canceledQuantity: number) =>
+    buildBookChains({
+      activeOrders: [],
+      canceledOrders: [
+        makeCanceledOrder({ orderQuantity: 1_001, canceledQuantity, status: 'Canceled' }),
+      ],
+      positions: [makePosition({ orderQuantity: 1_001, quantity: 375 })],
+      closedTrades: [],
+    })[0]!;
+
+  it('offers resend when the position covers what the leg killed, not what it asked', () => {
+    const chain = partialChain(375);
+    expect(chain.sellableQuantity).toBe(375);
+    expect(orderActionsForRow(chain.canceledRows[0]!, chain).map((a) => a.kind)).toEqual([
+      'resend',
+    ]);
+  });
+
+  it('still withholds it where the whole order died and the position cannot cover it', () => {
+    const chain = partialChain(1_001);
+    expect(orderActionsForRow(chain.canceledRows[0]!, chain)).toEqual([]);
+  });
+});

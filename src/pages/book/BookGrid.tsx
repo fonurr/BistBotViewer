@@ -39,7 +39,12 @@ import {
 import { statusClass } from '../../domain/status';
 import { useMinuteClock } from '../../components/useMinuteClock';
 import { RowDetail, RowVerdict } from './RowDetail';
-import { bookRowPresentation, canceledRemainder } from './rowPresentation';
+import {
+  bookRowPresentation,
+  canceledRemainder,
+  chainHasPartialFill,
+  rowQuantity,
+} from './rowPresentation';
 import { orderActionsForRow, type OrderDialogAction } from './orderActions';
 import { scopeLabels, type BookIntentCell } from './types';
 
@@ -584,7 +589,7 @@ const BookRow = memo(function BookRow({
       <div role="cell">
         {killed !== null ? (
           formatQuantity(killed)
-        ) : redundantSellQuantity(row, drawnRows) ? (
+        ) : redundantSellQuantity(row, drawnRows, chain) ? (
           ''
         ) : row.quantity === null ? (
           <span className="captured-value">auto</span>
@@ -801,10 +806,17 @@ function actionLabel(kind: OrderDialogAction['kind']): string {
  * size is the buy's size, and an `auto` sell resolves to exactly that at fire.
  * Only a sell for less than the buy asked for writes a number here. The buy is
  * looked for among the rows drawn: where `matching orders only` left it out,
- * nothing above states that size, so the sell writes its own.
+ * nothing above states that size, so the sell writes its own. A chain where
+ * something filled only in part has no one size to read off the buy, so there
+ * every row writes its quantity — `auto` included.
  */
-function redundantSellQuantity(row: BookChainRow, drawnRows: readonly BookChainRow[]): boolean {
+function redundantSellQuantity(
+  row: BookChainRow,
+  drawnRows: readonly BookChainRow[],
+  chain: BookChain,
+): boolean {
   if (row.direction !== 'sell') return false;
+  if (chainHasPartialFill(chain)) return false;
   if (row.quantity === null) return true;
   const buyQuantity = drawnBuyQuantity(drawnRows);
   return buyQuantity !== null && row.quantity === buyQuantity;
@@ -1031,10 +1043,10 @@ function pnlClass(value: number | null, trustworthy: boolean): string {
 /** Speaks for the canceled legs in the tail, which are the ones the chain draws. */
 function CanceledTailNote({ chain, rows }: { chain: BookChain; rows: readonly BookChainRow[] }) {
   const blockedSells = rows.filter(
-    (row) => row.direction === 'sell' && (row.quantity ?? 0) > (chain.sellableQuantity ?? 0),
+    (row) => row.direction === 'sell' && (rowQuantity(row) ?? 0) > (chain.sellableQuantity ?? 0),
   );
   const smallest = blockedSells.length
-    ? Math.min(...blockedSells.map((row) => row.quantity ?? 0))
+    ? Math.min(...blockedSells.map((row) => rowQuantity(row) ?? 0))
     : null;
   return (
     <>

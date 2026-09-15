@@ -202,15 +202,31 @@ export function rowQuantity(row: BookChainRow): number | null {
 /**
  * What a canceled leg killed, when that is not what it asked for — the figure
  * {@link rowQuantity} states in its place, and the one case where the qty
- * column is not the row's `quantity`. `null` on every other row, so the
- * "a sell that takes the whole position says nothing" rule keeps reading the
- * asked-for size and never blanks a partial cancel against a position.
+ * column is not the row's `quantity`. It is also what a resend of that leg asks
+ * for: the filled part already traded, so only the remainder is still owed.
+ * `null` on every other row.
  */
 export function canceledRemainder(row: BookChainRow): number | null {
   if (row.source !== 'canceled') return null;
   const canceled = row.canceledQuantity;
   if (canceled === null || canceled <= 0 || canceled === row.quantity) return null;
   return canceled;
+}
+
+/**
+ * Whether some order on the chain filled only in part — one still resting with
+ * part of it filled, or one the exchange killed after a part filled. Such a
+ * chain no longer has one size: its shares are split across a trade, a position
+ * and the legs that carry the rest, so no sell's size can be read off the buy
+ * above it and every row writes its own quantity.
+ */
+export function chainHasPartialFill(chain: BookChain): boolean {
+  return chain.rows.some((row) => {
+    if (canceledRemainder(row) !== null) return true;
+    if (row.source !== 'active' && row.source !== 'scheduled') return false;
+    const filled = row.filledQuantity ?? 0;
+    return filled > 0 && row.quantity !== null && filled < row.quantity;
+  });
 }
 
 /**
