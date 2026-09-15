@@ -337,7 +337,10 @@ export function BotStatusDialog({ bot, counts, budget, onClose }: BotStatusDialo
               <>
                 <div className="bots-reactivate-facts">
                   <StatusCount label="open positions" value={snapshotCounts.positions} />
-                  <StatusCount label="limit · TL" value={formatNumber(snapshotBot.limit)} />
+                  <StatusCount
+                    label="limit · TL"
+                    value={snapshotBot.limit === null ? 'lifted' : formatNumber(snapshotBot.limit)}
+                  />
                   <StatusCount
                     label="committed · TL"
                     value={committed === null ? 'not available' : formatNumber(committed)}

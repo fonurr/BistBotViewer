@@ -5,7 +5,7 @@ import type { ResolvedPrice } from '../../priceApi/types';
 import {
   botFormFor,
   calculateUnrealized,
-  effectivePerPositionCap,
+  effectiveCap,
   getBotCardState,
   newBotForm,
   requestMatchesCreatedBot,
@@ -63,16 +63,91 @@ describe('Bots page model', () => {
   });
 
   it('names the side that binds the effective per-stock cap', () => {
-    expect(effectivePerPositionCap(20_000, 100, 1_000_000)).toEqual({
+    expect(effectiveCap(20_000, 100, 1_000_000)).toEqual({
       value: 20_000,
       bound: 'tl',
     });
-    expect(effectivePerPositionCap(20_000, 1, 1_000_000)).toEqual({
+    expect(effectiveCap(20_000, 1, 1_000_000)).toEqual({
       value: 10_000,
       bound: 'percentage',
     });
+    // A lifted TL cap drops out, so the percentage sets the cap however large it is.
+    expect(effectiveCap(null, 100, 1_000_000)).toEqual({
+      value: 1_000_000,
+      bound: 'percentage',
+    });
     // Without a portfolio value neither figure predicts the order size.
-    expect(effectivePerPositionCap(20_000, 100, null)).toBeNull();
+    expect(effectiveCap(20_000, 100, null)).toBeNull();
+    // A TL figure that did not parse is not a lifted cap.
+    expect(effectiveCap(undefined, 100, 1_000_000)).toBeNull();
+  });
+
+  it('reads a blank TL cap as lifted and sends it as null', () => {
+    const original = bot({ limit: null, limitPerPosition: null });
+    const context = {
+      original,
+      existingBotIds: new Set([original.id]),
+      accountLocked: false,
+      committed: null,
+    };
+    const form = botFormFor(original);
+    expect(form).toMatchObject({ limit: '', limitPerPosition: '' });
+    // Still lifted is still unchanged, not a missing number.
+    expect(validateBotForm(form, context)).toMatchObject({ request: null, unchanged: true });
+
+    // Lifting raises the ceiling, so an unknown commitment does not hold it.
+    const lifting = bot();
+    expect(
+      validateBotForm(
+        { ...botFormFor(lifting), limit: '  ', limitPerPosition: '' },
+        { ...context, original: lifting },
+      ).request,
+    ).toEqual({ id: 'alpha', limit: null, limitPerPosition: null });
+
+    // Putting a cap back is checked against the commitment like any other TL figure.
+    expect(validateBotForm({ ...form, limit: '5.000' }, context).blockReason).toContain(
+      'committed amount is unavailable',
+    );
+    expect(
+      validateBotForm({ ...form, limit: '5.000' }, { ...context, committed: 6_000 }).blockReason,
+    ).toContain('already committed');
+    expect(validateBotForm({ ...form, limitPerPosition: '2.000' }, context).request).toEqual({
+      id: 'alpha',
+      limitPerPosition: 2_000,
+    });
+
+    expect(validateBotForm({ ...form, limit: 'abc' }, context).blockReason).toContain(
+      'or blank to lift it',
+    );
+    expect(validateBotForm({ ...form, limitPerPosition: '0' }, context).blockReason).toContain(
+      'or blank to lift it',
+    );
+  });
+
+  it('creates a lifted bot by sending null over the create default', () => {
+    const result = validateBotForm(
+      { ...newBotForm(), id: 'fresh', limit: '' },
+      { original: null, existingBotIds: new Set(), accountLocked: false, committed: null },
+    );
+    expect(result.request).toEqual({ id: 'fresh', limit: null });
+
+    const created = bot({
+      id: 'fresh',
+      algoritmId: null,
+      accountId: null,
+      brokerageId: null,
+      emails: null,
+      limit: null,
+      limitPercentage: 100,
+      limitPerPosition: 20_000,
+      limitPercentagePerPosition: 100,
+      forbiddenStocks: [],
+      description: null,
+      complete: false,
+    });
+    expect(requestMatchesCreatedBot(result.request!, created)).toBe(true);
+    // The lift was asked for, so a record that took the 100.000 default did not land it.
+    expect(requestMatchesCreatedBot(result.request!, { ...created, limit: 100_000 })).toBe(false);
   });
 
   it('makes unrealized all-or-nothing across feed and required quotes', () => {

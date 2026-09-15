@@ -258,15 +258,29 @@ export function reservedBuyCost(quantity: number, price: number, type: OrderType
   return quantity * price * (type === 'market' ? 1.1 : 1);
 }
 
+/** A lifted (`null`) TL cap drops out of the min(), leaving the percentage as the whole cap. */
 export function effectivePerPositionCap(budget: BotBudget): number {
   return Math.min(
-    budget.limitPerPosition,
+    budget.limitPerPosition ?? Infinity,
     budget.portfolioValue * (budget.limitPercentagePerPosition / 100),
   );
 }
 
-export function committedAmount(budget: BotBudget): number {
-  return Math.max(0, budget.limit - budget.remainingBotBudget);
+/** `min(limit, portfolioValue × limitPercentage/100)`, a lifted `limit` dropping out. */
+export function effectiveTotalCap(budget: BotBudget): number {
+  return Math.min(budget.limit ?? Infinity, budget.portfolioValue * (budget.limitPercentage / 100));
+}
+
+/**
+ * What a bot already holds against its total cap, read back from `GetBotBudget`, whose
+ * `remainingBotBudget` is `min(effectiveAccountBuyingPower, cap − committed)`. Only where
+ * the cap side answered is `cap − remaining` the commitment. Once buying power binds the read
+ * says nothing about it — and at `limitPercentage` 100 with a lifted `limit` it nearly always
+ * does — so that is `null`, never a figure off by the whole portfolio.
+ */
+export function committedAmount(budget: BotBudget): number | null {
+  if (budget.remainingBotBudget >= budget.effectiveAccountBuyingPower) return null;
+  return Math.max(0, effectiveTotalCap(budget) - budget.remainingBotBudget);
 }
 
 function matchingPosition(

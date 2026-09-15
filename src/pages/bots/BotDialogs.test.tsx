@@ -283,6 +283,7 @@ describe('the bot record form states the arithmetic that bounds it', () => {
         budget={{
           portfolioValue: 1_000_000,
           accountBuyingPower: 500_000,
+          effectiveAccountBuyingPower: 500_000,
           remainingBotBudget: 4_000,
           limitPercentage: 100,
           limit: 10_000,
@@ -296,6 +297,73 @@ describe('the bot record form states the arithmetic that bounds it', () => {
     // min(2.000 TL, 1.000.000 x 20%) is the TL figure, and neither number alone said so.
     expect(screen.getByText(/Right now that is 2\.000 TL — the TL figure binds/)).toBeVisible();
     expect(screen.getByText(/Committed right now: 6\.000 of 10\.000/)).toBeVisible();
+  });
+
+  it('resolves a lifted TL limit to the percentage cap it leaves', () => {
+    const lifted = bot({ limit: null, limitPerPosition: null, limitPercentage: 10 });
+    renderDialog(
+      <BotConfigDialog
+        mode="edit"
+        bot={lifted}
+        bots={[lifted]}
+        accounts={[]}
+        activeOrders={[]}
+        positions={[]}
+        pendingRequests={[]}
+        budget={{
+          portfolioValue: 1_000_000,
+          accountBuyingPower: 500_000,
+          effectiveAccountBuyingPower: 500_000,
+          remainingBotBudget: 94_000,
+          limitPercentage: 10,
+          limit: null,
+          limitPerPosition: null,
+          limitPercentagePerPosition: 20,
+        }}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText(/^limit · TL/)).toHaveValue('');
+    expect(
+      screen.getByText(
+        /Right now that is 200\.000 TL — the TL figure is lifted, so the percentage of portfolio value sets it/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Committed right now: 6\.000 of 100\.000, the TL limit lifted so portfolio value × limit % sets it/,
+      ),
+    ).toBeVisible();
+  });
+
+  it('lifts a TL limit by sending null once, without a budget preflight', async () => {
+    const user = userEvent.setup();
+    const original = bot();
+    const saved = bot({ limit: null });
+    api.getBots.mockResolvedValueOnce([original]).mockResolvedValueOnce([saved]);
+    api.configureBot.mockResolvedValueOnce({});
+
+    renderDialog(
+      <BotConfigDialog
+        mode="edit"
+        bot={original}
+        bots={[original]}
+        accounts={[]}
+        activeOrders={[]}
+        positions={[]}
+        pendingRequests={[]}
+        budget={undefined}
+        onClose={vi.fn()}
+      />,
+    );
+    await user.clear(screen.getByLabelText(/^limit · TL/));
+    await user.click(screen.getByRole('button', { name: 'Send the changes' }));
+
+    expect(await screen.findByText('Saved alpha')).toBeInTheDocument();
+    expect(api.configureBot).toHaveBeenCalledTimes(1);
+    expect(api.configureBot).toHaveBeenCalledWith({ id: 'alpha', limit: null });
+    expect(api.getBotBudget).not.toHaveBeenCalled();
   });
 
   it('says a per-stock cap above the total cap can never bind', async () => {

@@ -27,9 +27,25 @@ bot, and Performance recomputes for it.
 `BotConfigDialog` owns Add, Edit, and Finish setup. The limits fieldset resolves the arithmetic
 rather than only describing it: the effective per-stock cap
 (`min(limitPerPosition, portfolioValue × limitPercentagePerPosition/100)`) with the side that
-binds, committed money against the limit currently typed, and a warning when a per-stock cap above
-the total cap can never bind. A form that still matches the stored record is muted, not a fault. Add rejects duplicate and reserved ids; Edit
-sends only dirty fields. Account routing is locked while active, scheduled, or position rows
+binds, committed money against the effective total cap (`min(limit, portfolioValue ×
+limitPercentage/100)`) the form currently states, and a warning when a per-stock cap above the
+total cap can never bind. A form that still matches the stored record is muted, not a fault. Add rejects duplicate and reserved ids; Edit
+sends only dirty fields.
+
+**A blank TL field is a lifted cap.** `limit` and `limitPerPosition` are nullable upstream: `null`
+drops that TL figure out of the `min()` and leaves its percentage (and buying power) to bound the
+bot. The form shows a lifted cap as an empty field, sends a field blanked on purpose as an explicit
+`null` — on Add too, because omitting it takes the 100.000 / 20.000 default — and never reads text
+that fails to parse as a lift. Lifting only raises the ceiling, so it skips the committed-money
+check a TL figure gets. Create reconciliation tells `null` apart from an omission rather than
+collapsing both with `??`.
+
+**Committed money is `cap − remainingBotBudget` only where the cap answered.** `GetBotBudget`
+reports `remainingBotBudget = min(effectiveAccountBuyingPower, cap − committed)`, so once buying
+power is what remains the read says nothing about the commitment — and with a lifted `limit` at
+`limitPercentage` 100 it nearly always is. `committedAmount` is then `null`: the fleet strip and the
+status dialog show it as not available, and a TL limit cannot be put back or changed until a budget
+read shows the commitment, exactly as when the budget is not loaded. Account routing is locked while active, scheduled, or position rows
 exist. The form distinguishes an unset email list from a deliberately empty array, submits the
 forbidden-stock list whole, and continuously checks limits against the latest known commitment.
 

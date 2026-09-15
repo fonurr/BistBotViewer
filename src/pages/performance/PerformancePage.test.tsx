@@ -337,6 +337,24 @@ describe('Performance scope and unavailable values', () => {
     expect(within(card!).queryByText(/0 currently committed/i)).not.toBeInTheDocument();
   });
 
+  it('sums no TL total once a selected bot has lifted its limit', async () => {
+    const fixture = makePerformanceReadFixture();
+    fixture.bots = [makeBot({ limit: null })];
+    fixture.budgets = { 'bot-alpha': makeBotBudget({ limit: null }) };
+    useFixture(fixture);
+
+    renderPerformance();
+
+    const label = await screen.findByText('budget context');
+    const card = label.closest('.card') as HTMLElement | null;
+    expect(card).not.toBeNull();
+    expect(
+      within(card!).getByText(/1 bot capped by percentage alone, so no TL total/),
+    ).toBeVisible();
+    // A lifted limit is not a zero one.
+    expect(within(card!).queryByText('0')).not.toBeInTheDocument();
+  });
+
   it('does not invent zero commitment when every selected bot is incomplete', async () => {
     const fixture = makePerformanceReadFixture();
     fixture.bots = [makeBot({ complete: false })];

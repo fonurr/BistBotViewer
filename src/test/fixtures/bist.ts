@@ -227,6 +227,7 @@ export function makeBotBudget(overrides: Partial<BotBudget> = {}): BotBudget {
   return {
     portfolioValue: 1_000_000,
     accountBuyingPower: 750_000,
+    effectiveAccountBuyingPower: 750_000,
     remainingBotBudget: 420_000,
     limitPercentage: 100,
     limit: 500_000,

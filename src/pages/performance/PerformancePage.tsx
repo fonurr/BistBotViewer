@@ -50,7 +50,9 @@ type BarReadState = 'not-required' | 'pending' | 'error' | 'ready';
 type BudgetCommittedState = 'loading' | 'unavailable' | 'ready';
 
 interface BudgetContext {
-  limit: number;
+  /** `null` once any selected bot has lifted its TL limit: there is no TL total to sum. */
+  limit: number | null;
+  liftedBots: number;
   committed: number | null;
   committedState: BudgetCommittedState;
   completeBotsOnly: boolean;
@@ -299,15 +301,20 @@ export function PerformancePage() {
     !budgets.isPending &&
     budgets.error === null &&
     completeSelectedBots.every((bot) => budgets.data.has(bot.id));
+  const committedAmounts = committedKnown
+    ? completeSelectedBots.map((bot) => committedAmount(budgets.data.get(bot.id)!))
+    : null;
+  // All-or-nothing: a budget bound by buying power cannot show its commitment.
+  const committed =
+    committedAmounts === null || committedAmounts.some((amount) => amount === null)
+      ? null
+      : committedAmounts.reduce<number>((sum, amount) => sum + amount!, 0);
+  const liftedBots = selectedBots.filter((bot) => bot.limit === null).length;
   const budgetContext: BudgetContext = {
-    limit: selectedBots.reduce((sum, bot) => sum + bot.limit, 0),
-    committed: committedKnown
-      ? completeSelectedBots.reduce(
-          (sum, bot) => sum + committedAmount(budgets.data.get(bot.id)!),
-          0,
-        )
-      : null,
-    committedState: budgets.isPending ? 'loading' : committedKnown ? 'ready' : 'unavailable',
+    limit: liftedBots > 0 ? null : selectedBots.reduce((sum, bot) => sum + (bot.limit ?? 0), 0),
+    liftedBots,
+    committed,
+    committedState: budgets.isPending ? 'loading' : committed !== null ? 'ready' : 'unavailable',
     completeBotsOnly: completeSelectedBots.length !== selectedBots.length,
     scopeCopy: budgetScopeCopy(selectedBots.length, scopedBot !== null, accountScoped),
   };
@@ -1283,8 +1290,17 @@ function Limitations({
       <article className="card">
         <div className="card-kicker">budget context</div>
         <p>
-          <span className="book-inline-value">{formatNumber(budgetContext.limit, 0)}</span>{' '}
-          configured across {budgetContext.scopeCopy}.{' '}
+          {budgetContext.limit === null ? (
+            <>
+              {plural(budgetContext.liftedBots, 'bot')} capped by percentage alone, so no TL total
+              is configured across {budgetContext.scopeCopy}.{' '}
+            </>
+          ) : (
+            <>
+              <span className="book-inline-value">{formatNumber(budgetContext.limit, 0)}</span>{' '}
+              configured across {budgetContext.scopeCopy}.{' '}
+            </>
+          )}
           <span className={budgetContext.committedState === 'ready' ? 'muted' : 'status-warn'}>
             {committedCopy}
           </span>

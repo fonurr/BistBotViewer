@@ -209,15 +209,25 @@ export function botFormFor(bot: Bot): BotFormState {
     algoritmId: bot.algoritmId ?? '',
     accountId: bot.accountId ?? '',
     brokerageId: bot.brokerageId ?? '',
-    limit: formNumberFormatter.format(bot.limit),
+    limit: bot.limit === null ? '' : formNumberFormatter.format(bot.limit),
     limitPercentage: formNumberFormatter.format(bot.limitPercentage),
-    limitPerPosition: formNumberFormatter.format(bot.limitPerPosition),
+    limitPerPosition:
+      bot.limitPerPosition === null ? '' : formNumberFormatter.format(bot.limitPerPosition),
     limitPercentagePerPosition: formNumberFormatter.format(bot.limitPercentagePerPosition),
     emails: bot.emails?.join(', ') ?? '',
     emailsSet: bot.emails !== null,
     forbiddenStocks: [...bot.forbiddenStocks],
     description: bot.description ?? '',
   };
+}
+
+/**
+ * A TL cap field: blank lifts the cap (`null`, which ConfigureBot stores), a number sets it,
+ * and anything else typed is `undefined` — never mistaken for a lifted cap.
+ */
+export function parseTlCap(raw: string): number | null | undefined {
+  if (raw.trim() === '') return null;
+  return parseTurkishNumber(raw) ?? undefined;
 }
 
 export function parseEmails(raw: string): string[] {
@@ -233,9 +243,9 @@ export function validateBotForm(form: BotFormState, context: BotFormContext): Bo
   const accountId = form.accountId.trim();
   const brokerageId = form.brokerageId.trim();
   const halfAccount = Boolean(accountId) !== Boolean(brokerageId);
-  const limit = parseTurkishNumber(form.limit);
+  const limit = parseTlCap(form.limit);
   const limitPercentage = parseTurkishNumber(form.limitPercentage);
-  const limitPerPosition = parseTurkishNumber(form.limitPerPosition);
+  const limitPerPosition = parseTlCap(form.limitPerPosition);
   const limitPercentagePerPosition = parseTurkishNumber(form.limitPercentagePerPosition);
   const emails = parseEmails(form.emails);
   const original = context.original;
@@ -274,11 +284,15 @@ export function validateBotForm(form: BotFormState, context: BotFormContext): Bo
   ) {
     blockReason =
       'Account and brokerage are locked while this bot has active, scheduled, or position rows.';
-  } else if (limit === null || limit <= 0) {
+  } else if (limit === undefined || (limit !== null && limit <= 0)) {
     blockReason =
-      'A positive TL limit is required. It caps active orders plus open positions together.';
-  } else if (limitPerPosition === null || limitPerPosition <= 0) {
-    blockReason = 'A positive per-stock TL cap is required.';
+      'The TL limit must be a positive number, or blank to lift it so limit · % alone caps active orders plus open positions.';
+  } else if (
+    limitPerPosition === undefined ||
+    (limitPerPosition !== null && limitPerPosition <= 0)
+  ) {
+    blockReason =
+      'The per-stock TL cap must be a positive number, or blank to lift it so per stock · % alone caps each stock.';
   } else if (
     limitPercentage === null ||
     limitPercentage <= 0 ||
@@ -289,22 +303,24 @@ export function validateBotForm(form: BotFormState, context: BotFormContext): Bo
   ) {
     blockReason = 'Percentages are shares of portfolio value and must be between 1 and 100.';
   } else if (
+    // Lifting the cap only raises it, so there is nothing committed to check it against.
     original !== null &&
+    limit !== null &&
     limit !== original.limit &&
     original.complete &&
     context.committed === null
   ) {
     blockReason =
       'The committed amount is unavailable, so a changed total limit cannot be checked safely.';
-  } else if (context.committed !== null && limit < context.committed) {
+  } else if (limit !== null && context.committed !== null && limit < context.committed) {
     blockReason = `The limit cannot be lower than the ${context.committed.toLocaleString('tr-TR')} TL already committed.`;
   }
 
   if (
     blockReason ||
-    limit === null ||
+    limit === undefined ||
     limitPercentage === null ||
-    limitPerPosition === null ||
+    limitPerPosition === undefined ||
     limitPercentagePerPosition === null
   ) {
     return { request: null, blockReason, unchanged: false, missingFields, changedFields: [] };
@@ -386,21 +402,24 @@ export function validateBotForm(form: BotFormState, context: BotFormContext): Bo
 }
 
 /**
- * `API.md`: effective per-stock cap = min(limitPerPosition, portfolioValue x
- * limitPercentagePerPosition / 100). Neither number alone predicts the order
- * size, so the form has to state the one that actually binds (SPEC 7).
+ * `API.md`: effective cap = min(TL cap, portfolioValue x percentage / 100), for the
+ * total (`limit`, `limitPercentage`) and per stock (`limitPerPosition`,
+ * `limitPercentagePerPosition`) alike. Neither number alone predicts the order
+ * size, so the form has to state the one that actually binds (SPEC 7). A lifted
+ * (`null`) TL cap drops out and the percentage binds; `undefined` is a TL figure
+ * that did not parse, and a `null` percentage one that did not.
  */
-export function effectivePerPositionCap(
-  limitPerPosition: number | null,
-  limitPercentagePerPosition: number | null,
+export function effectiveCap(
+  tlCap: number | null | undefined,
+  percentage: number | null,
   portfolioValue: number | null,
 ): { value: number; bound: 'tl' | 'percentage' } | null {
-  if (limitPerPosition === null || limitPercentagePerPosition === null) return null;
+  if (tlCap === undefined || percentage === null) return null;
   if (portfolioValue === null || !Number.isFinite(portfolioValue)) return null;
-  const fromPercentage = (portfolioValue * limitPercentagePerPosition) / 100;
-  return fromPercentage < limitPerPosition
+  const fromPercentage = (portfolioValue * percentage) / 100;
+  return tlCap === null || fromPercentage < tlCap
     ? { value: fromPercentage, bound: 'percentage' }
-    : { value: limitPerPosition, bound: 'tl' };
+    : { value: tlCap, bound: 'tl' };
 }
 
 export function committedForBudget(budget: BotBudget | undefined): number | null {
@@ -419,8 +438,12 @@ export function requestMatchesCreatedBot(request: ConfigureBotRequest, bot: Bot)
     accountId: request.accountId ?? null,
     brokerageId: request.brokerageId ?? null,
     limitPercentage: request.limitPercentage ?? CREATE_DEFAULTS.limitPercentage,
-    limit: request.limit ?? CREATE_DEFAULTS.limit,
-    limitPerPosition: request.limitPerPosition ?? CREATE_DEFAULTS.limitPerPosition,
+    // Not `??`: a `null` TL cap is the lift that was asked for, not an omission.
+    limit: request.limit === undefined ? CREATE_DEFAULTS.limit : request.limit,
+    limitPerPosition:
+      request.limitPerPosition === undefined
+        ? CREATE_DEFAULTS.limitPerPosition
+        : request.limitPerPosition,
     limitPercentagePerPosition:
       request.limitPercentagePerPosition ?? CREATE_DEFAULTS.limitPercentagePerPosition,
     emails: request.emails ?? null,

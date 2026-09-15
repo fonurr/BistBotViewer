@@ -20,8 +20,9 @@ import { committedAmount } from '../../domain/orders';
 import {
   botFormFor,
   committedForBudget,
-  effectivePerPositionCap,
+  effectiveCap,
   newBotForm,
+  parseTlCap,
   requestMatchesCreatedBot,
   requestMatchesBot,
   sameBotStoredRecord,
@@ -76,17 +77,25 @@ export function BotConfigDialog({
   );
   const existingBotIds = useMemo(() => new Set(bots.map((row) => row.id)), [bots]);
   const committed = committedForBudget(budget);
-  const formLimit = parseTurkishNumber(form.limit);
-  const formPerPosition = parseTurkishNumber(form.limitPerPosition);
-  const effectiveCap = effectivePerPositionCap(
+  const formLimit = parseTlCap(form.limit);
+  const formPerPosition = parseTlCap(form.limitPerPosition);
+  const portfolioValue = budget?.portfolioValue ?? null;
+  const perPositionCap = effectiveCap(
     formPerPosition,
     parseTurkishNumber(form.limitPercentagePerPosition),
-    budget?.portfolioValue ?? null,
+    portfolioValue,
+  );
+  const totalCap = effectiveCap(
+    formLimit,
+    parseTurkishNumber(form.limitPercentage),
+    portfolioValue,
   );
   // A per-stock cap above the total cap can never bind. Harmless, but it means
   // one stock may take the whole limit, and nothing else on screen says so.
   const perPositionCapCannotBind =
-    formLimit !== null && formPerPosition !== null && formPerPosition > formLimit;
+    typeof formLimit === 'number' &&
+    typeof formPerPosition === 'number' &&
+    formPerPosition > formLimit;
   const validation = useMemo(
     () =>
       validateBotForm(form, {
@@ -212,9 +221,17 @@ export function BotConfigDialog({
         }
       }
 
-      if (bot?.complete && request.limit !== undefined) {
+      // A lifted cap (`null`) only raises the ceiling, so only a TL figure is checked.
+      if (bot?.complete && request.limit !== undefined && request.limit !== null) {
         const freshBudget = await bistApi.getBotBudget(bot.id);
         const freshCommitted = committedAmount(freshBudget);
+        if (freshCommitted === null) {
+          notSent(
+            `Change ${bot.id} limit`,
+            'The fresh budget is bound by buying power, so it cannot show the committed amount the new limit has to stay above.',
+          );
+          return;
+        }
         if (request.limit < freshCommitted) {
           notSent(
             `Change ${bot.id} limit`,
@@ -444,6 +461,7 @@ export function BotConfigDialog({
                 <NumberField
                   label="limit · TL"
                   value={form.limit}
+                  placeholder="lifted"
                   onChange={(value) => setField('limit', value)}
                 />
                 <NumberField
@@ -454,6 +472,7 @@ export function BotConfigDialog({
                 <NumberField
                   label="per stock · TL"
                   value={form.limitPerPosition}
+                  placeholder="lifted"
                   onChange={(value) => setField('limitPerPosition', value)}
                 />
                 <NumberField
@@ -464,22 +483,31 @@ export function BotConfigDialog({
               </div>
               <p className="bots-field-note">
                 Effective per-stock cap is whichever is smaller: the TL figure, or portfolio value ×
-                the percentage.
-                {effectiveCap === null
+                the percentage. A blank TL figure lifts that cap, leaving the percentage and the
+                account&apos;s buying power to bound the bot.
+                {perPositionCap === null
                   ? ''
-                  : ` Right now that is ${formatNumber(effectiveCap.value, 0)} TL — the ${
-                      effectiveCap.bound === 'tl'
+                  : ` Right now that is ${formatNumber(perPositionCap.value, 0)} TL — the ${
+                      perPositionCap.bound === 'tl'
                         ? 'TL figure binds'
-                        : 'percentage of portfolio value binds'
+                        : formPerPosition === null
+                          ? 'TL figure is lifted, so the percentage of portfolio value sets it'
+                          : 'percentage of portfolio value binds'
                     }.`}
                 {committed !== null
                   ? ` Committed right now: ${formatNumber(committed, 0)} of ${
-                      formLimit === null ? '—' : formatNumber(formLimit, 0)
+                      totalCap === null ? '—' : formatNumber(totalCap.value, 0)
+                    }${
+                      totalCap?.bound === 'percentage'
+                        ? formLimit === null
+                          ? ', the TL limit lifted so portfolio value × limit % sets it'
+                          : ', portfolio value × limit % binding before the TL limit'
+                        : ''
                     }. Lowering a limit never pulls a live order; it only stops the next one.`
                   : bot?.complete
-                    ? ' Committed money and portfolio value are not available yet, so neither figure' +
-                      ' can be resolved here. Lowering a limit never pulls a live order; it only' +
-                      ' stops the next one.'
+                    ? ' Committed money is not available — the budget is not loaded, or buying power' +
+                      ' binds it — so the total cannot be resolved here. Lowering a limit never' +
+                      ' pulls a live order; it only stops the next one.'
                     : ' A quantity marked auto is worked out from these at fire, so a small limit' +
                       ' quietly means small orders rather than an error.'}
               </p>
@@ -664,10 +692,12 @@ export function BotConfigDialog({
 function NumberField({
   label,
   value,
+  placeholder,
   onChange,
 }: {
   label: string;
   value: string;
+  placeholder?: string;
   onChange: (value: string) => void;
 }) {
   return (
@@ -678,6 +708,7 @@ function NumberField({
           className="input"
           inputMode="decimal"
           value={value}
+          placeholder={placeholder}
           onChange={(event) => onChange(event.target.value)}
         />
       </label>

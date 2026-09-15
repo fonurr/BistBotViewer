@@ -1,8 +1,11 @@
 import type { ActiveOrder, Position } from '../bistApi/types';
+import { makeBotBudget } from '../test/fixtures/bist';
 import { holidayCalendar } from './calendar';
 import {
   calculateSellable,
+  committedAmount,
   deriveFilledPnlState,
+  effectivePerPositionCap,
   intentSlippagePercentage,
   marketSlippagePercentage,
   realizedPnl,
@@ -59,6 +62,46 @@ function sell(overrides: Partial<ActiveOrder>): ActiveOrder {
     ...overrides,
   };
 }
+
+describe('bot budget arithmetic', () => {
+  it('reads the commitment back against whichever total cap binds', () => {
+    // min(500.000, 1.000.000 x 100%) − 420.000
+    expect(committedAmount(makeBotBudget())).toBe(80_000);
+    // The percentage binds before the TL figure: min(500.000, 1.000.000 x 30%) − 220.000
+    expect(
+      committedAmount(makeBotBudget({ limitPercentage: 30, remainingBotBudget: 220_000 })),
+    ).toBe(80_000);
+    // A lifted limit leaves the percentage as the whole cap: 1.000.000 x 50% − 420.000
+    expect(
+      committedAmount(
+        makeBotBudget({ limit: null, limitPercentage: 50, remainingBotBudget: 420_000 }),
+      ),
+    ).toBe(80_000);
+  });
+
+  it('withholds the commitment where buying power, not the cap, set what remains', () => {
+    // 1.000.000 x 100% would call 250.000 of spare buying power 750.000 committed.
+    expect(
+      committedAmount(
+        makeBotBudget({
+          limit: null,
+          effectiveAccountBuyingPower: 250_000,
+          remainingBotBudget: 250_000,
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it('drops a lifted per-stock TL cap out of the min rather than reading it as zero', () => {
+    expect(effectivePerPositionCap(makeBotBudget({ limitPercentagePerPosition: 5 }))).toBe(50_000);
+    expect(
+      effectivePerPositionCap(
+        makeBotBudget({ limitPerPosition: null, limitPercentagePerPosition: 5 }),
+      ),
+    ).toBe(50_000);
+    expect(effectivePerPositionCap(makeBotBudget({ limitPerPosition: null }))).toBe(1_000_000);
+  });
+});
 
 describe('order arithmetic', () => {
   it('keeps cancel-in-flight sell quantities claimed', () => {

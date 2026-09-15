@@ -159,8 +159,9 @@ export const botSchema = z
     accountId: z.string().nullable(),
     brokerageId: z.string().nullable(),
     limitPercentage: z.number(),
-    limit: z.number(),
-    limitPerPosition: z.number(),
+    /** `null` is a lifted TL cap: the percentage beside it is then the bot's only cap. */
+    limit: z.number().nullable(),
+    limitPerPosition: z.number().nullable(),
     limitPercentagePerPosition: z.number(),
     emails: z.array(z.string()).nullable(),
     forbiddenStocks: z.array(z.string()),
@@ -675,10 +676,11 @@ export const botBudgetSchema = z
   .object({
     portfolioValue: z.number(),
     accountBuyingPower: z.number(),
+    effectiveAccountBuyingPower: z.number(),
     remainingBotBudget: z.number(),
     limitPercentage: z.number(),
-    limit: z.number(),
-    limitPerPosition: z.number(),
+    limit: z.number().nullable(),
+    limitPerPosition: z.number().nullable(),
     limitPercentagePerPosition: z.number(),
   })
   .passthrough();
@@ -692,8 +694,9 @@ export const configureBotRequestSchema = z
     accountId: z.string().min(1).optional(),
     brokerageId: z.string().min(1).optional(),
     limitPercentage: z.number().positive().optional(),
-    limit: z.number().positive().optional(),
-    limitPerPosition: z.number().positive().optional(),
+    /** `null` lifts the TL cap and is stored; omitting the field keeps what the bot has. */
+    limit: z.number().positive().nullable().optional(),
+    limitPerPosition: z.number().positive().nullable().optional(),
     limitPercentagePerPosition: z.number().positive().optional(),
     emails: z.array(z.string()).optional(),
     forbiddenStocks: z.array(z.string()).optional(),

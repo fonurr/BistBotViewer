@@ -154,11 +154,18 @@ export function BotsPage() {
     );
     const completeBots = visibleBots.filter((bot) => bot.complete);
     const allCompleteBudgetsKnown = completeBots.every((bot) => budgets.data.has(bot.id));
-    const committed = completeBots.reduce(
-      (sum, bot) =>
-        sum + (budgets.data.has(bot.id) ? committedAmount(budgets.data.get(bot.id)!) : 0),
-      0,
-    );
+    // All-or-nothing: one budget that cannot show its commitment withholds the sum.
+    let committed: number | null = 0;
+    for (const bot of completeBots) {
+      const budget = budgets.data.get(bot.id);
+      if (!budget) continue;
+      const amount = committedAmount(budget);
+      if (amount === null) {
+        committed = null;
+        break;
+      }
+      committed += amount;
+    }
     return {
       latestBatch,
       realized,
@@ -342,14 +349,22 @@ export function BotsPage() {
                 ? 'not available'
                 : !fleet.allCompleteBudgetsKnown
                   ? 'loading or unavailable'
-                  : formatNumber(fleet.committed, 0)
+                  : fleet.committed === null
+                    ? 'not available'
+                    : formatNumber(fleet.committed, 0)
             }
             detail={
-              snapshotAvailable && fleet.allCompleteBudgetsKnown && fleet.incompleteBots > 0
-                ? 'complete bots only'
-                : null
+              !snapshotAvailable || !fleet.allCompleteBudgetsKnown
+                ? null
+                : fleet.committed === null
+                  ? 'buying power binds a bot budget, so it cannot show its commitment'
+                  : fleet.incompleteBots > 0
+                    ? 'complete bots only'
+                    : null
             }
-            unavailable={!snapshotAvailable || !fleet.allCompleteBudgetsKnown}
+            unavailable={
+              !snapshotAvailable || !fleet.allCompleteBudgetsKnown || fleet.committed === null
+            }
           />
         </section>
       ) : null}

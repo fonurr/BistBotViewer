@@ -87,4 +87,8 @@ and the fleet comparison tables disappear for that scope. The bot popover offers
 deep link and updates `?bot=` with it.
 
 Budget context sits with the standing statements at the foot rather than among the figures: it is
-a configured limit, not a result, and the window and symbol filters do not change it.
+a configured limit, not a result, and the window and symbol filters do not change it. Once any
+selected bot has lifted its TL limit (`limit: null`, capped by percentage alone) there is no TL
+total to sum, so the card names how many bots are lifted instead of adding the rest. The committed
+figure is all-or-nothing across the selected bots, and a budget bound by buying power cannot show
+its commitment (see the [Bots README](../bots/README.md)).
