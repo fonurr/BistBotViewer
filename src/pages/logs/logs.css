@@ -8,7 +8,7 @@
 }
 
 .logs-drawer {
-  width: min(940px, 92vw);
+  width: 80vw;
   height: 100%;
   display: flex;
   flex-direction: column;
