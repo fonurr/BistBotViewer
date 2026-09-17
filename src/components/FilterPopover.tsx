@@ -36,7 +36,7 @@ export function FilterPopover({
   };
   return (
     <div
-      className={`filter-control ${className}`}
+      className={`filter-control${open ? ' is-open' : ''} ${className}`}
       onKeyDown={(event) => {
         if (event.key !== 'Escape') return;
         event.stopPropagation();

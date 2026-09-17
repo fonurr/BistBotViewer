@@ -295,6 +295,14 @@ a:hover {
   z-index: 42;
 }
 
+/* An open popover must paint over every other trigger, not just the ones
+   ahead of it in the toolbar's DOM order — siblings at the same z-index
+   otherwise stack by document order, letting a later trigger cover an
+   earlier one's open popover on a wrapped toolbar row. */
+.filter-control.is-open {
+  z-index: 60;
+}
+
 .filter-trigger {
   display: flex;
   width: auto;
