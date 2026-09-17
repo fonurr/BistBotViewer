@@ -407,6 +407,11 @@
   color: var(--mut);
 }
 
+.logs-cell-ms {
+  color: var(--mut);
+  opacity: 0.7;
+}
+
 .logs-cell--warn {
   color: var(--st-warn);
 }

@@ -2,6 +2,7 @@ import { useRef, type KeyboardEvent, type PointerEvent } from 'react';
 
 import {
   displayCellValue,
+  formatLogTimestampParts,
   payloadPreview,
   payloadText,
   rowKey,
@@ -66,6 +67,16 @@ function cellTone(entry: LogEnvelope, column: LogColumn): string {
     return 'logs-cell--muted';
   }
   return '';
+}
+
+function TimestampCell({ value }: { value: number }) {
+  const { date, ms } = formatLogTimestampParts(value);
+  return (
+    <>
+      {date}
+      <span className="logs-cell-ms">.{ms}</span>
+    </>
+  );
 }
 
 function PayloadButton({
@@ -267,6 +278,8 @@ function LogsRow({
                   expanded={expandedCellMatches(cellKey, expansionKey)}
                   onToggle={() => onTogglePayload(cellKey)}
                 />
+              ) : column.format === 'timestamp' && typeof value === 'number' ? (
+                <TimestampCell value={value} />
               ) : (
                 displayCellValue(value, column.format)
               )}

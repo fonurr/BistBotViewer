@@ -110,7 +110,7 @@ function rawColumn(
  * string and lead with the payload instead.
  */
 const ERROR_COLUMNS: readonly LogColumn[] = [
-  rawColumn('time', 'time', 150, 'timestamp'),
+  rawColumn('time', 'time', 172, 'timestamp'),
   rawColumn('type', 'type', 202),
   rawColumn('accountId', 'account id', 130),
   rawColumn('information', 'information', 330),
@@ -119,7 +119,7 @@ const ERROR_COLUMNS: readonly LogColumn[] = [
 ];
 
 const WIRE_COLUMNS: readonly LogColumn[] = [
-  rawColumn('at', 'time', 150, 'timestamp'),
+  rawColumn('at', 'time', 172, 'timestamp'),
   rawColumn('body', 'payload', 320, 'payload'),
   rawColumn('target', 'target', 96),
   rawColumn('direction', 'direction', 92),
@@ -139,7 +139,7 @@ const WIRE_COLUMNS: readonly LogColumn[] = [
 ];
 
 const API_COLUMNS: readonly LogColumn[] = [
-  rawColumn('at', 'time', 150, 'timestamp'),
+  rawColumn('at', 'time', 172, 'timestamp'),
   rawColumn('requestBody', 'request payload', 300, 'payload'),
   rawColumn('responseBody', 'response payload', 300, 'payload'),
   rawColumn('type', 'type', 112),
@@ -224,6 +224,11 @@ export function formatRange(range: LogRange): string {
 }
 
 export function formatLogTimestamp(timestamp: number): string {
+  const { date, ms } = formatLogTimestampParts(timestamp);
+  return `${date}.${ms}`;
+}
+
+export function formatLogTimestampParts(timestamp: number): { date: string; ms: string } {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat('en-GB', {
       timeZone: 'Europe/Istanbul',
@@ -239,7 +244,11 @@ export function formatLogTimestamp(timestamp: number): string {
       .filter((part) => part.type !== 'literal')
       .map((part) => [part.type, part.value]),
   );
-  return `${parts.day}.${parts.month}.${parts.year} ${parts.hour}:${parts.minute}:${parts.second}`;
+  const ms = String(((timestamp % 1_000) + 1_000) % 1_000).padStart(3, '0');
+  return {
+    date: `${parts.day}.${parts.month}.${parts.year} ${parts.hour}:${parts.minute}:${parts.second}`,
+    ms,
+  };
 }
 
 export function extentForTab(extents: LogExtents, tab: LogsTab): LogExtent {
