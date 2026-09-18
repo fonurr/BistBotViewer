@@ -61,6 +61,12 @@ interface DateRangeFilterProps {
   basis?: BatchRangeBasis;
   onBasisChange?: (basis: BatchRangeBasis) => void;
   align?: 'left' | 'right';
+  /**
+   * What the popover calls the range. A batch on the Book and Performance; the
+   * Diary files by the event's own day instead, and says so rather than borrow
+   * a word that means a session there.
+   */
+  heading?: string;
   /** The fact that prevents a wrong reading, under the calendar. */
   note?: ReactNode;
 }
@@ -97,6 +103,7 @@ export function DateRangeFilter({
   basis = 'batch',
   onBasisChange,
   align = 'left',
+  heading = 'batch range',
   note,
 }: DateRangeFilterProps) {
   const earliest = dates[0];
@@ -149,7 +156,7 @@ export function DateRangeFilter({
         setOpen={setOpen}
         align={align}
       >
-        <PopoverHeading label="batch range" />
+        <PopoverHeading label={heading} />
         <div className="filter-picks">
           <button
             type="button"

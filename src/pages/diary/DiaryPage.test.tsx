@@ -1,0 +1,223 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import {
+  FIXTURE_NOW_MS,
+  makeAccount,
+  makeAccountSnapshot,
+  makeAccountTransaction,
+  makeBot,
+  makeBotHistoryEntry,
+  makeBotSnapshot,
+} from '../../test/fixtures';
+import { DiaryPage } from './DiaryPage';
+
+const api = vi.hoisted(() => ({
+  getBots: vi.fn(),
+  getAccounts: vi.fn(),
+  getBotHistory: vi.fn(),
+  getBotSnapshots: vi.fn(),
+  getAccountSnapshots: vi.fn(),
+  getAccountTransactions: vi.fn(),
+  getErrors: vi.fn(),
+}));
+
+vi.mock('../../bistApi/client', () => ({ bistApi: api }));
+vi.mock('../../app/ViewerRuntime', () => ({
+  useViewerRuntime: () => ({ requestReconcile: vi.fn() }),
+}));
+
+const EARLIER = Date.parse('2026-08-24T06:00:00.000Z');
+const NOW = Date.parse('2026-08-25T09:00:00.000Z');
+
+beforeEach(() => {
+  Object.values(api).forEach((mock) => mock.mockReset());
+  vi.spyOn(Date, 'now').mockReturnValue(FIXTURE_NOW_MS);
+  useFixture();
+});
+
+describe('Diary reads', () => {
+  it('reads all five sources through the API and never a log database', async () => {
+    renderDiary();
+    await loaded();
+
+    expect(api.getBotHistory).toHaveBeenCalledWith('*');
+    expect(api.getBotSnapshots).toHaveBeenCalledWith('*');
+    expect(api.getAccountSnapshots).toHaveBeenCalled();
+    expect(api.getAccountTransactions).toHaveBeenCalled();
+    // A bounded window, not the 24-hour default a bare GetErrors would take.
+    expect(api.getErrors).toHaveBeenCalledWith(expect.objectContaining({ limit: 2_000 }));
+  });
+
+  it.each([
+    ['getBotHistory', 'GetBotHistory'],
+    ['getBotSnapshots', 'GetBotSnapshots'],
+    ['getAccountSnapshots', 'GetAccountSnapshots'],
+    ['getAccountTransactions', 'GetAccountTransactions'],
+    ['getErrors', 'GetErrors'],
+  ] as const)('says the diary is incomplete when %s fails', async (method, label) => {
+    api[method].mockRejectedValueOnce(new Error(`${label} unavailable`));
+
+    renderDiary();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('The diary is incomplete.');
+    expect(alert).toHaveTextContent(`${label} unavailable`);
+  });
+});
+
+describe('Diary list', () => {
+  it('opens the first day and leaves the rest behind their chevron', async () => {
+    renderDiary();
+    await loaded();
+
+    expect(dayHeading('25.08.26')).toHaveAttribute('aria-expanded', 'true');
+    expect(dayHeading('24.08.26')).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('draws the time with a dimmed millisecond, the subject, and the description apart', async () => {
+    const user = userEvent.setup();
+    renderDiary();
+    await loaded();
+    // The cash movement is the older day's only entry, so open it.
+    await user.click(dayHeading('24.08.26'));
+
+    const row = screen.getByText('1.250,75 TL').closest<HTMLElement>('[role="row"]')!;
+    expect(within(row).getByText('ACC-1 · BRK-1')).toBeInTheDocument();
+    // 09:00:00 Istanbul, and the fraction is drawn apart from the seconds.
+    expect(within(row).getByText('09:00:00')).toBeInTheDocument();
+    expect(within(row).getByText('.000', { selector: '.diary-time-ms' })).toBeInTheDocument();
+    expect(within(row).getByText('withdrawn', { exact: false })).toBeInTheDocument();
+    // The description never restates the time or the subject beside it.
+    expect(within(row).getByText('1.250,75 TL').textContent).not.toContain('ACC-1');
+  });
+
+  it('colours a field name, a value and an array delta apart', async () => {
+    renderDiary();
+    await loaded();
+
+    expect(screen.getByText('forbidden', { selector: '.diary-ink-field' })).toBeInTheDocument();
+    expect(screen.getByText('THYAO', { selector: '.diary-ink-added' })).toBeInTheDocument();
+    expect(screen.getByText('500.000,00', { selector: '.diary-ink-value' })).toBeInTheDocument();
+  });
+});
+
+describe('Diary toolbar', () => {
+  it('reverses the reading order on one button rather than two', async () => {
+    const user = userEvent.setup();
+    renderDiary();
+    await loaded();
+
+    const headings = () =>
+      within(list())
+        .getAllByRole('button', { expanded: undefined })
+        .map((button) => button.textContent ?? '');
+    expect(headings()[0]).toContain('25.08.26');
+
+    await user.click(screen.getByRole('button', { name: /Sorted newest first/ }));
+    expect(headings()[0]).toContain('24.08.26');
+    // The first day in the new order is the one that opens itself.
+    expect(dayHeading('24.08.26')).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('opens with every type ticked and drops a kind when one is unticked', async () => {
+    const user = userEvent.setup();
+    renderDiary();
+    await loaded();
+
+    expect(screen.getByRole('status')).toHaveTextContent('5 entries · 2 days');
+
+    await user.click(screen.getByRole('button', { name: '5 types' }));
+    await user.click(screen.getByRole('checkbox', { name: /Account transactions/ }));
+
+    expect(screen.getByRole('button', { name: '4 types' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('4 entries of 5');
+  });
+
+  it('keeps an entry that names no bot when the bot filter is emptied', async () => {
+    const user = userEvent.setup();
+    renderDiary();
+    await loaded();
+
+    await user.click(screen.getByRole('button', { name: '1 bot' }));
+    await user.click(screen.getByRole('button', { name: 'none' }));
+    await user.keyboard('{Escape}');
+
+    // The bot's own entries are gone; the account's own snapshot is not.
+    expect(screen.queryByText('budget', { selector: '.diary-ink-field' })).not.toBeInTheDocument();
+    expect(screen.getByText('portfolio', { selector: '.diary-ink-field' })).toBeInTheDocument();
+  });
+
+  it('warns when the error read stopped at its own cap rather than at the data', async () => {
+    const user = userEvent.setup();
+    // Dated onto an older day on purpose: only the first day expands, so the
+    // cap is proven without asking jsdom to draw two thousand rows.
+    const oldDay = Date.parse('2026-08-20T09:00:00.000Z');
+    api.getErrors.mockResolvedValue(
+      Array.from({ length: 2_000 }, (_, index) => ({
+        id: index + 1,
+        time: oldDay - index,
+        type: 'BarsDataError',
+        information: '',
+        accountId: null,
+        brokerageId: null,
+        context: null,
+      })),
+    );
+
+    renderDiary();
+    await loaded();
+    await user.click(screen.getByRole('button', { name: '5 types' }));
+
+    expect(screen.getByText(/reach only as far back as/)).toBeInTheDocument();
+  });
+});
+
+function list(): HTMLElement {
+  return screen.getByRole('table', { name: 'Diary entries' });
+}
+
+/** The day heading inside the list, which the range trigger above it also names. */
+function dayHeading(date: string): HTMLElement {
+  return within(list()).getByRole('button', {
+    name: new RegExp(`^${date.replaceAll('.', '\\.')}`),
+  });
+}
+
+/** The reads are in once the list has drawn a day. */
+async function loaded() {
+  await screen.findByText('25.08.26', { selector: '.diary-date' });
+}
+
+function renderDiary() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: Number.POSITIVE_INFINITY },
+      mutations: { retry: false },
+    },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={['/diary']}>
+        <DiaryPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+function useFixture() {
+  api.getBots.mockResolvedValue([makeBot({ forbiddenStocks: ['THYAO'], startTime: NOW })]);
+  api.getAccounts.mockResolvedValue([makeAccount()]);
+  api.getBotHistory.mockResolvedValue([
+    makeBotHistoryEntry({ forbiddenStocks: [], startTime: EARLIER, endTime: NOW }),
+  ]);
+  api.getBotSnapshots.mockResolvedValue([makeBotSnapshot({ time: NOW })]);
+  api.getAccountSnapshots.mockResolvedValue([makeAccountSnapshot({ time: NOW })]);
+  api.getAccountTransactions.mockResolvedValue([
+    makeAccountTransaction({ time: EARLIER, amount: -1_250.75 }),
+  ]);
+  api.getErrors.mockResolvedValue([]);
+}

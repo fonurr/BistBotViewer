@@ -1,0 +1,162 @@
+/*
+ * No stacking context on the toolbar: the filter popovers inside carry z-index
+ * 42 and have to stay above the scrim at 30, which a z-index here would trap
+ * them below. The Book's toolbar carries the same note for the same reason.
+ */
+.diary-toolbar {
+  margin-bottom: var(--space-6);
+}
+
+.diary-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-leg);
+  font-variant-numeric: tabular-nums;
+}
+
+.diary-sort > svg {
+  color: var(--mut);
+}
+
+.diary-sort:hover > svg {
+  color: var(--color-text);
+}
+
+.diary-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-small);
+}
+
+.diary-empty {
+  max-width: 580px;
+  margin: 0;
+  padding: var(--space-8) 0;
+  color: var(--mut);
+  font-size: var(--font-row);
+}
+
+/* The day heading keeps its date and columns together below the navigation. */
+.diary-date-header {
+  position: sticky;
+  top: var(--diary-nav-height, 0px);
+  z-index: 20;
+  background-color: var(--color-bg);
+}
+
+.diary-date-heading {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  gap: var(--space-4);
+  padding: var(--space-6) 0 var(--space-3);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.diary-date-heading > svg {
+  align-self: center;
+  color: var(--mut);
+}
+
+.diary-date-heading:hover > svg {
+  color: var(--color-text);
+}
+
+.diary-date-heading:focus-visible {
+  outline: 1px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.diary-date {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/*
+ * Three columns: the clock and the subject take exactly what they need, and
+ * everything left over goes to the description — some of them have to carry a
+ * whole configuration change, and a fixed width would wrap every one of them.
+ */
+.diary-columns,
+.diary-row {
+  display: grid;
+  grid-template-columns: 116px minmax(180px, max-content) minmax(0, 1fr);
+  gap: var(--space-4);
+}
+
+.diary-columns {
+  color: var(--mut);
+  background: var(--fade-rule) no-repeat bottom / 100% 1px;
+  font-size: var(--font-kicker);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.diary-columns > div,
+.diary-row > span {
+  padding: var(--space-2);
+}
+
+.diary-row {
+  align-items: baseline;
+  font-size: var(--font-row);
+}
+
+.diary-row:hover {
+  background: var(--st-done-t);
+}
+
+.diary-time,
+.diary-subject {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.diary-time {
+  color: var(--mut);
+}
+
+/* The fraction is what tells two entries in one second apart; it is not what a
+   reader scans for, so it sits behind the seconds rather than beside them. */
+.diary-time-ms {
+  opacity: 0.55;
+}
+
+.diary-subject {
+  color: var(--color-text);
+}
+
+/* A description may be a whole sentence of changes: it wraps rather than clips. */
+.diary-description {
+  overflow-wrap: anywhere;
+}
+
+/* The three inks a description is written in, plus the two an array delta adds. */
+.diary-ink-text {
+  color: var(--mut);
+}
+
+.diary-ink-field {
+  color: var(--color-accent-400);
+}
+
+.diary-ink-value {
+  color: var(--color-text);
+}
+
+.diary-ink-added {
+  color: var(--st-live);
+}
+
+.diary-ink-removed {
+  color: var(--st-dead);
+}

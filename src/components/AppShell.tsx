@@ -76,6 +76,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
         <nav className="viewer-nav-links" aria-label="Primary navigation">
           <NavLink to="/bots">Bots</NavLink>
+          <NavLink to="/diary">Diary</NavLink>
           <NavLink to="/book">The Book</NavLink>
           <NavLink to="/performance">Performance</NavLink>
         </nav>

@@ -343,6 +343,16 @@ function rpcPayload(name: string, body: unknown, fixture: BistReadFixture): unkn
       return fixture.holidays;
     case 'GetErrors':
       return fixture.errors;
+    case 'GetBotHistory':
+      assertAllBotsSelector(body, name);
+      return fixture.botHistory;
+    case 'GetBotSnapshots':
+      assertAllBotsSelector(body, name);
+      return fixture.botSnapshots;
+    case 'GetAccountSnapshots':
+      return fixture.accountSnapshots;
+    case 'GetAccountTransactions':
+      return fixture.accountTransactions;
     case 'GetBotBudget': {
       const botId = recordString(body, 'botId');
       const budget = fixture.budgets[botId ?? ''];

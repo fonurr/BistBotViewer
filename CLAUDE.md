@@ -134,12 +134,19 @@ densest write-path rules.
 
 ### Pages
 
-Flat navigation: Bots, The Book, Performance; Logs is a drawer over whichever page is active. All
-four load lazily from [src/app/App.tsx](src/app/App.tsx) and reuse data already in the cache.
+Flat navigation: Bots, Diary, The Book, Performance; Logs is a drawer over whichever page is
+active. All five load lazily from [src/app/App.tsx](src/app/App.tsx) and reuse data already in
+the cache.
 
 The Book is the source of shared chain, order-form, confirmation, result, filter-popover, and
 status-row behavior. Build or change those shared states there before adapting them elsewhere.
 Chains are built strictly from `chainId`; null links stay independent.
+
+The Diary is the one page that is **not** filed by batch: it covers everything the server wrote
+down that is not an order — bot configurations, bot and account snapshots, cash movements and
+stored errors — under the event's own Istanbul day. Nothing there is a chain, so nothing there is
+owed a batch. It is read-only and holds no write path. See the
+[Diary README](src/pages/diary/README.md).
 
 ## UI contract
 

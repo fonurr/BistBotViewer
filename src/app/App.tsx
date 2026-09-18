@@ -18,6 +18,9 @@ const BookPage = lazy(() =>
 const BotsPage = lazy(() =>
   import('../pages/bots/BotsPage').then((module) => ({ default: module.BotsPage })),
 );
+const DiaryPage = lazy(() =>
+  import('../pages/diary/DiaryPage').then((module) => ({ default: module.DiaryPage })),
+);
 const PerformancePage = lazy(() =>
   import('../pages/performance/PerformancePage').then((module) => ({
     default: module.PerformancePage,
@@ -39,6 +42,7 @@ export function App() {
         <Suspense fallback={<PageLoading />}>
           <Routes>
             <Route path="/" element={<Navigate to="/book" replace />} />
+            <Route path="/diary" element={<DiaryPage />} />
             <Route path="/book" element={<BookPage />} />
             <Route path="/performance" element={<PerformancePage />} />
             <Route path="/bots" element={<BotsPage />} />

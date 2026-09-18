@@ -130,6 +130,58 @@ export function useBotsData() {
   };
 }
 
+/**
+ * How far back the diary reads the stored errors. `GetErrors` defaults to the
+ * last 24 hours when a request names nothing, which is not a diary — naming a
+ * limit states our own window instead, and the newest rows come back. The page
+ * says so when the cap is what ended the list rather than the data.
+ */
+export const DIARY_ERROR_LIMIT = 2_000;
+
+/**
+ * The five things the server writes down that are not orders, plus the bots and
+ * accounts they are about. Every one is a whole-table read: the series gain a
+ * row when something moves rather than on a clock, so upstream serves them
+ * unwindowed, and the errors are the only source that needs a bound.
+ */
+export function useDiaryData() {
+  const results = useQueries({
+    queries: [
+      { queryKey: bistKeys.bots, queryFn: bistApi.getBots },
+      { queryKey: bistKeys.accounts, queryFn: bistApi.getAccounts },
+      {
+        queryKey: bistKeys.botHistory(allBots),
+        queryFn: () => bistApi.getBotHistory(allBots),
+      },
+      {
+        queryKey: bistKeys.botSnapshots(allBots),
+        queryFn: () => bistApi.getBotSnapshots(allBots),
+      },
+      { queryKey: bistKeys.accountSnapshots, queryFn: bistApi.getAccountSnapshots },
+      { queryKey: bistKeys.accountTransactions, queryFn: bistApi.getAccountTransactions },
+      {
+        queryKey: bistKeys.errors(`diary-${DIARY_ERROR_LIMIT}`),
+        queryFn: () => bistApi.getErrors({ limit: DIARY_ERROR_LIMIT }),
+      },
+    ],
+  });
+  const [bots, accounts, botHistory, botSnapshots, accountSnapshots, accountTransactions, errors] =
+    results;
+  return {
+    bots: bots.data ?? [],
+    accounts: accounts.data ?? [],
+    botHistory: botHistory.data ?? [],
+    botSnapshots: botSnapshots.data ?? [],
+    accountSnapshots: accountSnapshots.data ?? [],
+    accountTransactions: accountTransactions.data ?? [],
+    errors: errors.data ?? [],
+    /** The cap, not the data, is what ended the error list — say so rather than imply reach. */
+    errorsCapped: (errors.data?.length ?? 0) >= DIARY_ERROR_LIMIT,
+    isPending: results.some((result) => result.isPending),
+    error: results.find((result) => result.error)?.error ?? null,
+  };
+}
+
 export function usePerformanceData() {
   const results = useQueries({
     queries: [

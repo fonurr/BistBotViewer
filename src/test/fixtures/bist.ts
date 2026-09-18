@@ -1,8 +1,12 @@
 import type {
   Account,
+  AccountSnapshot,
+  AccountTransaction,
   ActiveOrder,
   Bot,
   BotBudget,
+  BotHistoryEntry,
+  BotSnapshot,
   CanceledOrder,
   ClosedTrade,
   ErrorRow,
@@ -33,6 +37,11 @@ export interface BistReadFixture {
   holidays: Holiday[];
   errors: ErrorRow[];
   budgets: Record<string, BotBudget>;
+  /** The four diary reads. Empty by default: only the Diary asks for them. */
+  botHistory: BotHistoryEntry[];
+  botSnapshots: BotSnapshot[];
+  accountSnapshots: AccountSnapshot[];
+  accountTransactions: AccountTransaction[];
 }
 
 export interface PriceReadFixture {
@@ -68,6 +77,63 @@ export function makeBot(overrides: Partial<Bot> = {}): Bot {
     active: true,
     description: 'Deterministic browser fixture',
     complete: true,
+    startTime: Date.parse('2026-08-25T06:00:00.000Z'),
+    ...overrides,
+  };
+}
+
+export function makeBotHistoryEntry(overrides: Partial<BotHistoryEntry> = {}): BotHistoryEntry {
+  return {
+    ...makeBot(),
+    startTime: Date.parse('2026-08-24T06:00:00.000Z'),
+    endTime: Date.parse('2026-08-25T06:00:00.000Z'),
+    ...overrides,
+  };
+}
+
+export function makeBotSnapshot(overrides: Partial<BotSnapshot> = {}): BotSnapshot {
+  return {
+    id: 1,
+    time: Date.parse('2026-08-25T07:31:00.000Z'),
+    botId: 'bot-alpha',
+    totalBotBudget: 500_000,
+    heldPositionsSize: 124_219.02,
+    scheduledBuysSize: 0,
+    openBuysSize: 0,
+    remainingBotBudget: 375_780.98,
+    ...overrides,
+  };
+}
+
+export function makeAccountSnapshot(overrides: Partial<AccountSnapshot> = {}): AccountSnapshot {
+  return {
+    id: 1,
+    time: Date.parse('2026-08-25T07:31:00.000Z'),
+    accountId: 'ACC-1',
+    brokerageId: 'BRK-1',
+    portfolioValue: 9_944_789.76,
+    buyingPower: 75_433.64,
+    cashBalance: 75_433.65,
+    stockTotal: 9_869_356.11,
+    fundTotal: 0,
+    pendingSettlementT1: 0,
+    pendingSettlementT2: 0,
+    marginTrading: null,
+    dailyPnl: -260_269.22,
+    dailyPnlPercent: -2.55,
+    portfolioValueExcludingForbidden: null,
+    ...overrides,
+  };
+}
+
+export function makeAccountTransaction(
+  overrides: Partial<AccountTransaction> = {},
+): AccountTransaction {
+  return {
+    time: Date.parse('2026-08-25T06:30:00.000Z'),
+    accountId: 'ACC-1',
+    brokerageId: 'BRK-1',
+    amount: -1_250.75,
     ...overrides,
   };
 }
@@ -342,6 +408,10 @@ export function makeBookReadFixture(): BistReadFixture {
     holidays: [],
     errors: [],
     budgets: { [bot.id]: makeBotBudget() },
+    botHistory: [],
+    botSnapshots: [],
+    accountSnapshots: [],
+    accountTransactions: [],
   };
 }
 
@@ -363,6 +433,10 @@ export function makePerformanceReadFixture(): BistReadFixture {
     ],
     errors: [],
     budgets: { [bot.id]: makeBotBudget() },
+    botHistory: [],
+    botSnapshots: [],
+    accountSnapshots: [],
+    accountTransactions: [],
   };
 }
 

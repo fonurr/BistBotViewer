@@ -26,6 +26,10 @@ export const bistKeys = {
   pendingRequests: (selector: BotSelector) =>
     ['bist', 'pendingRequests', selectorKey(selector)] as const,
   budget: (botId: string) => ['bist', 'budget', botId] as const,
+  botHistory: (selector: BotSelector) => ['bist', 'botHistory', selectorKey(selector)] as const,
+  botSnapshots: (selector: BotSelector) => ['bist', 'botSnapshots', selectorKey(selector)] as const,
+  accountSnapshots: ['bist', 'accountSnapshots'] as const,
+  accountTransactions: ['bist', 'accountTransactions'] as const,
 };
 
 export const priceKeys = {

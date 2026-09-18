@@ -168,10 +168,31 @@ export const botSchema = z
     active: z.boolean(),
     description: z.string().nullable(),
     complete: z.boolean(),
+    /**
+     * When these values became the bot's current ones — its creation, or the
+     * last ConfigureBot that changed anything. `null` on a bot configured
+     * before the server recorded it, which is *not known* and never zero.
+     * Optional so a server that predates the column does not fail the read.
+     */
+    startTime: z.number().nullable().optional(),
   })
   .passthrough();
 
 export type Bot = z.infer<typeof botSchema>;
+
+/**
+ * One superseded configuration, as `GetBotHistory` answers it: the exact
+ * `GetBots` item shape plus the instant those values stopped being current.
+ * The two stamps are the span the configuration was in force for, and one
+ * bot's spans meet without a gap — an item's `startTime` is the previous
+ * item's `endTime`, and the newest item's `endTime` is the `startTime` of the
+ * bot's current configuration in `GetBots`.
+ */
+export const botHistoryEntrySchema = botSchema
+  .extend({ endTime: z.number().nullable() })
+  .passthrough();
+
+export type BotHistoryEntry = z.infer<typeof botHistoryEntrySchema>;
 
 export const accountSchema = z
   .object({
@@ -183,6 +204,72 @@ export const accountSchema = z
   .passthrough();
 
 export type Account = z.infer<typeof accountSchema>;
+
+/**
+ * One row of what an account was worth, written every time its buying power
+ * moved. `portfolioValue` and `buyingPower` are always there; **every other
+ * figure may be `null`** — the field set varies per brokerage, and an entry the
+ * terminal did not send is a null, never a zero. `marginTrading` is verbatim
+ * Matriks text, so it is read as a free string.
+ */
+export const accountSnapshotSchema = z
+  .object({
+    id: z.number(),
+    time: z.number(),
+    accountId: z.string(),
+    brokerageId: z.string(),
+    portfolioValue: z.number(),
+    buyingPower: z.number(),
+    cashBalance: z.number().nullable().optional(),
+    stockTotal: z.number().nullable().optional(),
+    fundTotal: z.number().nullable().optional(),
+    pendingSettlementT1: z.number().nullable().optional(),
+    pendingSettlementT2: z.number().nullable().optional(),
+    marginTrading: z.string().nullable().optional(),
+    dailyPnl: z.number().nullable().optional(),
+    dailyPnlPercent: z.number().nullable().optional(),
+    portfolioValueExcludingForbidden: z.number().nullable().optional(),
+  })
+  .passthrough();
+
+export type AccountSnapshot = z.infer<typeof accountSnapshotSchema>;
+
+/**
+ * The same instants, per bot: what an active bot's budget looked like when its
+ * account moved. Only active bots get rows, so a gap in one bot's series is a
+ * deactivation as often as it is a quiet account.
+ */
+export const botSnapshotSchema = z
+  .object({
+    id: z.number(),
+    time: z.number(),
+    botId: botIdSchema,
+    totalBotBudget: z.number(),
+    heldPositionsSize: z.number(),
+    scheduledBuysSize: z.number(),
+    openBuysSize: z.number(),
+    /** `min(buyingPower, budget − held − scheduled − open)`, and may be negative. */
+    remainingBotBudget: z.number(),
+  })
+  .passthrough();
+
+export type BotSnapshot = z.infer<typeof botSnapshotSchema>;
+
+/**
+ * Money in or out of an account, in TL. `amount` is never zero: positive means
+ * money entered, negative that it left. The rows carry no id — nothing but the
+ * whole tuple identifies one.
+ */
+export const accountTransactionSchema = z
+  .object({
+    time: z.number(),
+    accountId: z.string(),
+    brokerageId: z.string(),
+    amount: z.number(),
+  })
+  .passthrough();
+
+export type AccountTransaction = z.infer<typeof accountTransactionSchema>;
 
 const chainLinksSchema = z.object({
   chainId: z.string().nullable(),

@@ -108,6 +108,20 @@ export function formatTime(timestamp: number): string {
 }
 
 /**
+ * A clock time down to the millisecond, split so the caller can draw the
+ * fraction quieter than the seconds — the log drawer's reading, and the
+ * Diary's. Two entries a millisecond apart are two entries, and the digits
+ * that say so belong on the row rather than in a tooltip.
+ */
+export function formatClockTimeParts(timestamp: number): { time: string; ms: string } {
+  const parts = dateParts(timestamp);
+  return {
+    time: `${parts.hour}:${parts.minute}:${parts.second}`,
+    ms: String(((timestamp % 1_000) + 1_000) % 1_000).padStart(3, '0'),
+  };
+}
+
+/**
  * How many whole calendar days `dateKey` sits after `batchDate` (negative if
  * before). `null` when either side is not a plain `YYYY-MM-DD` key.
  */
@@ -135,11 +149,7 @@ export function formatRowTimeParts(
   const parts = dateParts(timestamp);
   const offset = dayOffsetFromBatch(toIstanbulDateKey(timestamp), batchDate);
   const dayOffset =
-    offset === null || offset === 0
-      ? null
-      : offset > 0
-        ? `+${offset}`
-        : `−${Math.abs(offset)}`;
+    offset === null || offset === 0 ? null : offset > 0 ? `+${offset}` : `−${Math.abs(offset)}`;
   return { minute: `${parts.hour}:${parts.minute}`, seconds: `:${parts.second}`, dayOffset };
 }
 

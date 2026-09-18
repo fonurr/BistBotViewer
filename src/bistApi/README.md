@@ -15,6 +15,14 @@ Rules:
 - `CancelOrders` success is only `Accepted`; SSE or a later snapshot confirms the move.
 - SSE has no replay IDs. Every reconnect refetches active snapshots before applying new events.
 - Table reads reject an empty bot list locally instead of calling the server with `[]`.
+- The four Diary reads — `GetBotHistory`, `GetBotSnapshots`, `GetAccountSnapshots`,
+  `GetAccountTransactions` — are **not journaled**. The event journal replays order rows, and
+  nothing writes a configuration, a snapshot or a transaction while a read is in flight: every
+  `ConfigureBot` this viewer sends is a person at a dialog. They are also unwindowed, because each
+  series gains a row when something moves rather than on a clock.
+- `GetErrors` naming nothing gets the **last 24 hours**. Any caller that wants more must state its
+  own window — a bare `limit` counts — and then say what its reach actually is rather than imply
+  the list is complete.
 - `openPrice` and `closePrice` are **buy-only rule objects**, not prices: an entry band and a
   take-profit/stop-loss pair, as signed percentages against a named base. Reads echo them back as
   the JSON string the request supplied, on active, scheduled and canceled orders, and `closePrice`

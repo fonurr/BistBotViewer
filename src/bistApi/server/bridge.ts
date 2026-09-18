@@ -16,7 +16,11 @@ import {
 
 const READ_RPCS = new Set([
   'GetBots',
+  'GetBotHistory',
+  'GetBotSnapshots',
   'GetAccounts',
+  'GetAccountSnapshots',
+  'GetAccountTransactions',
   'GetBotBudget',
   'GetActiveOrders',
   'GetCanceledOrders',

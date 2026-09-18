@@ -10,9 +10,13 @@ import {
 } from './eventJournal';
 import {
   accountSchema,
+  accountSnapshotSchema,
+  accountTransactionSchema,
   activeOrderSchema,
   botBudgetSchema,
+  botHistoryEntrySchema,
   botSchema,
+  botSnapshotSchema,
   cancelPendingResponseSchema,
   canceledOrderSchema,
   closedTradeSchema,
@@ -235,7 +239,25 @@ export const bistApi = {
   eventUrl: `${bridgeBase}/events`,
 
   getBots: () => rpc('GetBots', {}, z.array(botSchema)),
+  /**
+   * The superseded configurations, oldest first. Not journaled: the write
+   * journal replays order rows, and nothing this viewer can do writes a bot
+   * configuration while a read is in flight — every `ConfigureBot` here is a
+   * person at a dialog, and the page reads again after one lands.
+   */
+  getBotHistory: (botId: BotSelector) =>
+    rpc('GetBotHistory', selectorBody(botId), z.array(botHistoryEntrySchema)),
+  getBotSnapshots: (botId: BotSelector) =>
+    rpc('GetBotSnapshots', selectorBody(botId), z.array(botSnapshotSchema)),
   getAccounts: () => rpc('GetAccounts', {}, z.array(accountSchema)),
+  /**
+   * Every account's value series. `accountId: '*'` is the whole table and needs
+   * no `brokerageId` — the pair is the key only when one account is named.
+   */
+  getAccountSnapshots: () =>
+    rpc('GetAccountSnapshots', { accountId: '*' }, z.array(accountSnapshotSchema)),
+  getAccountTransactions: () =>
+    rpc('GetAccountTransactions', {}, z.array(accountTransactionSchema)),
   getActiveOrders: (botId: BotSelector) =>
     journaledRead('activeOrders', botId, () =>
       rpc('GetActiveOrders', selectorBody(botId), z.array(activeOrderSchema)),
