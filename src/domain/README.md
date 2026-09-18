@@ -62,5 +62,6 @@ longer stated is read as a market buy and carries the 10% reservation**: neither
 what the bot committed. If MatriksOrder ever carries that field onto those tables, read it in
 `buyBudgetBuffer` instead of assuming — see `src/pages/book/README.md`. `bookAllocation` answers the
 strip's other question — what the chains on screen hold against their bots' limits right now — with
-upstream's own two terms: positions at cost, forbidden symbols left out, plus every buy still to open
-at its full reservation.
+upstream's own two terms: every held position at cost, forbidden symbol or not (only a holding a bot
+does *not* have is kept out of its budget, by discounting the portfolio value instead), plus every
+buy still to open at its full reservation.

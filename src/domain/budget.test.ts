@@ -310,15 +310,11 @@ describe('bookBudget', () => {
 });
 
 describe('bookAllocation', () => {
-  const bots = new Map([
-    ['bot-a', { forbiddenStocks: [] as string[] }],
-    ['bot-b', { forbiddenStocks: ['GARAN'] }],
-  ]);
-
-  function commitmentOf(
-    input: { activeOrders?: ActiveOrder[]; positions?: Position[]; closedTrades?: ClosedTrade[] },
-    botById: ReadonlyMap<string, { forbiddenStocks: string[] }> = bots,
-  ) {
+  function commitmentOf(input: {
+    activeOrders?: ActiveOrder[];
+    positions?: Position[];
+    closedTrades?: ClosedTrade[];
+  }) {
     return bookAllocation(
       buildBookChains({
         activeOrders: input.activeOrders ?? [],
@@ -326,7 +322,6 @@ describe('bookAllocation', () => {
         positions: input.positions ?? [],
         closedTrades: input.closedTrades ?? [],
       }),
-      botById,
     );
   }
 
@@ -361,31 +356,14 @@ describe('bookAllocation', () => {
     ).toBeCloseTo(100 * 300.5 + 50 * 100 * MARKET_BUY_BUDGET_BUFFER + 10 * 200);
   });
 
-  it("leaves out a position on its own bot's forbidden list", () => {
+  it("counts a position on its own bot's forbidden list the same as any other", () => {
+    // heldPositionsSize charges a bot's budget for every position it holds; the
+    // forbidden list only keeps it from buying more, never from already holding one.
     expect(
       commitmentOf({
-        positions: [
-          position({ botId: 'bot-b', symbol: 'garan', quantity: 10, averagePrice: 100 }),
-          position({
-            id: 21,
-            botId: 'bot-b',
-            clientOrderId: 'buy-2',
-            chainId: 'buy-2',
-            symbol: 'THYAO',
-            quantity: 5,
-            averagePrice: 300,
-          }),
-          position({
-            id: 22,
-            clientOrderId: 'buy-3',
-            chainId: 'buy-3',
-            symbol: 'GARAN',
-            quantity: 2,
-            averagePrice: 100,
-          }),
-        ],
+        positions: [position({ symbol: 'garan', quantity: 10, averagePrice: 100 })],
       }),
-    ).toBe(5 * 300 + 2 * 100);
+    ).toBe(10 * 100);
   });
 
   it('counts a partly filled buy in full and never a sell', () => {
@@ -435,10 +413,6 @@ describe('bookAllocation', () => {
   it('counts an unsized scheduled buy as zero rather than withholding the figure', () => {
     expect(commitmentOf({ activeOrders: [active({ orderPrice: null })] })).toBe(0);
     expect(commitmentOf({ activeOrders: [active({ orderQuantity: null })] })).toBe(0);
-  });
-
-  it('withholds the figure only when a position\'s bot record is missing', () => {
-    expect(commitmentOf({ positions: [position()] }, new Map())).toBeNull();
   });
 
   it('owes nothing for an empty selection', () => {

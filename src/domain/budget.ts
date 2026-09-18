@@ -1,4 +1,4 @@
-import type { ActiveOrder, Bot, CanceledOrder, ClosedTrade, Position } from '../bistApi/types';
+import type { ActiveOrder, CanceledOrder, ClosedTrade, Position } from '../bistApi/types';
 import type { BookChain } from './chains';
 
 /**
@@ -75,7 +75,11 @@ export function bookBudget(chains: readonly BookChain[]): BookBudget {
  * by buying power and by the portfolio percentage.
  *
  * - Every Positions row at what it really cost, `quantity × averagePrice`, never
- *   buffered — except a symbol on its bot's `forbiddenStocks`, which is left out.
+ *   buffered. `heldPositionsSize` charges every position a bot holds the same
+ *   way, `forbiddenStocks` included — the list only keeps a bot from *buying*
+ *   the symbol, and only a holding it does *not* hold is kept out of its
+ *   budget, by discounting the portfolio value instead
+ *   (`../MatriksOrder/API.md` — "Budget and limits").
  * - Every buy still to open, resting or scheduled, at its reserved cost: the full
  *   `orderQuantity × orderPrice`, `× 1.1` for a market buy. A partly filled buy
  *   counts in full, as upstream counts it — its fills join Positions only once it
@@ -83,23 +87,13 @@ export function bookBudget(chains: readonly BookChain[]): BookBudget {
  *   row's brief SSE overlap and is not counted twice. A scheduled buy not yet
  *   sized — no `orderQuantity` or `orderPrice` — reserves nothing yet, so it
  *   contributes zero rather than voiding the whole figure.
- *
- * `null` only when a position's bot record is not loaded to read its forbidden
- * list: that row's cost cannot be judged in or out, so the total cannot either.
  */
-export function bookAllocation(
-  chains: readonly BookChain[],
-  botById: ReadonlyMap<string, Pick<Bot, 'forbiddenStocks'>>,
-): number | null {
+export function bookAllocation(chains: readonly BookChain[]): number {
   const positions = chains.flatMap((chain) => chain.sources.positions);
   const closedTrades = chains.flatMap((chain) => chain.sources.closedTrades);
   let committed = 0;
 
   for (const position of positions) {
-    const bot = botById.get(position.botId);
-    if (!bot) return null;
-    const symbol = position.symbol.toUpperCase();
-    if (bot.forbiddenStocks.some((forbidden) => forbidden.toUpperCase() === symbol)) continue;
     committed += position.quantity * position.averagePrice;
   }
 

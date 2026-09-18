@@ -440,7 +440,7 @@ describe('The Book page states', () => {
     expect(strip.querySelector('.number-untrusted')).not.toBeNull();
   });
 
-  it('allocates what the drawn chains hold and reserve, never a forbidden holding', () => {
+  it('allocates what the drawn chains hold and reserve, a forbidden holding included', () => {
     // 100 x 301,50 held and 40 x 68,25 resting, whatever the bot's budget read says.
     book.data = {
       ...emptyRead(),
@@ -459,6 +459,9 @@ describe('The Book page states', () => {
       expect.stringContaining('quantity × average cost'),
     );
 
+    // heldPositionsSize charges a bot's budget for a position it already holds
+    // whether or not the symbol is now on its forbidden list — the list only
+    // keeps it from buying more.
     book.data = { ...book.data, bots: [makeBot({ forbiddenStocks: ['THYAO'] })] };
     view.rerender(
       <QueryClientProvider client={new QueryClient()}>
@@ -467,7 +470,7 @@ describe('The Book page states', () => {
         </MemoryRouter>
       </QueryClientProvider>,
     );
-    expect(allocated()).toHaveTextContent('2.730');
+    expect(allocated()).toHaveTextContent('32.880');
   });
 
   it('averages only the @sent slips of legs sent inside continuous trading', () => {

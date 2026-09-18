@@ -569,9 +569,10 @@ Positions row at what it cost, `quantity × averagePrice`, plus each buy still t
 scheduled — at its reservation, the full `orderQuantity × orderPrice`, `× 1.1` for a market buy.
 Those are the two terms MatriksOrder charges a bot's `limit` with; the strip sums them itself rather
 than reading `limit − remainingBotBudget`, which answers for a whole bot, not the chains on screen,
-and is also bent by buying power and the portfolio percentage. A position in a symbol on its bot's
-`forbiddenStocks` is left out. A queued basket owns no order yet and reserves nothing, the same as a
-scheduled buy not yet sized — no price or quantity — which contributes zero rather than voiding the
-whole figure. It is `not available` only when a position's bot record has not loaded, since that
-row's cost cannot be judged in or out of `forbiddenStocks`. Hovering the stat states both terms in
-its `title`.
+and is also bent by buying power and the portfolio percentage. Every held position counts, forbidden
+symbol or not — `heldPositionsSize` charges a bot's budget the same way for one it already holds;
+`forbiddenStocks` only keeps a bot from buying the symbol, and only a holding it does *not* have is
+kept out of its budget, by discounting the portfolio value instead (`../MatriksOrder/API.md` —
+"Budget and limits"). A queued basket owns no order yet and reserves nothing, the same as a scheduled
+buy not yet sized — no price or quantity — which contributes zero rather than voiding the whole
+figure. Hovering the stat states both terms in its `title`.

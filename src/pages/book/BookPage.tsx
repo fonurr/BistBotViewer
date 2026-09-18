@@ -266,8 +266,8 @@ export function BookPage() {
     [view, visibleChains],
   );
   const summary = useMemo(
-    () => summarize(view, priceFeed.prices, priceFeed.trustworthy, botById, calendar),
-    [botById, calendar, priceFeed.prices, priceFeed.trustworthy, view],
+    () => summarize(view, priceFeed.prices, priceFeed.trustworthy, calendar),
+    [calendar, priceFeed.prices, priceFeed.trustworthy, view],
   );
 
   // The `today` column reads each chain's P&L from the start of today's Istanbul calendar
@@ -1216,7 +1216,6 @@ function summarize(
   view: BookView,
   prices: ReturnType<typeof useFleetPrices>['prices'],
   pricesTrustworthy: boolean,
-  botById: ReadonlyMap<string, ReturnType<typeof useBookData>['bots'][number]>,
   calendar: HolidayCalendar,
 ) {
   const { chains } = view;
@@ -1287,7 +1286,7 @@ function summarize(
     totalPercentage: hasEveryPrice ? pnlPercentage(realized + unrealized, costBasis) : null,
     // Held against the bots' limits by the visible chains alone, so the filters
     // decide it as they decide every figure beside it.
-    allocated: bookAllocation(chains, botById),
+    allocated: bookAllocation(chains),
     avgSlipCreated: createdSlips.length
       ? createdSlips.reduce((sum, value) => sum + value, 0) / createdSlips.length
       : null,
@@ -1357,12 +1356,7 @@ function StatStrip({
         unavailable={summary.total === null}
         className={trustClass}
       />
-      <Stat
-        label="allocated"
-        value={summary.allocated === null ? 'not available' : formatNumber(summary.allocated, 0)}
-        unavailable={summary.allocated === null}
-        title={ALLOCATED_TITLE}
-      />
+      <Stat label="allocated" value={formatNumber(summary.allocated, 0)} title={ALLOCATED_TITLE} />
       <Stat
         label="slip @created"
         value={
@@ -1386,7 +1380,7 @@ function StatStrip({
 }
 
 const ALLOCATED_TITLE =
-  'Held positions: quantity × average cost, forbidden stocks excluded.\n' +
+  'Held positions: quantity × average cost.\n' +
   'Buys still to open, resting or scheduled: order quantity × order price, × 1.1 for a market buy.';
 
 const ORDERS_ONLY_TITLE =
