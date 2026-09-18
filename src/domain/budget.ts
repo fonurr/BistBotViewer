@@ -80,11 +80,12 @@ export function bookBudget(chains: readonly BookChain[]): BookBudget {
  *   `orderQuantity × orderPrice`, `× 1.1` for a market buy. A partly filled buy
  *   counts in full, as upstream counts it — its fills join Positions only once it
  *   ends. A buy whose fill already landed as a position or a round trip is that
- *   row's brief SSE overlap and is not counted twice.
+ *   row's brief SSE overlap and is not counted twice. A scheduled buy not yet
+ *   sized — no `orderQuantity` or `orderPrice` — reserves nothing yet, so it
+ *   contributes zero rather than voiding the whole figure.
  *
- * `null` when a buy cannot be priced or a position's bot record is not loaded to
- * read its forbidden list: a total that silently drops a row reads as a smaller
- * commitment than the bots actually made.
+ * `null` only when a position's bot record is not loaded to read its forbidden
+ * list: that row's cost cannot be judged in or out, so the total cannot either.
  */
 export function bookAllocation(
   chains: readonly BookChain[],
@@ -104,7 +105,7 @@ export function bookAllocation(
 
   for (const order of chains.flatMap((chain) => chain.sources.activeOrders)) {
     if (order.direction !== 'buy' || fillHasLanded(order, positions, closedTrades)) continue;
-    if (order.orderQuantity === null || order.orderPrice === null) return null;
+    if (order.orderQuantity === null || order.orderPrice === null) continue;
     committed +=
       order.orderQuantity *
       order.orderPrice *

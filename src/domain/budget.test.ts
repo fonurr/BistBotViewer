@@ -432,8 +432,12 @@ describe('bookAllocation', () => {
     ).toBe(40 * 300 + 60 * 300);
   });
 
-  it('withholds the figure when a buy cannot be priced or a bot record is missing', () => {
-    expect(commitmentOf({ activeOrders: [active({ orderPrice: null })] })).toBeNull();
+  it('counts an unsized scheduled buy as zero rather than withholding the figure', () => {
+    expect(commitmentOf({ activeOrders: [active({ orderPrice: null })] })).toBe(0);
+    expect(commitmentOf({ activeOrders: [active({ orderQuantity: null })] })).toBe(0);
+  });
+
+  it('withholds the figure only when a position\'s bot record is missing', () => {
     expect(commitmentOf({ positions: [position()] }, new Map())).toBeNull();
   });
 
