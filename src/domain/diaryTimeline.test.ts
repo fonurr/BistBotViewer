@@ -55,8 +55,8 @@ describe('simultaneous order rows', () => {
 
   it('keeps different scheduled times and prices in the combined row', () => {
     const events = orders([
-      { sentTime: null, scheduledTime: at('10:00:00'), orderPrice: 100 },
       { sentTime: null, direction: 'sell', scheduledTime: at('18:00:00'), orderPrice: 110 },
+      { sentTime: null, scheduledTime: at('10:00:00'), orderPrice: 100 },
     ]);
     const rows = diaryDisplayRows(events);
     expect(rows).toHaveLength(1);

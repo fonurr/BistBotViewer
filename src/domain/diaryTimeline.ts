@@ -28,34 +28,40 @@ export function diaryDisplayRows(events: readonly DiaryEvent[]): Array<{
 }
 
 function combinedDescription(events: readonly DiaryEvent[]): DiaryFragment[] {
-  const first = events[0]!;
+  const ordered = [...events].sort(
+    (left, right) => sideRank(left.description[2]) - sideRank(right.description[2]),
+  );
+  const first = ordered[0]!;
   if (events.length === 1) return first.description;
   // Order sentences start with symbol, space, side, space. Retain every distinct
   // action and its prices; share the tail only for an otherwise identical buy/sell pair.
   const tail = JSON.stringify(first.description.slice(4));
   if (
     events.length === 2 &&
-    first.description[2]?.ink !== events[1]!.description[2]?.ink &&
-    events.every((event) => JSON.stringify(event.description.slice(4)) === tail)
+    first.description[2]?.ink !== ordered[1]!.description[2]?.ink &&
+    ordered.every((event) => JSON.stringify(event.description.slice(4)) === tail)
   ) {
-    const [buy, sell] = [...events].sort((left, right) =>
-      (left.description[2]?.text ?? '').localeCompare(right.description[2]?.text ?? ''),
-    );
     return [
-      ...buy!.description.slice(0, 3),
+      ...ordered[0]!.description.slice(0, 3),
       { ink: 'text', text: ' / ' },
-      ...sell!.description.slice(2),
+      ...ordered[1]!.description.slice(2),
     ];
   }
   return [
     ...first.description.slice(0, 2),
-    ...events.flatMap((event, index) => {
+    ...ordered.flatMap((event, index) => {
       const phrase = event.description.slice(2);
       if (phrase.at(-1)?.text === '.') phrase.pop();
       return index === 0 ? phrase : [{ ink: 'text' as const, text: '; ' }, ...phrase];
     }),
     { ink: 'text', text: '.' },
   ];
+}
+
+function sideRank(fragment: DiaryFragment | undefined): number {
+  if (fragment?.ink === 'buy') return 0;
+  if (fragment?.ink === 'sell') return 1;
+  return 2;
 }
 
 export function diaryTimeRange(
