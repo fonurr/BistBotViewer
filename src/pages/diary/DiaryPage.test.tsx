@@ -119,7 +119,8 @@ describe('Diary list', () => {
     await loaded();
 
     expect(screen.getByText('forbidden', { selector: '.diary-ink-field' })).toBeInTheDocument();
-    expect(screen.getByText('THYAO', { selector: '.diary-ink-added' })).toBeInTheDocument();
+    expect(screen.getByText('+', { selector: '.diary-ink-added' })).toBeInTheDocument();
+    expect(screen.getByText('THYAO', { selector: '.diary-ink-value' })).toBeInTheDocument();
     expect(screen.getByText('500.000,00', { selector: '.diary-ink-value' })).toBeInTheDocument();
   });
 });

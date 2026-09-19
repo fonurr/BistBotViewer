@@ -58,7 +58,7 @@ test('lists what the server wrote down outside the order tables, under each even
 
   // Only what the configuration change moved, never the whole record again.
   await expect(list).toContainText('limit: 500.000 → 750.000');
-  await expect(list).toContainText('forbidden: added THYAO');
+  await expect(list).toContainText('forbidden: +THYAO');
   // A zero column is left out of a snapshot; a null one with it.
   await expect(list).toContainText('budget: 500.000,00, held: 124.219,02');
   await expect(list).not.toContainText('scheduled buys');
@@ -66,7 +66,7 @@ test('lists what the server wrote down outside the order tables, under each even
 
   // The field name, the value and the delta are drawn in three different inks.
   await expect(list.locator('.diary-ink-field').first()).toBeVisible();
-  await expect(list.locator('.diary-ink-added', { hasText: 'THYAO' })).toBeVisible();
+  await expect(list.locator('.diary-ink-added', { hasText: '+' })).toBeVisible();
 
   await oldest.click();
   const cash = list.getByRole('row').filter({ hasText: '1.250,75 TL withdrawn' });
