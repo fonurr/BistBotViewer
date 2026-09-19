@@ -1,20 +1,3 @@
-/*
- * No stacking context here. The filter popovers inside carry z-index 42 so they
- * sit above the scrim (30); a z-index on the toolbar would trap them below it
- * and every click inside an open popover would land on the scrim instead.
- */
-.book-toolbar {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-4);
-  margin-bottom: var(--space-4);
-}
-
-.book-toolbar .seg-opt {
-  font-size: var(--font-leg);
-}
-
 .book-time-range {
   display: grid;
   gap: var(--space-4);

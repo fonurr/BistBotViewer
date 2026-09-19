@@ -1,8 +1,3 @@
-/*
- * No stacking context on the toolbar: the filter popovers inside carry z-index
- * 42 and have to stay above the scrim at 30, which a z-index here would trap
- * them below. The Book's toolbar carries the same note for the same reason.
- */
 .diary-toolbar {
   margin-bottom: var(--space-6);
 }
