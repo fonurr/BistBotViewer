@@ -203,17 +203,16 @@ test('shows schedule details, suppresses skipped plans and separates time groups
   await page.goto('/diary');
   await safeBridge.stream.open();
   const list = page.getByRole('table', { name: 'Diary entries' });
-  await expect(list).toContainText('AKBNK buy scheduled for 26.08.26 09:55:30, order price 68,25.');
-  await expect(list).toContainText(
-    'AKBNK sell scheduled for 26.08.26 09:55:30, order price 68,25.',
-  );
+  await expect(list).toContainText('AKBNK buy / sell scheduled for 09:55:30+1, order price 68,25.');
+  await expect(list.getByRole('row').filter({ hasText: 'AKBNK' })).toHaveCount(1);
   await expect(list.getByRole('row').filter({ hasText: 'MARTI' })).toHaveCount(1);
   await expect(list).toContainText('MARTI sell skipped: ForbiddenStock.');
   await expect(list.getByRole('separator', { name: 'Session start 09:55' })).toBeVisible();
   await expect(list.getByRole('separator', { name: 'Session end 18:10' })).toBeVisible();
   const scheduled = list.locator('.diary-event-cluster').filter({ hasText: 'scheduled for' });
   await expect(scheduled).toHaveCount(1);
-  await expect(scheduled.locator('.diary-row')).toHaveCount(3);
+  await expect(scheduled.locator('.diary-row')).toHaveCount(2);
+  await expect(scheduled.locator('sup.diary-day-offset')).toHaveText(['+1']);
   await expect(scheduled).toHaveCSS('border-top-width', '1px');
   await expect(scheduled).toHaveCSS('border-bottom-width', '1px');
   const buyColor = await list

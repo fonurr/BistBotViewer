@@ -54,7 +54,8 @@ Only `clientOrderId`, scoped by bot and side, joins multiple carriers of an orde
 source-row identities stay separate; neither `chainId` nor `positionId` identifies an order.
 
 - **Scheduled:** `createdTime` for a recorded schedule only. The sentence names its target
-  `scheduledTime` (Istanbul clock, plus the date when it differs) and stored order price.
+  `scheduledTime` (Istanbul clock, with the Book's superscript `+1`, `+2`, etc. relative to
+  the event day; no offset on the same day) and stored order price.
   Immediate orders have no creation entry. Skipped/SkippedForNow rows carry a hypothetical
   schedule but were never admitted, so they produce no scheduled event.
 - **Sent:** `sentTime`, never the exchange's registration time or an inferred send. The stored
@@ -190,6 +191,10 @@ rest of the toolbar as it actually stands.
 Events are enclosed by thin, dim horizontal rules in groups spanning at most five seconds from
 the group's earliest event. A singleton has both rules too. Groups keep the same membership when
 the reading direction reverses. Untimed fills are separate singletons.
+At an identical timestamp, order events for the same symbol, bot and account share one display
+row. Identical buy/sell details are shared (`buy / sell scheduled ...`); different target times,
+prices or actions remain separate phrases in that row. Filtering and counts still use individual
+events. Events at different times retain their chronological order, and untimed fills stay separate.
 
 Thick horizontal rules mark the session's opening match and end of grace: 09:55 and 18:10,
 or 12:40 on a half day, from the shared calendar/session-hours helpers. Weekends and full holidays

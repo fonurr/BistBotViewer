@@ -331,6 +331,32 @@ describe('filterDiary', () => {
 });
 
 describe('groupDiaryByDate', () => {
+  it('keeps simultaneous buys and sells together by symbol without moving other times', () => {
+    const orderEvents: DiaryEvent[] = [
+      ['a-buy', 'AKBNK', noon],
+      ['b-buy', 'THYAO', noon],
+      ['c-sell', 'AKBNK', noon],
+      ['d-sell', 'THYAO', noon],
+      ['e-later', 'AKBNK', noon + 1],
+    ].map(([id, symbol, time]) => ({
+      id: String(id),
+      symbol: String(symbol),
+      time: Number(time),
+      date: DAY,
+      kind: 'orders',
+      botId: 'bot',
+      accountKey: null,
+      subject: 'bot',
+      description: [],
+    }));
+    for (const newestFirst of [true, false]) {
+      const sorted = groupDiaryByDate(orderEvents, newestFirst)[0]!.events;
+      const simultaneous = sorted.filter((event) => event.time === noon);
+      expect(simultaneous[0]!.symbol).toBe(simultaneous[1]!.symbol);
+      expect(simultaneous[2]!.symbol).toBe(simultaneous[3]!.symbol);
+      expect(sorted[newestFirst ? 0 : 4]!.id).toBe('e-later');
+    }
+  });
   const earlier = Date.parse('2026-08-24T09:00:00.000Z');
   const events = buildDiary(
     sources({

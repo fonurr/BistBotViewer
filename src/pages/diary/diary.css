@@ -148,6 +148,12 @@
   color: var(--color-text);
 }
 
+/* The same day-offset treatment as the Book's time cells. */
+.diary-day-offset {
+  margin-left: 1px;
+  font-size: 0.75em;
+}
+
 .diary-ink-added {
   color: var(--st-live);
 }

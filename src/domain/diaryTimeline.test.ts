@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { holidayCalendar } from './calendar';
 import type { DiaryDateGroup, DiaryEvent } from './diary';
-import { diaryTimeline, diaryTimeRange } from './diaryTimeline';
+import { diaryDisplayRows, diaryTimeline, diaryTimeRange } from './diaryTimeline';
+import { diaryOrderEvents } from './diaryOrders';
+import { makeActiveOrder } from '../test/fixtures';
 
 const date = '2026-08-25';
 const at = (clock: string, day = date) => Date.parse(`${day}T${clock}+03:00`);
@@ -20,6 +22,62 @@ function group(clocks: string[], day: string | null = date): DiaryDateGroup {
     })),
   };
 }
+
+describe('simultaneous order rows', () => {
+  const orders = (overrides: Parameters<typeof makeActiveOrder>[0][]) =>
+    diaryOrderEvents(
+      {
+        activeOrders: overrides.map((override, index) =>
+          makeActiveOrder({ id: index, clientOrderId: `order-${index}`, ...override }),
+        ),
+        canceledOrders: [],
+        positions: [],
+        closedTrades: [],
+      },
+      () => 'account',
+    );
+  const say = (row: ReturnType<typeof diaryDisplayRows>[number]) =>
+    row.description.map((part) => part.text).join('');
+
+  it('puts identical buy and sell events in one row and shares their details', () => {
+    const events = orders([{ direction: 'sell' }, { direction: 'buy' }]);
+    const rows = diaryDisplayRows(events);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.events).toHaveLength(2);
+    expect(say(rows[0]!)).toBe('AKBNK buy / sell sent, market price 68,10.');
+    expect(
+      rows[0]!.description
+        .filter((part) => part.ink === 'buy' || part.ink === 'sell')
+        .map((part) => part.ink),
+    ).toEqual(['buy', 'sell']);
+    expect(diaryDisplayRows(events.slice(0, 1))[0]!.description).toEqual(events[0]!.description);
+  });
+
+  it('keeps different scheduled times and prices in the combined row', () => {
+    const events = orders([
+      { sentTime: null, scheduledTime: at('10:00:00'), orderPrice: 100 },
+      { sentTime: null, direction: 'sell', scheduledTime: at('18:00:00'), orderPrice: 110 },
+    ]);
+    const rows = diaryDisplayRows(events);
+    expect(rows).toHaveLength(1);
+    expect(say(rows[0]!)).toBe(
+      'AKBNK buy scheduled for 10:00:00, order price 100,00; sell scheduled for 18:00:00, order price 110,00.',
+    );
+  });
+
+  it('does not combine different symbols, bots, timestamps, accounts or untimed fills', () => {
+    const events = orders([
+      {},
+      { symbol: 'THYAO' },
+      { botId: 'other' },
+      { sentTime: at('11:00:00') },
+    ]);
+    events.push({ ...events[0]!, id: 'account', accountKey: 'other' });
+    events.push({ ...events[0]!, id: 'untimed1', time: null, date: null });
+    events.push({ ...events[0]!, id: 'untimed2', time: null, date: null });
+    expect(diaryDisplayRows(events)).toHaveLength(7);
+  });
+});
 
 describe('Diary time separators', () => {
   it('groups spans of at most five seconds, independent of sort, and keeps singletons', () => {

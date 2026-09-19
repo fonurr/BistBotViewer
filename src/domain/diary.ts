@@ -48,6 +48,7 @@ export type DiaryInk = 'text' | 'field' | 'value' | 'added' | 'removed' | 'wait'
 export interface DiaryFragment {
   ink: DiaryInk;
   text: string;
+  superscript?: boolean;
 }
 
 export interface DiaryEvent {
@@ -123,13 +124,17 @@ export function buildDiary(sources: DiarySources): DiaryEvent[] {
   return events.sort(byNewestFirst);
 }
 
-/** Newest first, ties broken by kind then id so a redraw never reshuffles. */
+/** Newest first; simultaneous order events stay together by symbol, across both sides. */
 function byNewestFirst(left: DiaryEvent, right: DiaryEvent): number {
   if (left.time === null && right.time !== null) return 1;
   if (right.time === null && left.time !== null) return -1;
   if (left.time !== null && right.time !== null && left.time !== right.time)
     return right.time - left.time;
   if (left.kind !== right.kind) return left.kind.localeCompare(right.kind);
+  if (left.kind === 'orders') {
+    const symbolOrder = (left.symbol ?? '').localeCompare(right.symbol ?? '');
+    if (symbolOrder !== 0) return symbolOrder;
+  }
   return left.id.localeCompare(right.id);
 }
 

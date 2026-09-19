@@ -1,9 +1,9 @@
 import { CaretDown, CaretRight } from '@phosphor-icons/react';
 import { useLayoutEffect, useRef, useState } from 'react';
 
-import type { DiaryDateGroup, DiaryEvent } from '../../domain/diary';
+import type { DiaryDateGroup, DiaryEvent, DiaryFragment } from '../../domain/diary';
 import type { HolidayCalendar } from '../../domain/calendar';
-import { diaryTimeRange, diaryTimeline } from '../../domain/diaryTimeline';
+import { diaryDisplayRows, diaryTimeRange, diaryTimeline } from '../../domain/diaryTimeline';
 import {
   formatClockTimeParts,
   formatDateKey,
@@ -96,8 +96,12 @@ export function DiaryList({ groups, calendar, newestFirst }: DiaryListProps) {
               ? diaryTimeline(group, calendar, range, newestFirst).map((block) =>
                   block.kind === 'events' ? (
                     <div className="diary-event-cluster" key={block.events[0]!.id}>
-                      {block.events.map((event) => (
-                        <DiaryRow event={event} key={event.id} />
+                      {diaryDisplayRows(block.events).map((row) => (
+                        <DiaryRow
+                          event={row.events[0]!}
+                          description={row.description}
+                          key={row.events[0]!.id}
+                        />
                       ))}
                     </div>
                   ) : (
@@ -120,7 +124,7 @@ export function DiaryList({ groups, calendar, newestFirst }: DiaryListProps) {
   );
 }
 
-function DiaryRow({ event }: { event: DiaryEvent }) {
+function DiaryRow({ event, description }: { event: DiaryEvent; description: DiaryFragment[] }) {
   const clock = event.time === null ? null : formatClockTimeParts(event.time);
   return (
     <div className={`diary-row diary-row-${event.kind}`} role="row">
@@ -133,11 +137,17 @@ function DiaryRow({ event }: { event: DiaryEvent }) {
         {event.subject}
       </span>
       <span className="diary-description" role="cell">
-        {event.description.map((fragment, index) => (
-          <span className={`diary-ink-${fragment.ink}`} key={index}>
-            {fragment.text}
-          </span>
-        ))}
+        {description.map((fragment, index) =>
+          fragment.superscript ? (
+            <sup className={`diary-ink-${fragment.ink} diary-day-offset`} key={index}>
+              {fragment.text}
+            </sup>
+          ) : (
+            <span className={`diary-ink-${fragment.ink}`} key={index}>
+              {fragment.text}
+            </span>
+          ),
+        )}
       </span>
     </div>
   );

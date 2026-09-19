@@ -1,7 +1,7 @@
 import { buildBookChains, type BookChainRow, type BookChainSources } from './chains';
 import type { DiaryEvent, DiaryFragment } from './diary';
 import { accountIdentityKey } from './accounts';
-import { formatClockTimeParts, formatDate, formatNumber, toIstanbulDateKey } from './format';
+import { formatNumber, formatRowTimeParts, toIstanbulDateKey } from './format';
 import { displayStatus } from './status';
 
 export const DIARY_ORDER_STAGES = ['scheduled', 'sent', 'canceled', 'filled'] as const;
@@ -112,17 +112,22 @@ export function diaryOrderEvents(
     };
     const scheduled = rows.find((entry) => entry.scheduledTime !== null);
     // Skipped rows retain the requested schedule, but were never admitted to it.
-    if (scheduled && dead?.status !== 'Skipped' && dead?.status !== 'SkippedForNow') {
+    const created = stamp('createdTime');
+    if (
+      scheduled &&
+      created !== null &&
+      dead?.status !== 'Skipped' &&
+      dead?.status !== 'SkippedForNow'
+    ) {
       const due = scheduled.scheduledTime!;
-      const created = stamp('createdTime');
-      const dueDate =
-        created !== null && toIstanbulDateKey(created) === toIstanbulDateKey(due)
-          ? ''
-          : `${formatDate(due)} `;
+      const dueTime = formatRowTimeParts(due, toIstanbulDateKey(created))!;
       add('scheduled', created, [
         part('wait', 'scheduled'),
         part('text', ' for '),
-        part('value', `${dueDate}${formatClockTimeParts(due).time}`),
+        part('value', `${dueTime.minute}${dueTime.seconds}`),
+        ...(dueTime.dayOffset === null
+          ? []
+          : [{ ...part('value', dueTime.dayOffset), superscript: true }]),
         ...priceWords('order price', scheduled.orderPrice),
       ]);
     }

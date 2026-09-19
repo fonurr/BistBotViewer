@@ -1,10 +1,62 @@
-import type { DiaryDateGroup, DiaryEvent } from './diary';
+import type { DiaryDateGroup, DiaryEvent, DiaryFragment } from './diary';
 import { closeMinuteOn, isTradingDay, istanbulMinuteAt, type HolidayCalendar } from './calendar';
 import { OPENING_MATCH_MINUTE, SESSION_GRACE_MINUTES } from './sessionHours';
 
 export type DiaryTimelineBlock =
   | { kind: 'events'; events: DiaryEvent[] }
   | { kind: 'session'; time: number; edge: 'start' | 'end' };
+
+/** Presentation only: filtering and counts still refer to the individual events. */
+export function diaryDisplayRows(events: readonly DiaryEvent[]): Array<{
+  events: DiaryEvent[];
+  description: DiaryFragment[];
+}> {
+  const grouped = new Map<string, DiaryEvent[]>();
+  for (const event of events) {
+    const key =
+      event.kind === 'orders' && event.time !== null && event.symbol
+        ? JSON.stringify([event.time, event.symbol, event.botId, event.accountKey])
+        : `event:${event.id}`;
+    const group = grouped.get(key) ?? [];
+    group.push(event);
+    grouped.set(key, group);
+  }
+  return [...grouped.values()].map((group) => ({
+    events: group,
+    description: combinedDescription(group),
+  }));
+}
+
+function combinedDescription(events: readonly DiaryEvent[]): DiaryFragment[] {
+  const first = events[0]!;
+  if (events.length === 1) return first.description;
+  // Order sentences start with symbol, space, side, space. Retain every distinct
+  // action and its prices; share the tail only for an otherwise identical buy/sell pair.
+  const tail = JSON.stringify(first.description.slice(4));
+  if (
+    events.length === 2 &&
+    first.description[2]?.ink !== events[1]!.description[2]?.ink &&
+    events.every((event) => JSON.stringify(event.description.slice(4)) === tail)
+  ) {
+    const [buy, sell] = [...events].sort((left, right) =>
+      (left.description[2]?.text ?? '').localeCompare(right.description[2]?.text ?? ''),
+    );
+    return [
+      ...buy!.description.slice(0, 3),
+      { ink: 'text', text: ' / ' },
+      ...sell!.description.slice(2),
+    ];
+  }
+  return [
+    ...first.description.slice(0, 2),
+    ...events.flatMap((event, index) => {
+      const phrase = event.description.slice(2);
+      if (phrase.at(-1)?.text === '.') phrase.pop();
+      return index === 0 ? phrase : [{ ink: 'text' as const, text: '; ' }, ...phrase];
+    }),
+    { ink: 'text', text: '.' },
+  ];
+}
 
 export function diaryTimeRange(
   groups: readonly DiaryDateGroup[],

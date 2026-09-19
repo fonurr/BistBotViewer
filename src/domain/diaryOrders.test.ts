@@ -65,7 +65,7 @@ describe('order diary', () => {
       averagePrice: 300.25,
     });
     const events = eventsFor({ positions: [order] });
-    expect(say(events[0]!)).toBe('THYAO buy scheduled for 25.08.26 09:55:30, order price 300,00.');
+    expect(say(events[0]!)).toBe('THYAO buy scheduled for 09:55:30+1, order price 300,00.');
     expect(say(events[1]!)).toBe('THYAO buy sent, market price 299,00.');
     expect(say(events[2]!)).toBe('THYAO buy filled, 100 shares, average fill price 300,25.');
     expect(
