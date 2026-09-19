@@ -471,8 +471,12 @@ function joinFragments(groups: readonly DiaryFragment[][], separator: string): D
 
 export interface DiaryFilter {
   kinds: ReadonlySet<DiaryKind> | null;
+  /** Whether the bot filter applies at all. Off, the bot axis is not asked. */
+  botFilter: boolean;
   /** `null` is every bot, which is not the same set as every bot ticked. */
   botIds: ReadonlySet<string> | null;
+  /** The same switch over the account axis. */
+  accountFilter: boolean;
   accountKeys: ReadonlySet<string> | null;
   from: string | null;
   to: string | null;
@@ -481,29 +485,35 @@ export interface DiaryFilter {
 /**
  * The entries a toolbar keeps.
  *
- * The bot and account filters each govern what they can name: an entry about a
- * bot must have that bot ticked, an entry about an account must have that
- * account ticked, and an entry that names neither — an error the server could
- * not attribute — passes both. A bot entry also carries the account the bot was
- * on at that instant, so narrowing to one account narrows its bots with it.
+ * The bot and account filters each sit behind a switch, and each governs only
+ * what it can name. **Off is not "every option" — it is the filter not being
+ * asked**, and every entry passes it. On, an entry has to name a ticked
+ * subject: an entry about a bot must have that bot ticked, an entry about an
+ * account must have that account ticked, and an entry that names neither — an
+ * error the server could not attribute, and for the bot axis an account
+ * snapshot or a cash movement — is not about anything the filter asked for, so
+ * it drops out even with every option ticked. A bot entry also carries the
+ * account the bot was on at that instant, so narrowing to one account narrows
+ * its bots with it.
  */
 export function filterDiary(events: readonly DiaryEvent[], filter: DiaryFilter): DiaryEvent[] {
   return events.filter((event) => {
     if (filter.kinds !== null && !filter.kinds.has(event.kind)) return false;
     if (filter.from !== null && event.date < filter.from) return false;
     if (filter.to !== null && event.date > filter.to) return false;
-    if (filter.botIds !== null && event.botId !== null && !filter.botIds.has(event.botId)) {
-      return false;
-    }
-    if (
-      filter.accountKeys !== null &&
-      event.accountKey !== null &&
-      !filter.accountKeys.has(event.accountKey)
-    ) {
-      return false;
-    }
+    if (filter.botFilter && !ticked(event.botId, filter.botIds)) return false;
+    if (filter.accountFilter && !ticked(event.accountKey, filter.accountKeys)) return false;
     return true;
   });
+}
+
+/**
+ * Whether a switched-on filter keeps an entry: it has to name a subject at all,
+ * and that subject has to be ticked. `null` is every subject — not every entry.
+ */
+function ticked(subject: string | null, selected: ReadonlySet<string> | null): boolean {
+  if (subject === null) return false;
+  return selected === null || selected.has(subject);
 }
 
 export interface DiaryDateGroup {

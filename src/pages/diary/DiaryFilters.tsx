@@ -19,7 +19,7 @@ import {
   type DiaryKind,
 } from '../../domain/diary';
 import { DiarySortToggle } from './DiarySortToggle';
-import type { DiaryFilterState } from './types';
+import { defaultDiaryFilters, type DiaryFilterState } from './types';
 
 interface DiaryFiltersProps {
   filters: DiaryFilterState;
@@ -46,12 +46,21 @@ export function DiaryFilters(props: DiaryFiltersProps) {
   const { filters, onChange } = props;
   const scope = useMemo(
     () => ({
+      botFilter: filters.botFilter,
       botIds: filters.botIds,
+      accountFilter: filters.accountFilter,
       accountKeys: filters.accountKeys,
       from: filters.from,
       to: filters.to,
     }),
-    [filters.accountKeys, filters.botIds, filters.from, filters.to],
+    [
+      filters.accountFilter,
+      filters.accountKeys,
+      filters.botFilter,
+      filters.botIds,
+      filters.from,
+      filters.to,
+    ],
   );
   const kindCounts = useMemo(() => diaryKindCounts(props.events, scope), [props.events, scope]);
   const botCounts = useMemo(() => diaryBotCounts(props.events), [props.events]);
@@ -125,11 +134,20 @@ export function DiaryFilters(props: DiaryFiltersProps) {
             count: botCounts.get(bot.id) ?? 0,
           }))}
           picks={botPicks(props.bots)}
+          active={filters.botFilter}
+          onActiveChange={(botFilter) =>
+            /* Either way the selection goes back to none: switching on starts
+               from nothing ticked, and the disabled boxes behind an off switch
+               show exactly what it would come back on with. */
+            onChange({ ...filters, botFilter, botIds: defaultDiaryFilters.botIds })
+          }
+          activeLabel="filter"
+          inactiveLabel="any bot"
           selected={filters.botIds}
           onChange={(botIds) => onChange({ ...filters, botIds })}
           one="bot"
           many="bots"
-          note="Only a bot's own entries answer to this — its configuration changes and its budget snapshots. An account snapshot, a cash movement or an error names no bot, so it stays whatever is ticked here."
+          note="On, the Diary keeps an entry only where it names a ticked bot — a bot's own configuration change or budget snapshot. An account snapshot, a cash movement or an error names no bot, so it drops out even with every bot ticked. Off, the bot axis is not asked at all."
         />
         <MultiSelectFilter
           name="diary-accounts"
@@ -139,6 +157,12 @@ export function DiaryFilters(props: DiaryFiltersProps) {
           help="A bot entry answers to this too, through the account the bot was bound to at that instant — not the one it sits on now."
           options={accountOptions(props.accounts)}
           picks={[{ label: 'none', select: new Set<string>() }]}
+          active={filters.accountFilter}
+          onActiveChange={(accountFilter) =>
+            onChange({ ...filters, accountFilter, accountKeys: defaultDiaryFilters.accountKeys })
+          }
+          activeLabel="filter"
+          inactiveLabel="any account"
           selected={filters.accountKeys}
           onChange={(accountKeys) => onChange({ ...filters, accountKeys })}
           one="account"
@@ -152,7 +176,7 @@ export function DiaryFilters(props: DiaryFiltersProps) {
             ) ? (
               <span className="status-warn">Some bot account labels are not in GetAccounts.</span>
             ) : (
-              'An error the server could not attribute names no account, so it stays whatever is ticked here.'
+              'On, the Diary keeps an entry only where it names a ticked account. An error the server could not attribute names none, so it drops out even with every account ticked. Off, the account axis is not asked at all.'
             )
           }
         />

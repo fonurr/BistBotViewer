@@ -61,12 +61,23 @@ export function DiaryPage() {
     () =>
       filterDiary(events, {
         kinds: filters.kinds as ReadonlySet<DiaryKind> | null,
+        botFilter: filters.botFilter,
         botIds: filters.botIds,
+        accountFilter: filters.accountFilter,
         accountKeys: filters.accountKeys,
         from: filters.from,
         to: filters.to,
       }),
-    [events, filters.accountKeys, filters.botIds, filters.from, filters.kinds, filters.to],
+    [
+      events,
+      filters.accountFilter,
+      filters.accountKeys,
+      filters.botFilter,
+      filters.botIds,
+      filters.from,
+      filters.kinds,
+      filters.to,
+    ],
   );
   const groups = useMemo(
     () => groupDiaryByDate(visible, filters.newestFirst),

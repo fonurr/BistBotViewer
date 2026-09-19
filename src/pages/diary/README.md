@@ -102,28 +102,47 @@ The toolbar is the Book's, reused rather than re-invented — `DateRangeFilter` 
 - **Type.** The five kinds, all ticked by default, with `all` and `none`. Each counts the entries
   it would contribute **under the rest of the toolbar** — so the count moves with the bot,
   account and date filters but not with its own ticks.
-- **Bots.** The Book's control, with its `none` / `active` / `inactive` picks.
-- **Accounts.** The Book's control.
+- **Bots.** The Book's control, with its `none` / `active` / `inactive` picks, behind a `filter`
+  switch — the one the Book's time and status filters carry. **Off by default**, and off is not
+  "every bot" but the axis not being asked.
+- **Accounts.** The same control behind the same switch, also off by default.
 - **Sort.** One button, not two: the order has exactly two states and only one can be in force,
   so the control names the one it is in (`Newest first` by default) and swaps on press. The
   up/down arrows beside it say that pressing re-sorts rather than filters.
 
 ### What each entity filter governs
 
-Each governs what it can name, and nothing else:
+Each sits behind its own `filter` switch, and each governs what it can name and nothing else.
+
+**Off — the default — the axis is not asked at all** and every entry passes it. That is why it is
+the default: switching it on is itself a narrowing, the way the Book's status, source, origin,
+reason, time and slippage filters are, so "off" cannot honestly mean "every option".
+
+On, an entry has to name a ticked subject:
 
 - an entry **about a bot** must have that bot ticked;
 - an entry **about an account** must have that account ticked;
-- an entry that names neither — an error the server could not attribute — passes both.
+- an entry that names neither — an error the server could not attribute, and for the bot axis an
+  account snapshot or a cash movement too — is not about anything the filter asked for, so it
+  **drops out even with every option ticked**.
+
+So an error has to be about that bot or that account to survive a switched-on filter. With both
+switches off, as the page opens, nothing is narrowed and every error is drawn.
 
 A bot entry also carries an account, and it is the account the bot was bound to **at that
 instant**, resolved from its own configuration timeline. A budget is charged against an account,
 so a snapshot is filed under the one the bot was on then, not the one it sits on now. Narrowing
 to one account therefore narrows that account's bots with it.
 
-`null` is _every_ option, which is not the same set as all of them ticked: a viewer that gains a
-bot keeps meaning every bot until somebody narrows it. That is the same reading the Book's
-filters carry.
+Inside a switched-on filter, `null` is _every_ option, which is not the same set as all of them
+ticked: a viewer that gains a bot keeps meaning every bot until somebody narrows it. That is the
+same reading the Book's filters carry. Switching either filter on or off puts its selection back
+to **none**, so a reader switching it on ticks the bots they came for rather than unticking the
+rest first — again the Book's rule, and the disabled boxes behind an off switch show exactly what
+it would come back on with.
+
+The type counts follow both switches, so a kind's count is what it would contribute under the
+rest of the toolbar as it actually stands.
 
 ## The list
 

@@ -256,20 +256,57 @@ describe('filterDiary', () => {
       ],
     }),
   );
-  const everything = { kinds: null, botIds: null, accountKeys: null, from: null, to: null };
+  const everything = {
+    kinds: null,
+    botFilter: false,
+    botIds: null,
+    accountFilter: false,
+    accountKeys: null,
+    from: null,
+    to: null,
+  };
 
-  it('keeps an entry that names no bot whatever the bot filter says', () => {
+  it('asks neither entity axis while its switch is off', () => {
     const kept = filterDiary(events, { ...everything, botIds: new Set<string>() });
-    expect(kept.map((event) => event.kind).sort()).toEqual(['accountSnapshots', 'errors']);
+    expect(kept).toHaveLength(events.length);
+  });
+
+  it('drops an entry that names no bot once the bot filter is switched on', () => {
+    const kept = filterDiary(events, { ...everything, botFilter: true });
+    // Every bot the page knows is ticked, and the two unattributed entries
+    // still go: neither is about a bot at all.
+    expect(kept.map((event) => event.kind).sort()).toEqual(['botHistory', 'botSnapshots']);
+  });
+
+  it('keeps nothing on the bot axis with the switch on and nothing ticked', () => {
+    expect(
+      filterDiary(events, { ...everything, botFilter: true, botIds: new Set<string>() }),
+    ).toEqual([]);
   });
 
   it('narrows a bot entry through the account the bot was on', () => {
     const kept = filterDiary(events, {
       ...everything,
+      accountFilter: true,
       accountKeys: new Set([accountIdentityKey('ACC-9', 'BRK-9')]),
     });
-    // Only the unattributed error survives: the rest all name ACC-1.
-    expect(kept.map((event) => event.kind)).toEqual(['errors']);
+    // Nothing survives: the attributed entries all name ACC-1, and the error
+    // the server could not attribute names no account at all.
+    expect(kept).toEqual([]);
+  });
+
+  it('drops an unattributed error while the account filter is on', () => {
+    const kept = filterDiary(events, {
+      ...everything,
+      accountFilter: true,
+      accountKeys: new Set([accountIdentityKey('ACC-1', 'BRK-1')]),
+    });
+    expect(kept.map((event) => event.kind)).not.toContain('errors');
+    expect(kept.map((event) => event.kind).sort()).toEqual([
+      'accountSnapshots',
+      'botHistory',
+      'botSnapshots',
+    ]);
   });
 
   it('reads both ends of the day range inclusively', () => {
@@ -279,13 +316,17 @@ describe('filterDiary', () => {
 
   it('counts a kind under the rest of the toolbar but not under its own ticks', () => {
     const counts = diaryKindCounts(events, {
-      botIds: new Set<string>(),
+      botFilter: true,
+      botIds: null,
+      accountFilter: false,
       accountKeys: null,
       from: null,
       to: null,
     });
-    expect(counts.get('botSnapshots')).toBe(0);
-    expect(counts.get('accountSnapshots')).toBe(1);
+    // The bot switch is on with every bot ticked, so a kind that names a bot
+    // still counts and one that never does has nothing left to contribute.
+    expect(counts.get('botSnapshots')).toBe(1);
+    expect(counts.get('accountSnapshots')).toBe(0);
   });
 });
 

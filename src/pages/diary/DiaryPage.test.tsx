@@ -137,17 +137,65 @@ describe('Diary toolbar', () => {
     expect(screen.getByRole('status')).toHaveTextContent('4 entries of 5');
   });
 
-  it('keeps an entry that names no bot when the bot filter is emptied', async () => {
+  it('opens with both entity filters off and asks neither', async () => {
     const user = userEvent.setup();
     renderDiary();
     await loaded();
 
-    await user.click(screen.getByRole('button', { name: '1 bot' }));
-    await user.click(screen.getByRole('button', { name: 'none' }));
+    expect(screen.getByRole('button', { name: 'any bot' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'any account' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('5 entries · 2 days');
+
+    // Off, every box behind the switch is disabled and none of them is ticked.
+    await user.click(screen.getByRole('button', { name: 'any bot' }));
+    const box = screen.getByRole('checkbox', { name: /bot-alpha/ });
+    expect(box).toBeDisabled();
+    expect(box).not.toBeChecked();
+  });
+
+  it('drops an entry that names no bot once the bot filter is switched on', async () => {
+    const user = userEvent.setup();
+    renderDiary();
+    await loaded();
+
+    await user.click(screen.getByRole('button', { name: 'any bot' }));
+    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    // Switching on starts from nothing ticked, so the bots come back one by one.
+    await user.click(screen.getByRole('checkbox', { name: /bot-alpha/ }));
     await user.keyboard('{Escape}');
 
-    // The bot's own entries are gone; the account's own snapshot is not.
-    expect(screen.queryByText('budget', { selector: '.diary-ink-field' })).not.toBeInTheDocument();
+    // The bot's own budget snapshot stays; the account's own snapshot does not.
+    expect(screen.getByText('budget', { selector: '.diary-ink-field' })).toBeInTheDocument();
+    expect(
+      screen.queryByText('portfolio', { selector: '.diary-ink-field' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('drops an error the server could not attribute while the account filter is on', async () => {
+    const user = userEvent.setup();
+    api.getErrors.mockResolvedValue([
+      {
+        id: 1,
+        time: NOW,
+        type: 'BarsDataError',
+        information: '',
+        accountId: null,
+        brokerageId: null,
+        context: null,
+      },
+    ]);
+    renderDiary();
+    await loaded();
+
+    expect(screen.getByText('BarsDataError')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'any account' }));
+    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    await user.click(screen.getByRole('checkbox', { name: /ACC-1/ }));
+    await user.keyboard('{Escape}');
+
+    // It names no account, so it is not one of the entries the filter asked for.
+    expect(screen.queryByText('BarsDataError')).not.toBeInTheDocument();
     expect(screen.getByText('portfolio', { selector: '.diary-ink-field' })).toBeInTheDocument();
   });
 
