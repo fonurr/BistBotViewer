@@ -214,7 +214,15 @@ test('shows schedule details, suppresses skipped plans and separates time groups
   await expect(scheduled.locator('.diary-row')).toHaveCount(2);
   await expect(scheduled.locator('sup.diary-day-offset')).toHaveText(['+1']);
   await expect(scheduled).toHaveCSS('border-top-width', '1px');
-  await expect(scheduled).toHaveCSS('border-bottom-width', '1px');
+  await expect(scheduled).toHaveCSS('border-bottom-width', '0px');
+  await expect(list.locator('.diary-event-cluster-after-session')).toHaveCSS(
+    'border-top-width',
+    '0px',
+  );
+  await expect(list.locator('.diary-session-boundary hr').first()).toHaveCSS(
+    'border-top-width',
+    '3px',
+  );
   const buyColor = await list
     .locator('.diary-ink-buy')
     .first()

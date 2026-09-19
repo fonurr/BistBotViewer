@@ -93,9 +93,20 @@ export function DiaryList({ groups, calendar, newestFirst }: DiaryListProps) {
               ) : null}
             </div>
             {open
-              ? diaryTimeline(group, calendar, range, newestFirst).map((block) =>
+              ? diaryTimeline(group, calendar, range, newestFirst).map((block, index, blocks) =>
                   block.kind === 'events' ? (
-                    <div className="diary-event-cluster" key={block.events[0]!.id}>
+                    <div
+                      className={`diary-event-cluster${
+                        blocks[index - 1]?.kind === 'session'
+                          ? ' diary-event-cluster-after-session'
+                          : ''
+                      }${
+                        blocks[index + 1]?.kind === 'session'
+                          ? ' diary-event-cluster-before-session'
+                          : ''
+                      }`}
+                      key={block.events[0]!.id}
+                    >
                       {diaryDisplayRows(block.events).map((row) => (
                         <DiaryRow
                           event={row.events[0]!}

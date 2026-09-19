@@ -199,7 +199,8 @@ events. Events at different times retain their chronological order, and untimed 
 Thick horizontal rules mark the session's opening match and end of grace: 09:55 and 18:10,
 or 12:40 on a half day, from the shared calendar/session-hours helpers. Weekends and full holidays
 have none. A boundary appears only within the earliest/latest dated event in the **filtered**
-list, including across days, and splits any five-second group it intersects.
+list, including across days, and splits any five-second group it intersects. The adjacent thin
+cluster edges are suppressed, so a session boundary is drawn as one thick rule by itself.
 
 Days collapse. The **first** day in the current order opens itself and the rest wait behind their
 chevron, which is what keeps the page quick across a year of them — the Book's arrangement, and
