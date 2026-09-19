@@ -78,7 +78,7 @@ describe('buildDiary', () => {
     expect(say(events.find((event) => event.time === created)!)).toContain('Bot created');
   });
 
-  it('reports an array change with colored plus and minus signs, never the whole list', () => {
+  it('colors added and removed array values with their signs, never the whole list', () => {
     const created = Date.parse('2026-08-24T06:00:00.000Z');
     const events = buildDiary(
       sources({
@@ -94,10 +94,8 @@ describe('buildDiary', () => {
     );
     const change = events.find((event) => event.time === noon)!;
     expect(say(change)).toBe('forbidden: +ASELS, BIMAS, -GARAN');
-    expect(change.description).toContainEqual({ ink: 'added', text: '+' });
-    expect(change.description).toContainEqual({ ink: 'removed', text: '-' });
-    expect(change.description).toContainEqual({ ink: 'value', text: 'ASELS, BIMAS' });
-    expect(change.description).toContainEqual({ ink: 'value', text: 'GARAN' });
+    expect(change.description).toContainEqual({ ink: 'added', text: '+ASELS, BIMAS' });
+    expect(change.description).toContainEqual({ ink: 'removed', text: '-GARAN' });
   });
 
   it('calls a lifted TL cap lifted rather than printing nothing', () => {

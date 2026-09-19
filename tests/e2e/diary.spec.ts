@@ -66,7 +66,7 @@ test('lists what the server wrote down outside the order tables, under each even
 
   // The field name, the value and the delta are drawn in three different inks.
   await expect(list.locator('.diary-ink-field').first()).toBeVisible();
-  await expect(list.locator('.diary-ink-added', { hasText: '+' })).toBeVisible();
+  await expect(list.locator('.diary-ink-added', { hasText: '+THYAO' })).toBeVisible();
 
   await oldest.click();
   const cash = list.getByRole('row').filter({ hasText: '1.250,75 TL withdrawn' });

@@ -344,10 +344,10 @@ function arrayDelta(previous: readonly string[], next: readonly string[]): Diary
   const removed = previous.filter((entry) => !after.has(entry));
   const parts: DiaryFragment[][] = [];
   if (added.length > 0) {
-    parts.push([{ ink: 'added', text: '+' }, value(added.join(', '))]);
+    parts.push([{ ink: 'added', text: `+${added.join(', ')}` }]);
   }
   if (removed.length > 0) {
-    parts.push([{ ink: 'removed', text: '-' }, value(removed.join(', '))]);
+    parts.push([{ ink: 'removed', text: `-${removed.join(', ')}` }]);
   }
   return joinFragments(parts, ', ');
 }

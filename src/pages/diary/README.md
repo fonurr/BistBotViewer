@@ -100,7 +100,7 @@ headed `event days` rather than `batch range` so the two words never get confuse
 Each description is built as **fragments**, not as a string, because a reader has to tell a field
 name from the figure behind it at a glance. `src/domain/diary.ts` emits six inks and
 `diary.css` colors them: `text` (prose, muted), `value` (full-strength text), and `added` /
-`removed` for the `+` / `-` array-delta signs, in the live and dead status inks, plus `wait` for scheduled and
+`removed` for the `+` / `-` array deltas, in the live and dead status inks, plus `wait` for scheduled and
 partial-fill states. The three key/value record kinds give `field` a distinct ink: accent for bot
 history, wait for bot snapshots and live for account snapshots. Orders keep their existing
 fragment colors, account transactions keep their prose treatment, and an error's description is
@@ -112,8 +112,8 @@ What each kind says:
   (or `Bot created, account unset` for an incomplete bot — that is the fact, and an empty pair
   would not be). Every later one names **only what changed**, against the configuration before
   it: `limit: 100.000 → 150.000`, `Activated` / `Deactivated`, and for the two arrays
-  `forbidden: +THYAO, -GARAN` rather than the whole list again. Only the signs carry the live/dead
-  colors; the stock names remain value text. A lifted TL cap is
+  `forbidden: +THYAO, -GARAN` rather than the whole list again. Each sign and its following stock
+  list share the live/dead color. A lifted TL cap is
   the word `lifted`, because `null` is a value on `limit` and `limitPerPosition` rather than a
   missing one — it says the percentage beside it is the bot's only cap on that axis. The stamps
   are left out (they are the row's own time) and `complete` with them (it is computed, not
