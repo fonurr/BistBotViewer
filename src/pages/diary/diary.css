@@ -144,6 +144,16 @@
   color: var(--color-accent-400);
 }
 
+/* The three key/value records each get their own scanning color. Order fields
+   keep the base accent above, while cash movements have no field fragments. */
+.diary-row-botSnapshots .diary-ink-field {
+  color: var(--st-wait);
+}
+
+.diary-row-accountSnapshots .diary-ink-field {
+  color: var(--st-live);
+}
+
 .diary-ink-value {
   color: var(--color-text);
 }
@@ -172,6 +182,10 @@
 
 .diary-ink-sell {
   color: var(--side-sell);
+}
+
+.diary-row-errors .diary-description > * {
+  color: var(--st-dead);
 }
 
 .diary-event-cluster {

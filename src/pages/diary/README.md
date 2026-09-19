@@ -99,8 +99,12 @@ headed `event days` rather than `batch range` so the two words never get confuse
 
 Each description is built as **fragments**, not as a string, because a reader has to tell a field
 name from the figure behind it at a glance. `src/domain/diary.ts` emits six inks and
-`diary.css` colors them: `text` (prose, muted), `field` (accent), `value` (full-strength text),
-and `added` / `removed` for array deltas, in the live and dead status inks, plus `wait` for scheduled and partial-fill states.
+`diary.css` colors them: `text` (prose, muted), `value` (full-strength text), and `added` /
+`removed` for array deltas, in the live and dead status inks, plus `wait` for scheduled and
+partial-fill states. The three key/value record kinds give `field` a distinct ink: accent for bot
+history, wait for bot snapshots and live for account snapshots. Orders keep their existing
+fragment colors, account transactions keep their prose treatment, and an error's description is
+dead red.
 
 What each kind says:
 

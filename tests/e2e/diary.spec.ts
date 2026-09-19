@@ -9,6 +9,7 @@ import {
   makeBot,
   makeBotHistoryEntry,
   makeBotSnapshot,
+  makeErrorRow,
 } from '../../src/test/fixtures';
 import { expect, makeBrowserScenario, test } from './safeHarness';
 
@@ -71,6 +72,44 @@ test('lists what the server wrote down outside the order tables, under each even
   const cash = list.getByRole('row').filter({ hasText: '1.250,75 TL withdrawn' });
   await expect(cash).toContainText('ACC-1 · BRK-1');
   await expect(cash.locator('.diary-time-ms')).toHaveText('.000');
+});
+
+test('gives each key-bearing record type its own color and marks errors red', async ({
+  page,
+  safeBridge,
+}) => {
+  const scenario = diaryScenario();
+  scenario.bist.errors = [makeErrorRow({ time: LATER + 1_000 })];
+  safeBridge.useScenario(scenario);
+  await page.clock.setFixedTime(new Date(FIXTURE_NOW_MS));
+  await page.goto('/diary');
+  await safeBridge.stream.open();
+
+  const list = page.getByRole('table', { name: 'Diary entries' });
+  const keyColors = await Promise.all(
+    ['botHistory', 'botSnapshots', 'accountSnapshots'].map((kind) =>
+      list
+        .locator(`.diary-row-${kind} .diary-ink-field`)
+        .first()
+        .evaluate((element) => getComputedStyle(element).color),
+    ),
+  );
+  expect(new Set(keyColors).size).toBe(3);
+
+  const errorDescription = list.locator('.diary-row-errors .diary-description > *');
+  await expect(errorDescription).toHaveText('AccountFeedSilent');
+  const [errorColor, deadColor] = await Promise.all([
+    errorDescription.evaluate((element) => getComputedStyle(element).color),
+    page.evaluate(() => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--st-dead)';
+      document.body.append(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    }),
+  ]);
+  expect(errorColor).toBe(deadColor);
 });
 
 test('reverses the reading order on one button and re-opens the first day', async ({
