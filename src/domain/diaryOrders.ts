@@ -1,7 +1,7 @@
 import { buildBookChains, type BookChainRow, type BookChainSources } from './chains';
 import type { DiaryEvent, DiaryFragment } from './diary';
 import { accountIdentityKey } from './accounts';
-import { formatNumber, toIstanbulDateKey } from './format';
+import { formatClockTimeParts, formatDate, formatNumber, toIstanbulDateKey } from './format';
 import { displayStatus } from './status';
 
 export const DIARY_ORDER_STAGES = ['scheduled', 'sent', 'canceled', 'filled'] as const;
@@ -14,21 +14,22 @@ export function diaryOrderEvents(
   sources: BookChainSources,
   accountAt: (botId: string, time: number | null) => string | null,
 ): DiaryEvent[] {
-  const orders = new Map<string, BookChainRow[]>();
+  const orders = new Map<string, Map<string, BookChainRow>>();
   for (const chain of buildBookChains(sources)) {
     for (const row of chain.rows) {
       // A chain may contain many attempts. Only an order id may join carriers;
       // neither chainId nor the broker's symbol-level positionId can do that.
       const identity = row.clientOrderId?.trim() ? `client:${row.clientOrderId}` : row.key;
       const key = JSON.stringify([row.botId, row.direction, identity]);
-      const rows = orders.get(key) ?? [];
-      rows.push(row);
+      const rows = orders.get(key) ?? new Map<string, BookChainRow>();
+      rows.set(row.key, row);
       orders.set(key, rows);
     }
   }
 
   const events: DiaryEvent[] = [];
-  for (const [key, rows] of orders) {
+  for (const [key, carriers] of orders) {
+    const rows = [...carriers.values()];
     const dead = rows.find((row) => row.source === 'canceled');
     const active = rows.find((row) => row.source === 'active' || row.source === 'scheduled');
     const position = rows.find((row) => row.source === 'position');
@@ -65,6 +66,18 @@ export function diaryOrderEvents(
       filled > 0 &&
       ((originalQuantity !== null && filled < originalQuantity) ||
         (!dead && !!active && active.status !== 'Filled'));
+    const fillCarriers = rows.filter(
+      (entry) => entry.source === 'position' || entry.source === 'closed-trade',
+    );
+    const averagePrice =
+      carriedFills > 0 && carriedFills >= (active?.filledQuantity ?? 0)
+        ? fillCarriers.every((entry) => entry.averagePrice !== null)
+          ? fillCarriers.reduce(
+              (total, entry) => total + entry.averagePrice! * (entry.filledQuantity ?? 0),
+              0,
+            ) / carriedFills
+          : null
+        : (active?.averagePrice ?? null);
 
     const add = (stage: DiaryOrderStage, time: number | null, words: DiaryFragment[]) => {
       // An untimed confirmed fill still matters, but belongs to no invented day.
@@ -86,7 +99,9 @@ export function diaryOrderEvents(
         orderStage: stage,
         description: [
           part('field', row.symbol),
-          part('text', ` ${row.direction} `),
+          part('text', ' '),
+          part(row.direction, row.direction),
+          part('text', ' '),
           ...words,
           ...(origin && stage !== 'canceled'
             ? [part('text', ' from '), part('value', origin)]
@@ -95,15 +110,27 @@ export function diaryOrderEvents(
         ],
       });
     };
-    add('scheduled', stamp('createdTime'), [
-      part(
-        'wait',
-        rows.some((entry) => entry.scheduledTime !== null || entry.source === 'scheduled')
-          ? 'scheduled'
-          : 'created',
-      ),
+    const scheduled = rows.find((entry) => entry.scheduledTime !== null);
+    // Skipped rows retain the requested schedule, but were never admitted to it.
+    if (scheduled && dead?.status !== 'Skipped' && dead?.status !== 'SkippedForNow') {
+      const due = scheduled.scheduledTime!;
+      const created = stamp('createdTime');
+      const dueDate =
+        created !== null && toIstanbulDateKey(created) === toIstanbulDateKey(due)
+          ? ''
+          : `${formatDate(due)} `;
+      add('scheduled', created, [
+        part('wait', 'scheduled'),
+        part('text', ' for '),
+        part('value', `${dueDate}${formatClockTimeParts(due).time}`),
+        ...priceWords('order price', scheduled.orderPrice),
+      ]);
+    }
+    const marketPrice = rows.find((entry) => entry.marketPrice !== null)?.marketPrice ?? null;
+    add('sent', stamp('sentTime'), [
+      part('field', 'sent'),
+      ...priceWords('market price', marketPrice),
     ]);
-    add('sent', stamp('sentTime'), [part('field', 'sent')]);
     if (dead) {
       const status = displayStatus(dead.status);
       const words = status.startsWith('By ')
@@ -130,15 +157,18 @@ export function diaryOrderEvents(
         part(partial ? 'wait' : 'added', partial ? 'partly filled' : 'filled'),
         part('text', ', '),
         part('value', formatNumber(filled, 0)),
-        ...(originalQuantity !== null
+        ...(partial && originalQuantity !== null
           ? [part('text', ' of '), part('value', formatNumber(originalQuantity, 0))]
           : []),
-        part(
-          'text',
-          fillTime === null ? ' shares; fill time unavailable' : ' shares; fill observed',
-        ),
+        part('text', ' shares'),
+        ...priceWords('average fill price', averagePrice),
+        ...(fillTime === null ? [part('text', '; fill time unavailable')] : []),
       ]);
     }
   }
   return events;
+}
+
+function priceWords(label: string, price: number | null): DiaryFragment[] {
+  return price === null ? [] : [part('text', `, ${label} `), part('value', formatNumber(price))];
 }

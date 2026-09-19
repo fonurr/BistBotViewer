@@ -143,7 +143,7 @@ test('filters order lifecycles and updates a partial fill from the shared order 
 
   const list = page.getByRole('table', { name: 'Diary entries' });
   await expect(list).toContainText(
-    'AKBNK buy partly filled, 10 of 40 shares; fill time unavailable from User.',
+    'AKBNK buy partly filled, 10 of 40 shares, average fill price 0,00; fill time unavailable from User.',
   );
   await expect(list).toContainText('THYAO sell rejected: InsufficientFunds.');
   await page.getByRole('button', { name: 'any order stage' }).click();
@@ -171,4 +171,59 @@ test('filters order lifecycles and updates a partial fill from the shared order 
   await page.getByRole('button', { name: 'AKBNK', exact: true }).click();
   await page.keyboard.press('Escape');
   await expect(list.getByRole('row').filter({ hasText: 'partly filled' })).toHaveCount(1);
+});
+
+test('shows schedule details, suppresses skipped plans and separates time groups and sessions', async ({
+  page,
+  safeBridge,
+}, testInfo) => {
+  const scenario = diaryScenario();
+  const created = Date.parse('2026-08-25T21:00:00+03:00');
+  const scheduledTime = Date.parse('2026-08-26T09:55:30+03:00');
+  const buy = makeActiveOrder({
+    status: 'Scheduled',
+    createdTime: created,
+    scheduledTime,
+    sentTime: null,
+    orderTime: null,
+  });
+  scenario.bist.activeOrders = [buy, { ...buy, id: 102, clientOrderId: 'sale', direction: 'sell' }];
+  scenario.bist.canceledOrders = [
+    makeCanceledOrder({
+      symbol: 'MARTI',
+      status: 'Skipped',
+      reason: 'ForbiddenStock',
+      createdTime: created,
+      scheduledTime,
+      sentTime: null,
+      finalSeenTime: created,
+    }),
+  ];
+  safeBridge.useScenario(scenario);
+  await page.goto('/diary');
+  await safeBridge.stream.open();
+  const list = page.getByRole('table', { name: 'Diary entries' });
+  await expect(list).toContainText('AKBNK buy scheduled for 26.08.26 09:55:30, order price 68,25.');
+  await expect(list).toContainText(
+    'AKBNK sell scheduled for 26.08.26 09:55:30, order price 68,25.',
+  );
+  await expect(list.getByRole('row').filter({ hasText: 'MARTI' })).toHaveCount(1);
+  await expect(list).toContainText('MARTI sell skipped: ForbiddenStock.');
+  await expect(list.getByRole('separator', { name: 'Session start 09:55' })).toBeVisible();
+  await expect(list.getByRole('separator', { name: 'Session end 18:10' })).toBeVisible();
+  const scheduled = list.locator('.diary-event-cluster').filter({ hasText: 'scheduled for' });
+  await expect(scheduled).toHaveCount(1);
+  await expect(scheduled.locator('.diary-row')).toHaveCount(3);
+  await expect(scheduled).toHaveCSS('border-top-width', '1px');
+  await expect(scheduled).toHaveCSS('border-bottom-width', '1px');
+  const buyColor = await list
+    .locator('.diary-ink-buy')
+    .first()
+    .evaluate((element) => getComputedStyle(element).color);
+  const sellColor = await list
+    .locator('.diary-ink-sell')
+    .first()
+    .evaluate((element) => getComputedStyle(element).color);
+  expect(buyColor).not.toBe(sellColor);
+  await page.screenshot({ path: testInfo.outputPath('diary-timeline.png'), fullPage: true });
 });

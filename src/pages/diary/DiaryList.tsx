@@ -2,10 +2,20 @@ import { CaretDown, CaretRight } from '@phosphor-icons/react';
 import { useLayoutEffect, useRef, useState } from 'react';
 
 import type { DiaryDateGroup, DiaryEvent } from '../../domain/diary';
-import { formatClockTimeParts, formatDateKey, plural, weekdayName } from '../../domain/format';
+import type { HolidayCalendar } from '../../domain/calendar';
+import { diaryTimeRange, diaryTimeline } from '../../domain/diaryTimeline';
+import {
+  formatClockTimeParts,
+  formatDateKey,
+  formatTime,
+  plural,
+  weekdayName,
+} from '../../domain/format';
 
 interface DiaryListProps {
   groups: readonly DiaryDateGroup[];
+  calendar: HolidayCalendar | null;
+  newestFirst: boolean;
 }
 
 /**
@@ -15,10 +25,11 @@ interface DiaryListProps {
  * `closed` is the first day they shut, so the default follows the first day
  * whatever the filters and the sort make it.
  */
-export function DiaryList({ groups }: DiaryListProps) {
+export function DiaryList({ groups, calendar, newestFirst }: DiaryListProps) {
   const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const collapseAnchor = useRef<{ heading: HTMLButtonElement; top: number } | null>(null);
+  const range = diaryTimeRange(groups);
 
   useLayoutEffect(() => {
     const anchor = collapseAnchor.current;
@@ -81,7 +92,27 @@ export function DiaryList({ groups }: DiaryListProps) {
                 </div>
               ) : null}
             </div>
-            {open ? group.events.map((event) => <DiaryRow event={event} key={event.id} />) : null}
+            {open
+              ? diaryTimeline(group, calendar, range, newestFirst).map((block) =>
+                  block.kind === 'events' ? (
+                    <div className="diary-event-cluster" key={block.events[0]!.id}>
+                      {block.events.map((event) => (
+                        <DiaryRow event={event} key={event.id} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div
+                      role="row"
+                      className="diary-session-boundary"
+                      key={`session:${block.edge}`}
+                    >
+                      <div role="cell" aria-colspan={3}>
+                        <hr aria-label={`Session ${block.edge} ${formatTime(block.time)}`} />
+                      </div>
+                    </div>
+                  ),
+                )
+              : null}
           </section>
         );
       })}

@@ -41,6 +41,63 @@ const all = {
 };
 
 describe('order diary', () => {
+  it.each(['Skipped', 'SkippedForNow'])(
+    'never draws the hypothetical schedule of a %s order',
+    (status) => {
+      const order = makeCanceledOrder({
+        status,
+        createdTime: 100,
+        scheduledTime: 200,
+        sentTime: null,
+        finalSeenTime: 100,
+      });
+      const events = eventsFor({ canceledOrders: [order] });
+      expect(events.map((event) => event.orderStage)).toEqual(['canceled']);
+    },
+  );
+
+  it('shows the planned day and price, sent market price, and fill price with side colors', () => {
+    const order = makePosition({
+      createdTime: Date.parse('2026-08-24T21:00:00+03:00'),
+      scheduledTime: Date.parse('2026-08-25T09:55:30+03:00'),
+      orderPrice: 300,
+      marketPrice: 299,
+      averagePrice: 300.25,
+    });
+    const events = eventsFor({ positions: [order] });
+    expect(say(events[0]!)).toBe('THYAO buy scheduled for 25.08.26 09:55:30, order price 300,00.');
+    expect(say(events[1]!)).toBe('THYAO buy sent, market price 299,00.');
+    expect(say(events[2]!)).toBe('THYAO buy filled, 100 shares, average fill price 300,25.');
+    expect(
+      events.every((event) =>
+        event.description.some((fragment) => fragment.ink === 'buy' && fragment.text === 'buy'),
+      ),
+    ).toBe(true);
+    expect(events.some((event) => say(event).includes('fill observed'))).toBe(false);
+    const sale = eventsFor({
+      activeOrders: [makeActiveOrder({ direction: 'sell', marketPrice: null })],
+    });
+    expect(say(sale[0]!)).toBe('AKBNK sell sent.');
+    expect(sale[0]!.description.some((fragment) => fragment.ink === 'sell')).toBe(true);
+  });
+
+  it('deduplicates repeated carriers without losing distinct sides, bots or trades', () => {
+    const order = makeActiveOrder({ scheduledTime: 200, createdTime: 100 });
+    const trade = makeClosedTrade();
+    const data = { activeOrders: [order], closedTrades: [trade] };
+    expect(eventsFor({ activeOrders: [order, order], closedTrades: [trade, trade] })).toEqual(
+      eventsFor(data),
+    );
+    const buysAndSells = eventsFor({
+      activeOrders: [order, { ...order, direction: 'sell' }, { ...order, botId: 'another' }],
+    });
+    expect(buysAndSells.filter((event) => event.orderStage === 'scheduled')).toHaveLength(3);
+  });
+
+  it('does not invent a creation event or missing prices', () => {
+    const events = eventsFor({ activeOrders: [makeActiveOrder({ marketPrice: null })] });
+    expect(events.map((event) => say(event))).toEqual(['AKBNK buy sent.']);
+  });
   it('does not infer a fill from a zero canceled quantity on an unsized order', () => {
     const events = eventsFor({
       canceledOrders: [
@@ -71,7 +128,7 @@ describe('order diary', () => {
       ['sent', 300],
       ['canceled', 400],
     ]);
-    expect(say(events[0]!)).toBe('THYAO sell scheduled.');
+    expect(say(events[0]!)).toBe('THYAO sell scheduled for 02:00:00, order price 310,00.');
     expect(say(events[2]!)).toBe('THYAO sell canceled by user: BuyGuard.');
   });
 
@@ -79,7 +136,7 @@ describe('order diary', () => {
     'includes %s under canceled without inventing a send',
     (status) => {
       const events = eventsFor({ canceledOrders: [makeCanceledOrder({ status, sentTime: null })] });
-      expect(events.map((event) => event.orderStage)).toEqual(['scheduled', 'canceled']);
+      expect(events.map((event) => event.orderStage)).toEqual(['canceled']);
     },
   );
 
@@ -87,7 +144,7 @@ describe('order diary', () => {
     const events = eventsFor({
       activeOrders: [makeActiveOrder({ status: 'CancelRejectTrace', cancelSource: 'user' })],
     });
-    expect(events.map((event) => event.orderStage)).toEqual(['scheduled', 'sent']);
+    expect(events.map((event) => event.orderStage)).toEqual(['sent']);
   });
 
   it('keeps a working partial fill untimed, including an external order with no server stamps', () => {
@@ -104,7 +161,9 @@ describe('order diary', () => {
     });
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ orderStage: 'filled', time: null, date: null });
-    expect(say(events[0]!)).toContain('partly filled, 10 of 40 shares; fill time unavailable');
+    expect(say(events[0]!)).toContain(
+      'partly filled, 10 of 40 shares, average fill price 0,00; fill time unavailable',
+    );
     expect(events[0]!.description.find((fragment) => fragment.text === 'partly filled')?.ink).toBe(
       'wait',
     );
@@ -125,14 +184,9 @@ describe('order diary', () => {
       ],
       positions: [makePosition({ clientOrderId: 'buy', orderQuantity: 100, quantity: 40 })],
     });
-    expect(events.map((event) => event.orderStage)).toEqual([
-      'scheduled',
-      'sent',
-      'canceled',
-      'filled',
-    ]);
-    expect(say(events[2]!)).toContain('60 remaining: PartiallyCanceled');
-    expect(say(events[3]!)).toContain('partly filled, 40 of 100 shares');
+    expect(events.map((event) => event.orderStage)).toEqual(['sent', 'canceled', 'filled']);
+    expect(say(events[1]!)).toContain('60 remaining: PartiallyCanceled');
+    expect(say(events[2]!)).toContain('partly filled, 40 of 100 shares');
   });
 
   it('counts a partially canceled sell and its closed trade once', () => {
@@ -142,7 +196,7 @@ describe('order diary', () => {
       ],
       closedTrades: [makeClosedTrade({ clientCloseOrderId: 'sell', quantity: 40 })],
     }).filter((event) => say(event).startsWith('THYAO sell'));
-    expect(events).toHaveLength(4);
+    expect(events).toHaveLength(3);
     expect(say(events.find((event) => event.orderStage === 'filled')!)).toContain('40 of 100');
   });
 
@@ -165,9 +219,12 @@ describe('order diary', () => {
       ],
     });
     const buys = events.filter((event) => say(event).startsWith('THYAO buy'));
-    expect(buys).toHaveLength(3);
+    expect(buys).toHaveLength(2);
     expect(say(buys.find((event) => event.orderStage === 'filled')!)).toContain(
-      'filled, 100 of 100',
+      'filled, 100 shares',
+    );
+    expect(say(buys.find((event) => event.orderStage === 'filled')!)).toContain(
+      'average fill price 300,45',
     );
     expect(events.filter((event) => event.orderStage === 'filled')).toHaveLength(3);
   });
@@ -180,8 +237,8 @@ describe('order diary', () => {
         makeActiveOrder({ id: 3, clientOrderId: 'retry', origin: 'Retry' }),
       ],
     });
-    expect(events).toHaveLength(6);
-    expect(new Set(events.map((event) => event.id)).size).toBe(6);
+    expect(events).toHaveLength(3);
+    expect(new Set(events.map((event) => event.id)).size).toBe(3);
   });
 
   it('never uses registration time as the fill time and places untimed fills last in either sort', () => {
@@ -203,7 +260,7 @@ describe('order diary', () => {
       accountTransactions: [],
       errors: [],
       orders: sources({
-        activeOrders: [makeActiveOrder({ createdTime: 100, sentTime: 600 })],
+        activeOrders: [makeActiveOrder({ createdTime: 100, scheduledTime: 200, sentTime: 600 })],
         closedTrades: [makeClosedTrade({ accountId: 'stored' })],
       }),
     }).filter((event) => event.kind === 'orders');
@@ -238,10 +295,10 @@ describe('order diary', () => {
     expect(filterDiary(events, filter)).toHaveLength(1);
     expect(diaryKindCounts(events, filter).get('orders')).toBe(1);
     expect(filterDiary(events, { ...filter, orderStages: new Set() })).toEqual([]);
-    expect(filterDiary(events, { ...filter, orderStageFilter: false })).toHaveLength(2);
+    expect(filterDiary(events, { ...filter, orderStageFilter: false })).toHaveLength(1);
     expect(
       filterDiary(events, { ...all, symbols: new Set(['AKBNK']), symbolsExcluded: true }),
-    ).toHaveLength(2);
-    expect(filterDiary(events, { ...all, originFilter: true, origins: null })).toHaveLength(2);
+    ).toHaveLength(1);
+    expect(filterDiary(events, { ...all, originFilter: true, origins: null })).toHaveLength(1);
   });
 });

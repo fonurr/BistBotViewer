@@ -43,7 +43,7 @@ export const diaryKindLabels: Readonly<Record<DiaryKind, string>> = {
  * so the sentence is built as fragments and the page colors them, rather than
  * as one string a stylesheet could never take apart again.
  */
-export type DiaryInk = 'text' | 'field' | 'value' | 'added' | 'removed' | 'wait';
+export type DiaryInk = 'text' | 'field' | 'value' | 'added' | 'removed' | 'wait' | 'buy' | 'sell';
 
 export interface DiaryFragment {
   ink: DiaryInk;

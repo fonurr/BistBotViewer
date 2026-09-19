@@ -147,6 +147,7 @@ export const DIARY_ERROR_LIMIT = 2_000;
 export function useDiaryData() {
   const results = useQueries({
     queries: [
+      { queryKey: bistKeys.holidays, queryFn: bistApi.getHolidays },
       { queryKey: bistKeys.bots, queryFn: bistApi.getBots },
       { queryKey: bistKeys.accounts, queryFn: bistApi.getAccounts },
       { queryKey: bistKeys.activeOrders(allBots), queryFn: () => bistApi.getActiveOrders(allBots) },
@@ -173,6 +174,7 @@ export function useDiaryData() {
     ],
   });
   const [
+    holidays,
     bots,
     accounts,
     activeOrders,
@@ -186,6 +188,7 @@ export function useDiaryData() {
     errors,
   ] = results;
   return {
+    holidays: holidays.data ?? null,
     activeOrders: activeOrders.data ?? [],
     canceledOrders: canceledOrders.data ?? [],
     positions: positions.data ?? [],

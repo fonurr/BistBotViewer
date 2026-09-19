@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { useDiaryData } from '../../app/dataHooks';
 import { useViewerRuntime } from '../../app/ViewerRuntime';
 import { buildDiary, diaryDates, filterDiary, groupDiaryByDate } from '../../domain/diary';
+import { holidayCalendar } from '../../domain/calendar';
 import { plural, toIstanbulDateKey } from '../../domain/format';
 import { DiaryFilters } from './DiaryFilters';
 import { DiaryList } from './DiaryList';
@@ -60,6 +61,10 @@ export function DiaryPage() {
     ],
   );
 
+  const calendar = useMemo(
+    () => (data.holidays === null ? null : holidayCalendar(data.holidays)),
+    [data.holidays],
+  );
   const dates = useMemo(() => diaryDates(events), [events]);
   const visible = useMemo(() => filterDiary(events, filters), [events, filters]);
   const groups = useMemo(
@@ -128,7 +133,7 @@ export function DiaryPage() {
             : 'No entry falls inside this window.'}
         </p>
       ) : null}
-      <DiaryList groups={groups} />
+      <DiaryList groups={groups} calendar={calendar} newestFirst={filters.newestFirst} />
     </div>
   );
 }

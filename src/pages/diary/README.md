@@ -33,7 +33,8 @@ The non-order reads are not journaled. The order lifecycle uses the Book's same 
 journaled reads and cache keys: `GetActiveOrders`, `GetCanceledOrders`, `GetPositions`, and
 `GetClosedTrades`, all with `botId: '*'`. Validated SSE updates and snapshot reconciliation
 therefore update both pages. No event-arrival timestamps or browser history are retained.
-The bot and account reads share the Book's cache too.
+The bot and account reads share the Book's cache too. `GetHolidays` shares that cache as well,
+and supplies full/half-day session boundaries; no session lines are drawn while that read is unavailable.
 
 ## What counts as an entry
 
@@ -52,14 +53,19 @@ the same reason inverted: there is nothing it can name that changed.
 Only `clientOrderId`, scoped by bot and side, joins multiple carriers of an order. Without it,
 source-row identities stay separate; neither `chainId` nor `positionId` identifies an order.
 
-- **Scheduled:** `createdTime`, including creation of an immediate order (described as `created`).
-  `scheduledTime` is the intended send time and never dates this event.
-- **Sent:** `sentTime`, never the exchange's registration time or an inferred send.
+- **Scheduled:** `createdTime` for a recorded schedule only. The sentence names its target
+  `scheduledTime` (Istanbul clock, plus the date when it differs) and stored order price.
+  Immediate orders have no creation entry. Skipped/SkippedForNow rows carry a hypothetical
+  schedule but were never admitted, so they produce no scheduled event.
+- **Sent:** `sentTime`, never the exchange's registration time or an inferred send. The stored
+  market price is included when present and explicitly labeled `market price`.
 - **Canceled:** `finalSeenTime` from CanceledOrders, including rejected, expired and skipped
   orders. The stored status and reason are shown. An in-flight cancellation is not an end.
 - **Filled:** confirmed quantity, dated by `finalSeenTime` carried by a position or closed
-  trade, or the canceled remainder's observation time if that is the only evidence. The copy
-  says `fill observed`: the API stores no true execution timestamp.
+  trade, or the canceled remainder's observation time if that is the only timestamp. The API
+  stores no true execution timestamp; this remains stated in the filter help, not on each row.
+  The sentence includes the average fill price, weighted by quantity over remaining holdings and
+  closed slices of the same order. Missing prices stay absent.
 
 A working partial fill has no stored observation time. It appears under **Fill time unavailable**,
 with an empty clock, never under the order's send/registration date. This group stays last in
@@ -72,7 +78,10 @@ Fills are cumulative per order, not fabricated individual execution ticks. An op
 quantity is its remaining position plus the closed slices carrying that same buy. A partially
 canceled order has one fill event and one cancellation event for the remainder, without counting
 its position/trade carrier twice. Partial fills are amber; confirmed completed fills are green.
-Creation/send events are deduplicated across those same carriers. Missing stamps are not invented.
+Scheduled/send events are deduplicated across those same carriers; repeated source rows are also
+counted once. Different bots, buy/sell legs and retry attempts remain distinct. Missing stamps are
+not invented. Full fills use `203 shares`; only partial fills use `43 of 203 shares`, when the
+original order quantity is stored. Direction words use the Book's green buy/red sell inks.
 
 ## The day an entry is filed under
 
@@ -177,6 +186,15 @@ The type counts follow both switches, so a kind's count is what it would contrib
 rest of the toolbar as it actually stands.
 
 ## The list
+
+Events are enclosed by thin, dim horizontal rules in groups spanning at most five seconds from
+the group's earliest event. A singleton has both rules too. Groups keep the same membership when
+the reading direction reverses. Untimed fills are separate singletons.
+
+Thick horizontal rules mark the session's opening match and end of grace: 09:55 and 18:10,
+or 12:40 on a half day, from the shared calendar/session-hours helpers. Weekends and full holidays
+have none. A boundary appears only within the earliest/latest dated event in the **filtered**
+list, including across days, and splits any five-second group it intersects.
 
 Days collapse. The **first** day in the current order opens itself and the rest wait behind their
 chevron, which is what keeps the page quick across a year of them — the Book's arrangement, and

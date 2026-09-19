@@ -159,3 +159,25 @@
 .diary-ink-wait {
   color: var(--st-wait);
 }
+
+.diary-ink-buy {
+  color: var(--side-buy);
+}
+
+.diary-ink-sell {
+  color: var(--side-sell);
+}
+
+.diary-event-cluster {
+  border-block: 1px solid var(--color-divider);
+}
+
+.diary-event-cluster + .diary-event-cluster {
+  border-top: 0;
+}
+
+.diary-session-boundary hr {
+  margin: var(--space-2) 0;
+  border: 0;
+  border-top: 3px solid var(--mut);
+}

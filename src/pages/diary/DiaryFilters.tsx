@@ -224,7 +224,7 @@ export function DiaryFilters(props: DiaryFiltersProps) {
           onChange={(orderStages) => onChange({ ...filters, orderStages })}
           one="stage"
           many="stages"
-          note="Scheduled uses creation time; canceled includes rejected, expired and skipped orders. Filled includes partial fills. Final times are when the server observed the result; fills without a time appear separately, outside the date range."
+          note="Scheduled uses creation time and names the planned send time; canceled includes rejected, expired and skipped orders. Filled includes partial fills. Final times are when the server observed the result; fills without a time appear separately, outside the date range."
         />
         <DiarySortToggle
           newestFirst={filters.newestFirst}

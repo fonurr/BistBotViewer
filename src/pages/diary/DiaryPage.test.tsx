@@ -18,6 +18,7 @@ import {
 import { DiaryPage } from './DiaryPage';
 
 const api = vi.hoisted(() => ({
+  getHolidays: vi.fn(),
   getActiveOrders: vi.fn(),
   getCanceledOrders: vi.fn(),
   getPositions: vi.fn(),
@@ -71,6 +72,7 @@ describe('Diary reads', () => {
     ['getAccountSnapshots', 'GetAccountSnapshots'],
     ['getAccountTransactions', 'GetAccountTransactions'],
     ['getErrors', 'GetErrors'],
+    ['getHolidays', 'GetHolidays'],
     ['getActiveOrders', 'GetActiveOrders'],
     ['getCanceledOrders', 'GetCanceledOrders'],
     ['getPositions', 'GetPositions'],
@@ -235,11 +237,11 @@ describe('Diary toolbar', () => {
     await user.click(screen.getByRole('checkbox', { name: 'filter' }));
     expect(screen.getByRole('status')).toHaveTextContent('0 entries');
     await user.click(screen.getByRole('button', { name: 'all' }));
-    expect(screen.getByRole('status')).toHaveTextContent('6 entries of 11');
+    expect(screen.getByRole('status')).toHaveTextContent('4 entries of 9');
     await user.click(screen.getByRole('button', { name: 'none' }));
     await user.click(screen.getByRole('checkbox', { name: 'filled' }));
     await user.keyboard('{Escape}');
-    expect(screen.getByRole('status')).toHaveTextContent('1 entry of 11');
+    expect(screen.getByRole('status')).toHaveTextContent('1 entry of 9');
     expect(screen.getByText('partly filled')).toHaveClass('diary-ink-wait');
     expect(screen.queryByText('budget', { selector: '.diary-ink-field' })).not.toBeInTheDocument();
 
@@ -316,6 +318,7 @@ function renderDiary() {
 }
 
 function useFixture() {
+  api.getHolidays.mockResolvedValue([]);
   api.getActiveOrders.mockResolvedValue([]);
   api.getCanceledOrders.mockResolvedValue([]);
   api.getPositions.mockResolvedValue([]);
