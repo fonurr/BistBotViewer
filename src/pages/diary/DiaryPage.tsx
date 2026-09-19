@@ -2,13 +2,7 @@ import { useMemo, useState } from 'react';
 
 import { useDiaryData } from '../../app/dataHooks';
 import { useViewerRuntime } from '../../app/ViewerRuntime';
-import {
-  buildDiary,
-  diaryDates,
-  filterDiary,
-  groupDiaryByDate,
-  type DiaryKind,
-} from '../../domain/diary';
+import { buildDiary, diaryDates, filterDiary, groupDiaryByDate } from '../../domain/diary';
 import { plural, toIstanbulDateKey } from '../../domain/format';
 import { DiaryFilters } from './DiaryFilters';
 import { DiaryList } from './DiaryList';
@@ -16,7 +10,7 @@ import { defaultDiaryFilters, type DiaryFilterState } from './types';
 import './diary.css';
 
 /**
- * Everything the server wrote down that is not an order: the configurations a
+ * Everything the server wrote down, including order lifecycles: the configurations a
  * bot has been through, the budget and account figures behind each of them, the
  * cash that moved, and the errors it recorded — one list, under the day each
  * entry happened on.
@@ -37,6 +31,12 @@ export function DiaryPage() {
   const events = useMemo(
     () =>
       buildDiary({
+        orders: {
+          activeOrders: data.activeOrders,
+          canceledOrders: data.canceledOrders,
+          positions: data.positions,
+          closedTrades: data.closedTrades,
+        },
         bots: data.bots,
         accounts: data.accounts,
         botHistory: data.botHistory,
@@ -46,6 +46,10 @@ export function DiaryPage() {
         errors: data.errors,
       }),
     [
+      data.activeOrders,
+      data.canceledOrders,
+      data.positions,
+      data.closedTrades,
       data.accountSnapshots,
       data.accountTransactions,
       data.accounts,
@@ -57,32 +61,13 @@ export function DiaryPage() {
   );
 
   const dates = useMemo(() => diaryDates(events), [events]);
-  const visible = useMemo(
-    () =>
-      filterDiary(events, {
-        kinds: filters.kinds as ReadonlySet<DiaryKind> | null,
-        botFilter: filters.botFilter,
-        botIds: filters.botIds,
-        accountFilter: filters.accountFilter,
-        accountKeys: filters.accountKeys,
-        from: filters.from,
-        to: filters.to,
-      }),
-    [
-      events,
-      filters.accountFilter,
-      filters.accountKeys,
-      filters.botFilter,
-      filters.botIds,
-      filters.from,
-      filters.kinds,
-      filters.to,
-    ],
-  );
+  const visible = useMemo(() => filterDiary(events, filters), [events, filters]);
   const groups = useMemo(
     () => groupDiaryByDate(visible, filters.newestFirst),
     [filters.newestFirst, visible],
   );
+
+  const datedGroupCount = groups.filter((group) => group.date !== null).length;
 
   return (
     <div className="diary-page page-pad">
@@ -133,13 +118,13 @@ export function DiaryPage() {
           {visible.length === events.length
             ? plural(visible.length, 'entry', 'entries')
             : `${plural(visible.length, 'entry', 'entries')} of ${events.length}`}
-          {groups.length > 0 ? ` · ${plural(groups.length, 'day')}` : ''}
+          {datedGroupCount > 0 ? ` · ${plural(datedGroupCount, 'day')}` : ''}
         </p>
       )}
       {!data.isPending && data.error === null && groups.length === 0 ? (
         <p className="diary-empty">
           {events.length === 0
-            ? 'The server has written nothing outside the order tables that carries a time of its own.'
+            ? 'The server has written no diary entries.'
             : 'No entry falls inside this window.'}
         </p>
       ) : null}

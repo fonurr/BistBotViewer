@@ -3,6 +3,8 @@ import {
   makeAccount,
   makeAccountSnapshot,
   makeAccountTransaction,
+  makeActiveOrder,
+  makeCanceledOrder,
   makeBookReadFixture,
   makeBot,
   makeBotHistoryEntry,
@@ -17,6 +19,10 @@ function diaryScenario() {
   return makeBrowserScenario({
     bist: {
       ...makeBookReadFixture(),
+      activeOrders: [],
+      canceledOrders: [],
+      positions: [],
+      closedTrades: [],
       bots: [makeBot({ forbiddenStocks: ['THYAO'], limit: 750_000, startTime: LATER })],
       accounts: [makeAccount()],
       botHistory: [
@@ -109,9 +115,60 @@ test('holds no write path at all', async ({ page, safeBridge }) => {
     'GetAccountTransactions',
     'GetErrors',
     'GetHolidays',
+    'GetActiveOrders',
+    'GetCanceledOrders',
+    'GetPositions',
+    'GetClosedTrades',
   ]);
   for (const request of safeBridge.requests) {
     const rpc = request.path.split('/rpc/')[1];
     if (rpc) expect(reads).toContain(decodeURIComponent(rpc));
   }
+});
+
+test('filters order lifecycles and updates a partial fill from the shared order stream', async ({
+  page,
+  safeBridge,
+}) => {
+  const scenario = diaryScenario();
+  const order = makeActiveOrder({ origin: 'User', status: 'PartiallyFilled', filledQuantity: 10 });
+  scenario.bist.activeOrders = [order];
+  scenario.bist.canceledOrders = [
+    makeCanceledOrder({ status: 'Rejected', reason: 'InsufficientFunds' }),
+  ];
+  safeBridge.useScenario(scenario);
+  await page.clock.setFixedTime(new Date(FIXTURE_NOW_MS));
+  await page.goto('/diary');
+  await safeBridge.stream.open();
+
+  const list = page.getByRole('table', { name: 'Diary entries' });
+  await expect(list).toContainText(
+    'AKBNK buy partly filled, 10 of 40 shares; fill time unavailable from User.',
+  );
+  await expect(list).toContainText('THYAO sell rejected: InsufficientFunds.');
+  await page.getByRole('button', { name: 'any order stage' }).click();
+  await expect(page.getByRole('checkbox', { name: 'filled', exact: true })).not.toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'filled', exact: true })).toBeDisabled();
+  await page.getByRole('checkbox', { name: 'filter', exact: true }).check();
+  await page.getByRole('checkbox', { name: 'filled', exact: true }).check();
+  await page.keyboard.press('Escape');
+  await expect(list).not.toContainText('rejected');
+
+  await safeBridge.stream.emit('write', {
+    table: 'ActiveOrders',
+    action: 'update',
+    botId: order.botId,
+    row: { ...order, filledQuantity: 20 },
+  });
+  await expect(list).toContainText('20 of 40 shares');
+  await expect(list.getByRole('row').filter({ hasText: 'partly filled' })).toHaveCount(1);
+
+  await page.getByRole('button', { name: 'any origin' }).click();
+  await page.getByRole('checkbox', { name: 'filter', exact: true }).check();
+  await page.getByRole('checkbox', { name: 'User', exact: true }).check();
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'any symbol' }).click();
+  await page.getByRole('button', { name: 'AKBNK', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect(list.getByRole('row').filter({ hasText: 'partly filled' })).toHaveCount(1);
 });

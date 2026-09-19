@@ -142,10 +142,10 @@ The Book is the source of shared chain, order-form, confirmation, result, filter
 status-row behavior. Build or change those shared states there before adapting them elsewhere.
 Chains are built strictly from `chainId`; null links stay independent.
 
-The Diary is the one page that is **not** filed by batch: it covers everything the server wrote
-down that is not an order — bot configurations, bot and account snapshots, cash movements and
-stored errors — under the event's own Istanbul day. Nothing there is a chain, so nothing there is
-owed a batch. It is read-only and holds no write path. See the
+The Diary files bot configurations, bot and account snapshots, cash movements, stored errors,
+and order lifecycle events under their own Istanbul day, rather than by batch. Order events use
+the Book's same four cached tables. Fill times are server observation times; fills with no stored
+time appear in a separate undated group. It is read-only and holds no write path. See the
 [Diary README](src/pages/diary/README.md).
 
 ## UI contract

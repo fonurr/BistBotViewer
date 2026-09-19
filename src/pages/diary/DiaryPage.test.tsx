@@ -7,6 +7,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   FIXTURE_NOW_MS,
   makeAccount,
+  makeActiveOrder,
+  makeCanceledOrder,
   makeAccountSnapshot,
   makeAccountTransaction,
   makeBot,
@@ -16,6 +18,10 @@ import {
 import { DiaryPage } from './DiaryPage';
 
 const api = vi.hoisted(() => ({
+  getActiveOrders: vi.fn(),
+  getCanceledOrders: vi.fn(),
+  getPositions: vi.fn(),
+  getClosedTrades: vi.fn(),
   getBots: vi.fn(),
   getAccounts: vi.fn(),
   getBotHistory: vi.fn(),
@@ -40,10 +46,17 @@ beforeEach(() => {
 });
 
 describe('Diary reads', () => {
-  it('reads all five sources through the API and never a log database', async () => {
+  it('reads diary and Book order sources through the API and never a log database', async () => {
     renderDiary();
     await loaded();
 
+    for (const read of [
+      api.getActiveOrders,
+      api.getCanceledOrders,
+      api.getPositions,
+      api.getClosedTrades,
+    ])
+      expect(read).toHaveBeenCalledWith('*');
     expect(api.getBotHistory).toHaveBeenCalledWith('*');
     expect(api.getBotSnapshots).toHaveBeenCalledWith('*');
     expect(api.getAccountSnapshots).toHaveBeenCalled();
@@ -58,6 +71,10 @@ describe('Diary reads', () => {
     ['getAccountSnapshots', 'GetAccountSnapshots'],
     ['getAccountTransactions', 'GetAccountTransactions'],
     ['getErrors', 'GetErrors'],
+    ['getActiveOrders', 'GetActiveOrders'],
+    ['getCanceledOrders', 'GetCanceledOrders'],
+    ['getPositions', 'GetPositions'],
+    ['getClosedTrades', 'GetClosedTrades'],
   ] as const)('says the diary is incomplete when %s fails', async (method, label) => {
     api[method].mockRejectedValueOnce(new Error(`${label} unavailable`));
 
@@ -130,10 +147,10 @@ describe('Diary toolbar', () => {
 
     expect(screen.getByRole('status')).toHaveTextContent('5 entries · 2 days');
 
-    await user.click(screen.getByRole('button', { name: '5 types' }));
+    await user.click(screen.getByRole('button', { name: '6 types' }));
     await user.click(screen.getByRole('checkbox', { name: /Account transactions/ }));
 
-    expect(screen.getByRole('button', { name: '4 types' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '5 types' })).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('4 entries of 5');
   });
 
@@ -199,6 +216,48 @@ describe('Diary toolbar', () => {
     expect(screen.getByText('portfolio', { selector: '.diary-ink-field' })).toBeInTheDocument();
   });
 
+  it('filters order stages with the account-style switch, all and none, and combines origins and symbols', async () => {
+    const user = userEvent.setup();
+    api.getActiveOrders.mockResolvedValue([
+      makeActiveOrder({ origin: 'User', filledQuantity: 10, status: 'PartiallyFilled' }),
+    ]);
+    api.getCanceledOrders.mockResolvedValue([
+      makeCanceledOrder({ status: 'Rejected', reason: 'InsufficientFunds' }),
+    ]);
+    renderDiary();
+    await loaded();
+    expect(screen.getByText('Fill time unavailable')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'any order stage' }));
+    for (const stage of ['scheduled', 'sent', 'canceled', 'filled']) {
+      expect(screen.getByRole('checkbox', { name: stage })).not.toBeChecked();
+      expect(screen.getByRole('checkbox', { name: stage })).toBeDisabled();
+    }
+    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    expect(screen.getByRole('status')).toHaveTextContent('0 entries');
+    await user.click(screen.getByRole('button', { name: 'all' }));
+    expect(screen.getByRole('status')).toHaveTextContent('6 entries of 11');
+    await user.click(screen.getByRole('button', { name: 'none' }));
+    await user.click(screen.getByRole('checkbox', { name: 'filled' }));
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('status')).toHaveTextContent('1 entry of 11');
+    expect(screen.getByText('partly filled')).toHaveClass('diary-ink-wait');
+    expect(screen.queryByText('budget', { selector: '.diary-ink-field' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'any origin' }));
+    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    await user.click(screen.getByRole('checkbox', { name: 'User' }));
+    await user.keyboard('{Escape}');
+    await user.click(screen.getByRole('button', { name: 'any symbol' }));
+    await user.click(screen.getByRole('button', { name: 'THYAO' }));
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('status')).toHaveTextContent('0 entries');
+
+    await user.click(screen.getByRole('button', { name: '1 stage' }));
+    await user.click(screen.getByRole('checkbox', { name: 'filter' }));
+    expect(screen.getByRole('checkbox', { name: 'filled' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'filled' })).toBeDisabled();
+  });
+
   it('warns when the error read stopped at its own cap rather than at the data', async () => {
     const user = userEvent.setup();
     // Dated onto an older day on purpose: only the first day expands, so the
@@ -218,7 +277,7 @@ describe('Diary toolbar', () => {
 
     renderDiary();
     await loaded();
-    await user.click(screen.getByRole('button', { name: '5 types' }));
+    await user.click(screen.getByRole('button', { name: '6 types' }));
 
     expect(screen.getByText(/reach only as far back as/)).toBeInTheDocument();
   });
@@ -257,6 +316,10 @@ function renderDiary() {
 }
 
 function useFixture() {
+  api.getActiveOrders.mockResolvedValue([]);
+  api.getCanceledOrders.mockResolvedValue([]);
+  api.getPositions.mockResolvedValue([]);
+  api.getClosedTrades.mockResolvedValue([]);
   api.getBots.mockResolvedValue([makeBot({ forbiddenStocks: ['THYAO'], startTime: NOW })]);
   api.getAccounts.mockResolvedValue([makeAccount()]);
   api.getBotHistory.mockResolvedValue([

@@ -38,20 +38,21 @@ export function DiaryList({ groups }: DiaryListProps) {
       ref={measureDiaryNavigation}
     >
       {groups.map((group, index) => {
-        const openByDefault = index === 0;
-        const open = openByDefault ? !closed.has(group.date) : opened.has(group.date);
+        const groupKey = group.date ?? 'untimed';
+        const openByDefault = index === 0 || group.date === null;
+        const open = openByDefault ? !closed.has(groupKey) : opened.has(groupKey);
         const toggle = (heading: HTMLButtonElement) => {
           if (open) {
             collapseAnchor.current = { heading, top: heading.getBoundingClientRect().top };
-            setOpened((current) => without(current, group.date));
-            setClosed((current) => with_(current, group.date));
+            setOpened((current) => without(current, groupKey));
+            setClosed((current) => with_(current, groupKey));
           } else {
-            setOpened((current) => with_(current, group.date));
-            setClosed((current) => without(current, group.date));
+            setOpened((current) => with_(current, groupKey));
+            setClosed((current) => without(current, groupKey));
           }
         };
         return (
-          <section className="diary-date-group" role="rowgroup" key={group.date}>
+          <section className="diary-date-group" role="rowgroup" key={groupKey}>
             <div className="diary-date-header">
               <button
                 type="button"
@@ -64,8 +65,12 @@ export function DiaryList({ groups }: DiaryListProps) {
                 ) : (
                   <CaretRight size={14} weight="bold" aria-hidden="true" />
                 )}
-                <span className="diary-date">{formatDateKey(group.date)}</span>
-                <span className="kicker">{weekdayName(group.date)}</span>
+                <span className="diary-date">
+                  {group.date === null ? 'Fill time unavailable' : formatDateKey(group.date)}
+                </span>
+                <span className="kicker">
+                  {group.date === null ? 'outside the date range' : weekdayName(group.date)}
+                </span>
                 <span className="muted">{plural(group.events.length, 'entry', 'entries')}</span>
               </button>
               {open ? (
@@ -85,12 +90,12 @@ export function DiaryList({ groups }: DiaryListProps) {
 }
 
 function DiaryRow({ event }: { event: DiaryEvent }) {
-  const { time, ms } = formatClockTimeParts(event.time);
+  const clock = event.time === null ? null : formatClockTimeParts(event.time);
   return (
     <div className={`diary-row diary-row-${event.kind}`} role="row">
       <span className="diary-time" role="cell">
-        {time}
-        <span className="diary-time-ms">.{ms}</span>
+        {clock?.time}
+        {clock ? <span className="diary-time-ms">.{clock.ms}</span> : null}
       </span>
       {/* Empty stays empty: an error the server could not attribute names nobody. */}
       <span className="diary-subject" role="cell">

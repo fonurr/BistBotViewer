@@ -155,3 +155,7 @@
 .diary-ink-removed {
   color: var(--st-dead);
 }
+
+.diary-ink-wait {
+  color: var(--st-wait);
+}

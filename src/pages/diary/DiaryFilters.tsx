@@ -6,6 +6,7 @@ import {
   accountOptions,
   botPicks,
   MultiSelectFilter,
+  SymbolFilter,
   type FilterSelection,
 } from '../../components/EntityFilters';
 import { PopoverScrim } from '../../components/FilterPopover';
@@ -18,6 +19,7 @@ import {
   type DiaryEvent,
   type DiaryKind,
 } from '../../domain/diary';
+import { DIARY_ORDER_STAGES } from '../../domain/diaryOrders';
 import { DiarySortToggle } from './DiarySortToggle';
 import { defaultDiaryFilters, type DiaryFilterState } from './types';
 
@@ -44,25 +46,17 @@ interface DiaryFiltersProps {
 
 export function DiaryFilters(props: DiaryFiltersProps) {
   const { filters, onChange } = props;
-  const scope = useMemo(
-    () => ({
-      botFilter: filters.botFilter,
-      botIds: filters.botIds,
-      accountFilter: filters.accountFilter,
-      accountKeys: filters.accountKeys,
-      from: filters.from,
-      to: filters.to,
-    }),
-    [
-      filters.accountFilter,
-      filters.accountKeys,
-      filters.botFilter,
-      filters.botIds,
-      filters.from,
-      filters.to,
-    ],
+  const kindCounts = useMemo(() => diaryKindCounts(props.events, filters), [props.events, filters]);
+  const symbols = useMemo(
+    () =>
+      [...new Set(props.events.flatMap((event) => (event.symbol ? [event.symbol] : [])))].sort(),
+    [props.events],
   );
-  const kindCounts = useMemo(() => diaryKindCounts(props.events, scope), [props.events, scope]);
+  const origins = useMemo(
+    () =>
+      [...new Set(props.events.flatMap((event) => (event.origin ? [event.origin] : [])))].sort(),
+    [props.events],
+  );
   const botCounts = useMemo(() => diaryBotCounts(props.events), [props.events]);
   const accountByKey = useMemo(
     () =>
@@ -147,7 +141,7 @@ export function DiaryFilters(props: DiaryFiltersProps) {
           onChange={(botIds) => onChange({ ...filters, botIds })}
           one="bot"
           many="bots"
-          note="On, the Diary keeps an entry only where it names a ticked bot — a bot's own configuration change or budget snapshot. An account snapshot, a cash movement or an error names no bot, so it drops out even with every bot ticked. Off, the bot axis is not asked at all."
+          note="On, the Diary keeps an entry only where it names a ticked bot — a bot's own configuration change, budget snapshot or order event. An account snapshot, a cash movement or an error names no bot, so it drops out even with every bot ticked. Off, the bot axis is not asked at all."
         />
         <MultiSelectFilter
           name="diary-accounts"
@@ -179,6 +173,58 @@ export function DiaryFilters(props: DiaryFiltersProps) {
               'On, the Diary keeps an entry only where it names a ticked account. An error the server could not attribute names none, so it drops out even with every account ticked. Off, the account axis is not asked at all.'
             )
           }
+        />
+        <SymbolFilter
+          name="diary-symbols"
+          open={props.openFilter === 'diary-symbols'}
+          setOpen={props.setOpenFilter}
+          heading="symbols in the diary"
+          symbols={symbols}
+          selected={filters.symbols}
+          onChange={(symbols) => onChange({ ...filters, symbols })}
+          excluded={filters.symbolsExcluded}
+          onExcludedChange={(symbolsExcluded) => onChange({ ...filters, symbolsExcluded })}
+          keptNote={(_, list) => `Only entries naming ${list} are kept.`}
+          excludedNote={(_, list) => `Entries naming ${list} are excluded.`}
+          emptyNote="No loaded order names a matching symbol."
+        />
+        <MultiSelectFilter
+          name="diary-origins"
+          open={props.openFilter === 'diary-origins'}
+          setOpen={props.setOpenFilter}
+          heading="order origins"
+          options={origins.map((origin) => ({ key: origin, label: origin }))}
+          picks={[{ label: 'none', select: new Set<string>() }]}
+          active={filters.originFilter}
+          onActiveChange={(originFilter) =>
+            onChange({ ...filters, originFilter, origins: defaultDiaryFilters.origins })
+          }
+          activeLabel="filter"
+          inactiveLabel="any origin"
+          selected={filters.origins}
+          onChange={(origins) => onChange({ ...filters, origins })}
+          one="origin"
+          many="origins"
+          note="On, only entries naming a selected origin are kept. Ordinary bot orders name no origin."
+        />
+        <MultiSelectFilter
+          name="diary-order-stages"
+          open={props.openFilter === 'diary-order-stages'}
+          setOpen={props.setOpenFilter}
+          heading="order stages"
+          options={DIARY_ORDER_STAGES.map((stage) => ({ key: stage, label: stage }))}
+          picks={[{ label: 'none', select: new Set<string>() }]}
+          active={filters.orderStageFilter}
+          onActiveChange={(orderStageFilter) =>
+            onChange({ ...filters, orderStageFilter, orderStages: defaultDiaryFilters.orderStages })
+          }
+          activeLabel="filter"
+          inactiveLabel="any order stage"
+          selected={filters.orderStages}
+          onChange={(orderStages) => onChange({ ...filters, orderStages })}
+          one="stage"
+          many="stages"
+          note="Scheduled uses creation time; canceled includes rejected, expired and skipped orders. Filled includes partial fills. Final times are when the server observed the result; fills without a time appear separately, outside the date range."
         />
         <DiarySortToggle
           newestFirst={filters.newestFirst}

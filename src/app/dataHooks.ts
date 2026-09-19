@@ -139,7 +139,7 @@ export function useBotsData() {
 export const DIARY_ERROR_LIMIT = 2_000;
 
 /**
- * The five things the server writes down that are not orders, plus the bots and
+ * The diary records and the Book's four order tables, plus the bots and
  * accounts they are about. Every one is a whole-table read: the series gain a
  * row when something moves rather than on a clock, so upstream serves them
  * unwindowed, and the errors are the only source that needs a bound.
@@ -149,6 +149,13 @@ export function useDiaryData() {
     queries: [
       { queryKey: bistKeys.bots, queryFn: bistApi.getBots },
       { queryKey: bistKeys.accounts, queryFn: bistApi.getAccounts },
+      { queryKey: bistKeys.activeOrders(allBots), queryFn: () => bistApi.getActiveOrders(allBots) },
+      {
+        queryKey: bistKeys.canceledOrders(allBots),
+        queryFn: () => bistApi.getCanceledOrders(allBots),
+      },
+      { queryKey: bistKeys.positions(allBots), queryFn: () => bistApi.getPositions(allBots) },
+      { queryKey: bistKeys.closedTrades(allBots), queryFn: () => bistApi.getClosedTrades(allBots) },
       {
         queryKey: bistKeys.botHistory(allBots),
         queryFn: () => bistApi.getBotHistory(allBots),
@@ -165,9 +172,24 @@ export function useDiaryData() {
       },
     ],
   });
-  const [bots, accounts, botHistory, botSnapshots, accountSnapshots, accountTransactions, errors] =
-    results;
+  const [
+    bots,
+    accounts,
+    activeOrders,
+    canceledOrders,
+    positions,
+    closedTrades,
+    botHistory,
+    botSnapshots,
+    accountSnapshots,
+    accountTransactions,
+    errors,
+  ] = results;
   return {
+    activeOrders: activeOrders.data ?? [],
+    canceledOrders: canceledOrders.data ?? [],
+    positions: positions.data ?? [],
+    closedTrades: closedTrades.data ?? [],
     bots: bots.data ?? [],
     accounts: accounts.data ?? [],
     botHistory: botHistory.data ?? [],

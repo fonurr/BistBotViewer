@@ -7,15 +7,17 @@ import type {
   BotSnapshot,
   ErrorRow,
 } from '../bistApi/types';
+import type { BookChainSources } from './chains';
+import { diaryOrderEvents, type DiaryOrderStage } from './diaryOrders';
 import { accountIdentityKey } from './accounts';
 import { formatNumber, formatPercentage, formatSignedNumber, toIstanbulDateKey } from './format';
 
 /**
- * The five things the server writes down that are not orders. Each is one kind
+ * The records the server writes down, including order lifecycle events. Each is one kind
  * of diary entry, and the type filter ticks them by these keys.
  */
 export type DiaryKind =
-  'botHistory' | 'botSnapshots' | 'accountSnapshots' | 'accountTransactions' | 'errors';
+  'botHistory' | 'botSnapshots' | 'accountSnapshots' | 'accountTransactions' | 'errors' | 'orders';
 
 export const DIARY_KINDS: readonly DiaryKind[] = [
   'botHistory',
@@ -23,6 +25,7 @@ export const DIARY_KINDS: readonly DiaryKind[] = [
   'accountSnapshots',
   'accountTransactions',
   'errors',
+  'orders',
 ];
 
 export const diaryKindLabels: Readonly<Record<DiaryKind, string>> = {
@@ -31,6 +34,7 @@ export const diaryKindLabels: Readonly<Record<DiaryKind, string>> = {
   accountSnapshots: 'Account snapshots',
   accountTransactions: 'Account transactions',
   errors: 'Errors',
+  orders: 'Orders',
 };
 
 /**
@@ -39,7 +43,7 @@ export const diaryKindLabels: Readonly<Record<DiaryKind, string>> = {
  * so the sentence is built as fragments and the page colors them, rather than
  * as one string a stylesheet could never take apart again.
  */
-export type DiaryInk = 'text' | 'field' | 'value' | 'added' | 'removed';
+export type DiaryInk = 'text' | 'field' | 'value' | 'added' | 'removed' | 'wait';
 
 export interface DiaryFragment {
   ink: DiaryInk;
@@ -50,16 +54,19 @@ export interface DiaryEvent {
   /** Stable across re-reads: nothing here is keyed by list position. */
   id: string;
   kind: DiaryKind;
-  /** The event's own instant — the one thing that makes it an event at all. */
-  time: number;
-  /** The Istanbul calendar day `time` falls on. Filtering and grouping read this. */
-  date: string;
+  /** Null only for confirmed fills whose observation time was not stored. Otherwise the event's own instant — the one thing that makes it an event at all. */
+  time: number | null;
+  /** Null fills live in a separate untimed group. The Istanbul calendar day `time` falls on. Filtering and grouping read this. */
+  date: string | null;
   /** The bot the entry is about, where it is about one. */
   botId: string | null;
   /** `accountIdentityKey` of the account it is about, where one is known. */
   accountKey: string | null;
   /** What the bot/account column prints — the bot id, or `accountId · brokerageId`. */
   subject: string;
+  symbol?: string;
+  origin?: string | null;
+  orderStage?: DiaryOrderStage;
   description: DiaryFragment[];
 }
 
@@ -80,6 +87,7 @@ interface AccountSpan {
 }
 
 export interface DiarySources {
+  orders?: BookChainSources;
   bots: readonly Bot[];
   accounts: readonly Account[];
   botHistory: readonly BotHistoryEntry[];
@@ -106,13 +114,21 @@ export function buildDiary(sources: DiarySources): DiaryEvent[] {
     ...accountSnapshotEvents(sources.accountSnapshots),
     ...accountTransactionEvents(sources.accountTransactions),
     ...errorEvents(sources.errors),
+    ...(sources.orders
+      ? diaryOrderEvents(sources.orders, (botId, time) =>
+          time === null ? null : accountKeyAt(accountSpans.get(botId), time),
+        )
+      : []),
   ];
   return events.sort(byNewestFirst);
 }
 
 /** Newest first, ties broken by kind then id so a redraw never reshuffles. */
 function byNewestFirst(left: DiaryEvent, right: DiaryEvent): number {
-  if (left.time !== right.time) return right.time - left.time;
+  if (left.time === null && right.time !== null) return 1;
+  if (right.time === null && left.time !== null) return -1;
+  if (left.time !== null && right.time !== null && left.time !== right.time)
+    return right.time - left.time;
   if (left.kind !== right.kind) return left.kind.localeCompare(right.kind);
   return left.id.localeCompare(right.id);
 }
@@ -470,6 +486,12 @@ function joinFragments(groups: readonly DiaryFragment[][], separator: string): D
 }
 
 export interface DiaryFilter {
+  symbols?: ReadonlySet<string>;
+  symbolsExcluded?: boolean;
+  originFilter?: boolean;
+  origins?: ReadonlySet<string> | null;
+  orderStageFilter?: boolean;
+  orderStages?: ReadonlySet<string> | null;
   kinds: ReadonlySet<DiaryKind> | null;
   /** Whether the bot filter applies at all. Off, the bot axis is not asked. */
   botFilter: boolean;
@@ -499,10 +521,17 @@ export interface DiaryFilter {
 export function filterDiary(events: readonly DiaryEvent[], filter: DiaryFilter): DiaryEvent[] {
   return events.filter((event) => {
     if (filter.kinds !== null && !filter.kinds.has(event.kind)) return false;
-    if (filter.from !== null && event.date < filter.from) return false;
-    if (filter.to !== null && event.date > filter.to) return false;
+    if (event.date !== null && filter.from !== null && event.date < filter.from) return false;
+    if (event.date !== null && filter.to !== null && event.date > filter.to) return false;
     if (filter.botFilter && !ticked(event.botId, filter.botIds)) return false;
     if (filter.accountFilter && !ticked(event.accountKey, filter.accountKeys)) return false;
+    if (filter.symbols?.size) {
+      const matches = event.symbol !== undefined && filter.symbols.has(event.symbol);
+      if (filter.symbolsExcluded ? matches : !matches) return false;
+    }
+    if (filter.originFilter && !ticked(event.origin ?? null, filter.origins ?? null)) return false;
+    if (filter.orderStageFilter && !ticked(event.orderStage ?? null, filter.orderStages ?? null))
+      return false;
     return true;
   });
 }
@@ -517,7 +546,7 @@ function ticked(subject: string | null, selected: ReadonlySet<string> | null): b
 }
 
 export interface DiaryDateGroup {
-  date: string;
+  date: string | null;
   events: DiaryEvent[];
 }
 
@@ -526,7 +555,7 @@ export function groupDiaryByDate(
   events: readonly DiaryEvent[],
   newestFirst: boolean,
 ): DiaryDateGroup[] {
-  const byDate = new Map<string, DiaryEvent[]>();
+  const byDate = new Map<string | null, DiaryEvent[]>();
   for (const event of sortDiary(events, newestFirst)) {
     const group = byDate.get(event.date) ?? [];
     group.push(event);
@@ -534,14 +563,20 @@ export function groupDiaryByDate(
   }
   return [...byDate.entries()]
     .sort(([left], [right]) =>
-      newestFirst ? right.localeCompare(left) : left.localeCompare(right),
+      left === null
+        ? 1
+        : right === null
+          ? -1
+          : newestFirst
+            ? right.localeCompare(left)
+            : left.localeCompare(right),
     )
     .map(([date, group]) => ({ date, events: group }));
 }
 
 /** Every day the loaded entries fall on, ascending — what the range control offers. */
 export function diaryDates(events: readonly DiaryEvent[]): string[] {
-  return [...new Set(events.map((event) => event.date))].sort();
+  return [...new Set(events.flatMap((event) => (event.date === null ? [] : [event.date])))].sort();
 }
 
 /** How many entries each kind would contribute, before the type filter is read. */

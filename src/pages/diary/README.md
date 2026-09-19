@@ -1,9 +1,7 @@
 # Diary
 
-Everything MatriksOrder writes down that is **not an order**: the configurations a bot has been
-through, the budget figures behind each of them, what the terminal reported an account was worth,
-the cash that moved, and the errors the server recorded. One list, grouped by the day each entry
-happened on.
+The server's recorded bot and account history, cash movements, errors, and order lifecycles.
+Dated events are grouped by their own Istanbul calendar day.
 
 The page is read-only. It holds no write path, no order form and no confirmation — every source
 it reads is a record of something that already happened, and there is nothing here to act on. It
@@ -11,7 +9,7 @@ sits between Bots and The Book in the navigation.
 
 ## Reads
 
-All five sources come from the **API**, never from a log database. `src/app/dataHooks.ts`
+The five non-order sources come from the **API**, never from a log database. `src/app/dataHooks.ts`
 (`useDiaryData`) reads them through the `bistApi` boundary:
 
 | source               | RPC                                      | window                          |
@@ -31,23 +29,50 @@ back. When exactly that many arrive the cap, not the data, is what ended the lis
 filter says so in amber: an older day may hold errors the page never loaded. That is the
 "a state that cannot be confirmed is never green" rule applied to reach.
 
-None of the five reads is journaled. The event journal replays **order** rows, and nothing on
-this page or anywhere else in the viewer writes a configuration, a snapshot or a transaction
-while a read is in flight — every `ConfigureBot` is a person at a dialog on the Bots page.
-
-The bot and account reads share the Book's own cache entries, so opening the Diary after the Book
-adds four requests, not six.
+The non-order reads are not journaled. The order lifecycle uses the Book's same four
+journaled reads and cache keys: `GetActiveOrders`, `GetCanceledOrders`, `GetPositions`, and
+`GetClosedTrades`, all with `botId: '*'`. Validated SSE updates and snapshot reconciliation
+therefore update both pages. No event-arrival timestamps or browser history are retained.
+The bot and account reads share the Book's cache too.
 
 ## What counts as an entry
 
-**An entry that cannot name its own instant is not an entry.** It is not counted, not filtered,
-not drawn. The one case this really bites is a bot whose oldest configuration carries
+**A dated entry must name its own instant.** An untimed configuration is not counted, filtered
+or drawn. The one case this really bites is a bot whose oldest configuration carries
 `startTime: null` — the server never recorded when that configuration began, which reads as _not
 known_, never as zero and never as the beginning of time. That creation is dropped rather than
 filed under a day the page invented for it.
 
 A `ConfigureBot` whose only difference from the configuration before it is a stamp is dropped for
 the same reason inverted: there is nothing it can name that changed.
+
+## Order lifecycle
+
+`domain/diaryOrders.ts` projects the Book's normalized rows into one event per order and stage.
+Only `clientOrderId`, scoped by bot and side, joins multiple carriers of an order. Without it,
+source-row identities stay separate; neither `chainId` nor `positionId` identifies an order.
+
+- **Scheduled:** `createdTime`, including creation of an immediate order (described as `created`).
+  `scheduledTime` is the intended send time and never dates this event.
+- **Sent:** `sentTime`, never the exchange's registration time or an inferred send.
+- **Canceled:** `finalSeenTime` from CanceledOrders, including rejected, expired and skipped
+  orders. The stored status and reason are shown. An in-flight cancellation is not an end.
+- **Filled:** confirmed quantity, dated by `finalSeenTime` carried by a position or closed
+  trade, or the canceled remainder's observation time if that is the only evidence. The copy
+  says `fill observed`: the API stores no true execution timestamp.
+
+A working partial fill has no stored observation time. It appears under **Fill time unavailable**,
+with an empty clock, never under the order's send/registration date. This group stays last in
+both sort directions, outside the date range; the heading and stage-filter note disclose that.
+The other filters still apply. Such a fill contributes no selectable day or day count.
+This is the explicit exception to dropping untimed records: a known execution quantity must not
+disappear merely because its time is unavailable.
+
+Fills are cumulative per order, not fabricated individual execution ticks. An opening buy's
+quantity is its remaining position plus the closed slices carrying that same buy. A partially
+canceled order has one fill event and one cancellation event for the remainder, without counting
+its position/trade carrier twice. Partial fills are amber; confirmed completed fills are green.
+Creation/send events are deduplicated across those same carriers. Missing stamps are not invented.
 
 ## The day an entry is filed under
 
@@ -63,9 +88,9 @@ headed `event days` rather than `batch range` so the two words never get confuse
 ## Descriptions
 
 Each description is built as **fragments**, not as a string, because a reader has to tell a field
-name from the figure behind it at a glance. `src/domain/diary.ts` emits five inks and
+name from the figure behind it at a glance. `src/domain/diary.ts` emits six inks and
 `diary.css` colors them: `text` (prose, muted), `field` (accent), `value` (full-strength text),
-and `added` / `removed` for array deltas, in the live and dead status inks.
+and `added` / `removed` for array deltas, in the live and dead status inks, plus `wait` for scheduled and partial-fill states.
 
 What each kind says:
 
@@ -99,13 +124,20 @@ The toolbar is the Book's, reused rather than re-invented — `DateRangeFilter` 
 
 - **Event days.** The shared `DateRangeFilter`, headed `event days`. Only a day the loaded
   entries fall on can be picked; the steppers walk those days and the calendar disables the rest.
-- **Type.** The five kinds, all ticked by default, with `all` and `none`. Each counts the entries
+- **Type.** The six kinds, including Orders, all ticked by default, with `all` and `none`. Each counts the entries
   it would contribute **under the rest of the toolbar** — so the count moves with the bot,
-  account and date filters but not with its own ticks.
+  account, symbol, origin, stage and date filters but not with its own ticks.
 - **Bots.** The Book's control, with its `none` / `active` / `inactive` picks, behind a `filter`
   switch — the one the Book's time and status filters carry. **Off by default**, and off is not
   "every bot" but the axis not being asked.
 - **Accounts.** The same control behind the same switch, also off by default.
+- **Symbols.** The Book's searchable symbol selector, including exclude. Selecting symbols
+  keeps only entries naming them; exclude removes those symbols. Empty means any symbol.
+- **Origins.** The Book's switchable multi-select, with `all` and `none`. Off and empty by
+  default; on, an entry must name a selected origin. Ordinary bot orders name none.
+- **Order stages.** `scheduled`, `sent`, `canceled`, `filled`, with `filter`, `all`, `none`.
+  Off and empty by default, reset to none on either switch transition, like Accounts. On,
+  only entries with a selected stage survive, including partial fills under `filled`.
 - **Sort.** One button, not two: the order has exactly two states and only one can be in force,
   so the control names the one it is in (`Newest first` by default) and swaps on press. The
   up/down arrows beside it say that pressing re-sorts rather than filters.
@@ -130,7 +162,7 @@ So an error has to be about that bot or that account to survive a switched-on fi
 switches off, as the page opens, nothing is narrowed and every error is drawn.
 
 A bot entry also carries an account, and it is the account the bot was bound to **at that
-instant**, resolved from its own configuration timeline. A budget is charged against an account,
+instant**, resolved from its own configuration timeline. Closed trades carry an explicit historical account, which takes precedence for their order events. A budget is charged against an account,
 so a snapshot is filed under the one the bot was on then, not the one it sits on now. Narrowing
 to one account therefore narrows that account's bots with it.
 

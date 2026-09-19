@@ -8,6 +8,12 @@ import type { DiaryKind } from '../../domain/diary';
  */
 export interface DiaryFilterState {
   kinds: ReadonlySet<DiaryKind> | null;
+  symbols: ReadonlySet<string>;
+  symbolsExcluded: boolean;
+  originFilter: boolean;
+  origins: FilterSelection;
+  orderStageFilter: boolean;
+  orderStages: FilterSelection;
   /**
    * Whether the bot filter applies at all. It is off by default because
    * switching it on is itself a narrowing: an entry qualifies by naming a
@@ -35,6 +41,12 @@ export interface DiaryFilterState {
 
 export const defaultDiaryFilters: DiaryFilterState = {
   kinds: null,
+  symbols: new Set<string>(),
+  symbolsExcluded: false,
+  originFilter: false,
+  origins: new Set<string>(),
+  orderStageFilter: false,
+  orderStages: new Set<string>(),
   /* Both entity filters come on with nothing ticked, the way their `none`
      leaves them — `null` would be every option. */
   botFilter: false,
