@@ -106,7 +106,7 @@ export function bookRowPresentation(
         reasonPart(row.reason, row.reasonData),
         faint(row.raw.explanation?.trim() || undefined),
       ),
-      role: row.raw.status === 'Unconfirmed' ? 'warn' : 'dead',
+      role: 'dead',
     };
   }
 
