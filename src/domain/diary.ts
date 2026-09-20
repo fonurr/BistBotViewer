@@ -10,7 +10,7 @@ import type {
 import type { BookChainSources } from './chains';
 import { diaryOrderEvents, type DiaryOrderStage } from './diaryOrders';
 import { accountIdentityKey } from './accounts';
-import { formatNumber, formatPercentage, formatSignedNumber, toIstanbulDateKey } from './format';
+import { formatNumber, formatPercentage, toIstanbulDateKey } from './format';
 
 /**
  * The records the server writes down, including order lifecycle events. Each is one kind
@@ -69,6 +69,8 @@ export interface DiaryEvent {
   origin?: string | null;
   orderStage?: DiaryOrderStage;
   description: DiaryFragment[];
+  /** Account figures use four fixed reading columns; each column contains up to two visible metrics. */
+  descriptionColumns?: DiaryFragment[][][];
 }
 
 const text = (value: string): DiaryFragment => ({ ink: 'text', text: value });
@@ -395,52 +397,60 @@ function botSnapshotEvents(
  * an entry the brokerage did not send — not a zero — so it is left out for the
  * same reason a zero is: neither is something that moved.
  */
-const ACCOUNT_SNAPSHOT_FIELDS: readonly {
-  key: keyof AccountSnapshot;
-  label: string;
-  format?: 'percent' | 'signed' | 'text';
-}[] = [
-  { key: 'portfolioValue', label: 'portfolio' },
-  { key: 'portfolioValueExcludingForbidden', label: 'portfolio ex-forbidden' },
-  { key: 'buyingPower', label: 'buying power' },
-  { key: 'cashBalance', label: 'cash' },
-  { key: 'stockTotal', label: 'stocks' },
-  { key: 'fundTotal', label: 'funds' },
-  { key: 'pendingSettlementT1', label: 'T+1' },
-  { key: 'pendingSettlementT2', label: 'T+2' },
-  { key: 'dailyPnl', label: 'daily P&L', format: 'signed' },
-  { key: 'dailyPnlPercent', label: 'daily P&L %', format: 'percent' },
-  { key: 'marginTrading', label: 'margin', format: 'text' },
+const ACCOUNT_SNAPSHOT_COLUMNS: ReadonlyArray<
+  ReadonlyArray<{
+    key: keyof AccountSnapshot;
+    label: string;
+    forbidden?: boolean;
+  }>
+> = [
+  [
+    { key: 'portfolioValue', label: 'portfolio' },
+    {
+      key: 'portfolioValueExcludingForbidden',
+      label: 'portfolio -forbidden',
+      forbidden: true,
+    },
+  ],
+  [
+    { key: 'stockTotal', label: 'stocks' },
+    { key: 'fundTotal', label: 'funds' },
+  ],
+  [
+    { key: 'buyingPower', label: 'buying power' },
+    { key: 'cashBalance', label: 'cash' },
+  ],
+  [
+    { key: 'pendingSettlementT1', label: 'T+1' },
+    { key: 'pendingSettlementT2', label: 'T+2' },
+  ],
 ];
 
 function accountSnapshotEvents(snapshots: readonly AccountSnapshot[]): DiaryEvent[] {
-  return snapshots.map((snapshot) => ({
-    id: `accountSnapshot:${snapshot.id}`,
-    kind: 'accountSnapshots' as const,
-    time: snapshot.time,
-    date: toIstanbulDateKey(snapshot.time),
-    botId: null,
-    accountKey: accountIdentityKey(snapshot.accountId, snapshot.brokerageId),
-    subject: `${snapshot.accountId} · ${snapshot.brokerageId}`,
-    description: joinFragments(
-      ACCOUNT_SNAPSHOT_FIELDS.flatMap(({ key, label, format }) => {
+  return snapshots.map((snapshot) => {
+    const descriptionColumns = ACCOUNT_SNAPSHOT_COLUMNS.map((column) =>
+      column.flatMap(({ key, label, forbidden }) => {
         const figure = snapshot[key];
-        if (format === 'text') {
-          if (typeof figure !== 'string' || figure.trim() === '') return [];
-          return [[field(label), text(': '), value(figure)]];
-        }
         if (typeof figure !== 'number' || figure === 0) return [];
-        const printed =
-          format === 'percent'
-            ? formatPercentage(figure, 2)
-            : format === 'signed'
-              ? formatSignedNumber(figure, 2)
-              : formatNumber(figure, 2);
-        return [[field(label), text(': '), value(printed)]];
+        if (forbidden && figure === snapshot.portfolioValue) return [];
+        const labelFragments = forbidden
+          ? [field('portfolio '), { ink: 'removed' as const, text: '-forbidden' }]
+          : [field(label)];
+        return [[...labelFragments, text(': '), value(formatNumber(figure, 2))]];
       }),
-      ', ',
-    ),
-  }));
+    );
+    return {
+      id: `accountSnapshot:${snapshot.id}`,
+      kind: 'accountSnapshots' as const,
+      time: snapshot.time,
+      date: toIstanbulDateKey(snapshot.time),
+      botId: null,
+      accountKey: accountIdentityKey(snapshot.accountId, snapshot.brokerageId),
+      subject: `${snapshot.accountId} · ${snapshot.brokerageId}`,
+      description: joinFragments(descriptionColumns.flat(), ', '),
+      descriptionColumns,
+    };
+  });
 }
 
 /**

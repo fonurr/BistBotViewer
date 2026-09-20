@@ -123,7 +123,10 @@ What each kind says:
   because a negative one says the bot is over its limit.
 - **Account snapshots.** The same rule, plus: a `null` is left out too. The field set varies per
   brokerage and an entry the terminal did not send is a null, never a zero — and neither a null
-  nor a zero is something that moved.
+  nor a zero is something that moved. Margin and daily P&L figures are not shown. The remaining
+  figures form four two-line columns: portfolio / portfolio -forbidden, stocks / funds, buying
+  power / cash, and T+1 / T+2. A missing first figure lets the second move up; portfolio -forbidden
+  is omitted when it equals portfolio, and its `-forbidden` suffix uses the dead-red ink.
 - **Account transactions.** `1.250,75 TL withdrawn` / `… deposited`. The sign is the whole fact,
   so it is said in words and the figure is printed unsigned.
 - **Errors.** The stored `type` alone. The text behind one belongs in the log drawer, which is

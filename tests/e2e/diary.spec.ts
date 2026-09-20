@@ -30,7 +30,14 @@ function diaryScenario() {
         makeBotHistoryEntry({ forbiddenStocks: [], startTime: EARLIER, endTime: LATER }),
       ],
       botSnapshots: [makeBotSnapshot({ time: LATER })],
-      accountSnapshots: [makeAccountSnapshot({ time: LATER, marginTrading: 'Kapalı' })],
+      accountSnapshots: [
+        makeAccountSnapshot({
+          time: LATER,
+          portfolioValueExcludingForbidden: 9_000_000,
+          pendingSettlementT2: 5_000,
+          marginTrading: 'Kapalı',
+        }),
+      ],
       accountTransactions: [makeAccountTransaction({ time: EARLIER, amount: -1_250.75 })],
       errors: [],
     },
@@ -62,7 +69,15 @@ test('lists what the server wrote down outside the order tables, under each even
   // A zero column is left out of a snapshot; a null one with it.
   await expect(list).toContainText('budget: 500.000,00, held: 124.219,02');
   await expect(list).not.toContainText('scheduled buys');
-  await expect(list).toContainText('margin: Kapalı');
+  const accountColumns = list.locator('.diary-account-column');
+  await expect(accountColumns).toHaveCount(4);
+  await expect(accountColumns.nth(0)).toContainText(
+    'portfolio: 9.944.789,76portfolio -forbidden: 9.000.000,00',
+  );
+  await expect(accountColumns.nth(3)).toHaveText('T+2: 5.000,00');
+  await expect(list).not.toContainText('margin: Kapalı');
+  await expect(list).not.toContainText('daily P&L');
+  await expect(accountColumns.nth(0).locator('.diary-ink-removed')).toHaveText('-forbidden');
 
   // The field name, the value and the delta are drawn in three different inks.
   await expect(list.locator('.diary-ink-field').first()).toBeVisible();

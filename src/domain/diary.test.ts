@@ -42,6 +42,10 @@ function say(event: DiaryEvent): string {
   return event.description.map((fragment) => fragment.text).join('');
 }
 
+function sayFragments(fragments: DiaryEvent['description']): string {
+  return fragments.map((fragment) => fragment.text).join('');
+}
+
 describe('buildDiary', () => {
   it('drops an entry that cannot name its own instant', () => {
     const events = buildDiary(sources({ bots: [makeBot({ startTime: null })] }));
@@ -147,25 +151,67 @@ describe('buildDiary', () => {
     expect(say(events[0]!)).toBe('budget: 500.000,00, held: 124.219,02, remaining: −6.513,43');
   });
 
-  it('leaves a null out of an account snapshot, which is not a zero', () => {
+  it('keeps account figures in four two-line columns and leaves operational fields out', () => {
     const events = buildDiary(
       sources({
         accountSnapshots: [
           makeAccountSnapshot({
             time: noon,
-            cashBalance: null,
-            stockTotal: null,
-            dailyPnl: null,
-            dailyPnlPercent: null,
+            portfolioValue: 1_000,
+            portfolioValueExcludingForbidden: 900,
+            stockTotal: 600,
+            fundTotal: 100,
+            buyingPower: 300,
+            cashBalance: 200,
+            pendingSettlementT1: 20,
+            pendingSettlementT2: 30,
+            dailyPnl: -50,
+            dailyPnlPercent: -5,
             marginTrading: 'Kapalı',
           }),
         ],
       }),
     );
-    expect(say(events[0]!)).toBe(
-      'portfolio: 9.944.789,76, buying power: 75.433,64, margin: Kapalı',
+    const event = events[0]!;
+    expect(event.descriptionColumns?.map((column) => column.map(sayFragments))).toEqual([
+      ['portfolio: 1.000,00', 'portfolio -forbidden: 900,00'],
+      ['stocks: 600,00', 'funds: 100,00'],
+      ['buying power: 300,00', 'cash: 200,00'],
+      ['T+1: 20,00', 'T+2: 30,00'],
+    ]);
+    expect(event.descriptionColumns?.[0]?.[1]).toContainEqual({
+      ink: 'removed',
+      text: '-forbidden',
+    });
+    expect(say(event)).not.toContain('margin');
+    expect(say(event)).not.toContain('daily P&L');
+    expect(event.subject).toBe('ACC-1 · BRK-1');
+  });
+
+  it('compacts each account column after hiding zeroes and an unchanged forbidden portfolio', () => {
+    const events = buildDiary(
+      sources({
+        accountSnapshots: [
+          makeAccountSnapshot({
+            time: noon,
+            portfolioValue: 1_000,
+            portfolioValueExcludingForbidden: 1_000,
+            stockTotal: 0,
+            fundTotal: 100,
+            buyingPower: 0,
+            cashBalance: 200,
+            pendingSettlementT1: 0,
+            pendingSettlementT2: 300,
+          }),
+        ],
+      }),
     );
-    expect(events[0]!.subject).toBe('ACC-1 · BRK-1');
+    expect(events[0]!.descriptionColumns?.map((column) => column.map(sayFragments))).toEqual([
+      ['portfolio: 1.000,00'],
+      ['funds: 100,00'],
+      ['cash: 200,00'],
+      ['T+2: 300,00'],
+    ]);
   });
 
   it('says a cash movement in words and prints the figure unsigned', () => {

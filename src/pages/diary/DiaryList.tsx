@@ -147,20 +147,38 @@ function DiaryRow({ event, description }: { event: DiaryEvent; description: Diar
       <span className="diary-subject" role="cell">
         {event.subject}
       </span>
-      <span className="diary-description" role="cell">
-        {description.map((fragment, index) =>
-          fragment.superscript ? (
-            <sup className={`diary-ink-${fragment.ink} diary-day-offset`} key={index}>
-              {fragment.text}
-            </sup>
-          ) : (
-            <span className={`diary-ink-${fragment.ink}`} key={index}>
-              {fragment.text}
+      {event.descriptionColumns ? (
+        <span className="diary-description diary-account-description" role="cell">
+          {event.descriptionColumns.map((column, columnIndex) => (
+            <span className="diary-account-column" key={columnIndex}>
+              {column.map((metric, metricIndex) => (
+                <span className="diary-account-metric" key={metricIndex}>
+                  <DiaryFragments fragments={metric} />
+                </span>
+              ))}
             </span>
-          ),
-        )}
-      </span>
+          ))}
+        </span>
+      ) : (
+        <span className="diary-description" role="cell">
+          <DiaryFragments fragments={description} />
+        </span>
+      )}
     </div>
+  );
+}
+
+function DiaryFragments({ fragments }: { fragments: readonly DiaryFragment[] }) {
+  return fragments.map((fragment, index) =>
+    fragment.superscript ? (
+      <sup className={`diary-ink-${fragment.ink} diary-day-offset`} key={index}>
+        {fragment.text}
+      </sup>
+    ) : (
+      <span className={`diary-ink-${fragment.ink}`} key={index}>
+        {fragment.text}
+      </span>
+    ),
   );
 }
 

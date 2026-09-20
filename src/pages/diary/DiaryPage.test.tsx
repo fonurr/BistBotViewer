@@ -122,6 +122,42 @@ describe('Diary list', () => {
     expect(screen.getByText('+THYAO', { selector: '.diary-ink-added' })).toBeInTheDocument();
     expect(screen.getByText('500.000,00', { selector: '.diary-ink-value' })).toBeInTheDocument();
   });
+
+  it('draws account snapshots as four compact columns and colors the forbidden suffix red', async () => {
+    api.getAccountSnapshots.mockResolvedValue([
+      makeAccountSnapshot({
+        time: NOW,
+        portfolioValue: 1_000,
+        portfolioValueExcludingForbidden: 900,
+        stockTotal: 0,
+        fundTotal: 100,
+        buyingPower: 0,
+        cashBalance: 200,
+        pendingSettlementT1: 0,
+        pendingSettlementT2: 300,
+        dailyPnl: -50,
+        dailyPnlPercent: -5,
+        marginTrading: 'Kapalı',
+      }),
+    ]);
+
+    const { container } = renderDiary();
+    await loaded();
+
+    const columns = [...container.querySelectorAll('.diary-account-column')];
+    expect(columns).toHaveLength(4);
+    expect(columns.map((column) => column.textContent)).toEqual([
+      'portfolio: 1.000,00portfolio -forbidden: 900,00',
+      'funds: 100,00',
+      'cash: 200,00',
+      'T+2: 300,00',
+    ]);
+    expect(screen.getByText('-forbidden')).toHaveClass('diary-ink-removed');
+    expect(screen.queryByText('margin', { selector: '.diary-ink-field' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('daily P&L', { selector: '.diary-ink-field' }),
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe('Diary toolbar', () => {

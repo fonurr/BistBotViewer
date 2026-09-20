@@ -135,6 +135,27 @@
   overflow-wrap: anywhere;
 }
 
+/* Account snapshots alone are a compact two-by-four scan. Each column stacks
+   only the metrics that have a value, so a visible second metric naturally
+   takes the first line when the metric above it is absent. */
+.diary-account-description {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+  overflow-wrap: normal;
+}
+
+.diary-account-column {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.diary-account-metric {
+  white-space: nowrap;
+}
+
 /* The three inks a description is written in, plus the two an array delta adds. */
 .diary-ink-text {
   color: var(--mut);
