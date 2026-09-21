@@ -295,26 +295,30 @@ export function BookPage() {
     ],
     [todayCalendarDate, visibleChains],
   );
-  const closingBarsQuery = useQuery({
-    queryKey: priceKeys.closingBars(
+  const dailyBasesQuery = useQuery({
+    queryKey: priceKeys.dailyBases(
       `book:${basisSessionDate ?? 'none'}:${overnightSymbols.join(',')}`,
     ),
     queryFn: () =>
-      priceApi.getClosingAuctionBars(
-        overnightSymbols.map((symbol) => ({ symbol, sessionDate: basisSessionDate! })),
+      priceApi.getDailyBases(
+        overnightSymbols.map((symbol) => ({
+          symbol,
+          prevCloseSessionDate: todayCalendarDate,
+          fallbackSessionDate: basisSessionDate!,
+        })),
       ),
     enabled: snapshotAvailable && basisSessionDate !== null && overnightSymbols.length > 0,
     staleTime: Number.POSITIVE_INFINITY,
     retry: false,
   });
-  const closingBars = useMemo(
+  const priorSessionBases = useMemo(
     () =>
       new Map(
-        (closingBarsQuery.data ?? [])
+        (dailyBasesQuery.data ?? [])
           .filter((bar) => Number.isFinite(bar.close) && bar.close > 0)
           .map((bar) => [bar.symbol.toUpperCase(), bar.close] as const),
       ),
-    [closingBarsQuery.data],
+    [dailyBasesQuery.data],
   );
   // The strip averages exactly the slips the rows drew, so a withheld one — an
   // auction print, a late registration, an unpriced instant — is absent here too,
@@ -363,10 +367,10 @@ export function BookPage() {
         visibleChains,
         priceFeed.prices,
         priceFeed.trustworthy,
-        closingBars,
+        priorSessionBases,
         todayCalendarDate,
       ),
-    [closingBars, priceFeed.prices, priceFeed.trustworthy, todayCalendarDate, visibleChains],
+    [priorSessionBases, priceFeed.prices, priceFeed.trustworthy, todayCalendarDate, visibleChains],
   );
   // The days the range can be set to. Read as `active` that is every session a
   // loaded chain was alive in, which reaches days no chain was opened on.
@@ -649,7 +653,7 @@ export function BookPage() {
           prices={priceFeed.prices}
           pricesTrustworthy={priceFeed.trustworthy}
           todayCalendarDate={todayCalendarDate}
-          closingBars={closingBars}
+          priorSessionBases={priorSessionBases}
           intentCells={intentCells}
           calendar={calendar}
           writesHeldReason={writesHeldReason}

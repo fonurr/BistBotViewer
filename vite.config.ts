@@ -27,6 +27,8 @@ export default defineConfig(({ mode }) => {
       createPriceBridgePlugin({
         upstreamUrl: environment.BIST_VIEWER_PRICE_URL ?? 'http://127.0.0.1:8789/api',
         barsDatabasePath: environment.BIST_VIEWER_BARS_DB ?? '../DailyDataAggregator/data/bars.db',
+        availabilityDatabasePath:
+          environment.BIST_VIEWER_AVAILABILITY_DB ?? '../DailyDataAggregator/data/availability.db',
         fixtureMode,
       }),
       createHistBridgePlugin({
@@ -40,8 +42,7 @@ export default defineConfig(({ mode }) => {
           environment.BIST_VIEWER_BISTDATA_YAHOO_MINUTE_DB ??
           '../BistData/data/yahoo-minute.duckdb',
         yahooScaleDatabasePath:
-          environment.BIST_VIEWER_BISTDATA_YAHOO_SCALE_DB ??
-          '../BistData/data/yahoo-scale.duckdb',
+          environment.BIST_VIEWER_BISTDATA_YAHOO_SCALE_DB ?? '../BistData/data/yahoo-scale.duckdb',
         cacheDatabasePath: environment.BIST_VIEWER_INTENT_CACHE_DB ?? 'data/intent-bars.db',
         fixtureMode,
       }),

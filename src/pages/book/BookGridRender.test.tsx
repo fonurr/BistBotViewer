@@ -32,7 +32,7 @@ function renderGrid(
     prices: new Map([['THYAO', makeResolvedPrice()]]),
     pricesTrustworthy: true,
     todayCalendarDate: '2026-08-25',
-    closingBars: new Map<string, number>(),
+    priorSessionBases: new Map<string, number>(),
     intentCells: new Map<string, BookIntentCell>(),
     calendar: new Map(),
     writesHeldReason: null,
@@ -653,7 +653,7 @@ describe('BookGrid today column', () => {
 
   it('marks a carried-over position from the previous close when the bar is present', () => {
     renderGrid(
-      { closingBars: new Map([['THYAO', 300]]) },
+      { priorSessionBases: new Map([['THYAO', 300]]) },
       {
         activeOrders: [],
         canceledOrders: [],
@@ -669,7 +669,7 @@ describe('BookGrid today column', () => {
 
   it('withholds the today figure when the prior close is missing', () => {
     renderGrid(
-      { closingBars: new Map<string, number>() },
+      { priorSessionBases: new Map<string, number>() },
       {
         activeOrders: [],
         canceledOrders: [],

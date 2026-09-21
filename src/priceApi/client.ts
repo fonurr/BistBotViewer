@@ -2,10 +2,12 @@ import { z } from 'zod';
 
 import {
   auctionBarSchema,
+  dailyBasisSchema,
   latestBarSchema,
   producerStatusSchema,
   quoteSchema,
   type AuctionBarKey,
+  type DailyBasisKey,
 } from './types';
 
 const bridgeBase = '/bridge/price';
@@ -109,5 +111,27 @@ export const priceApi = {
       signal: AbortSignal.timeout(15_000),
     });
     return parseResponse(response, z.array(auctionBarSchema));
+  },
+  getDailyBases: async (keys: readonly DailyBasisKey[]) => {
+    const unique = [
+      ...new Map(
+        keys.map((key) => [
+          `${key.symbol.toUpperCase()}|${key.prevCloseSessionDate}|${key.fallbackSessionDate}`,
+          {
+            symbol: key.symbol.toUpperCase(),
+            prevCloseSessionDate: key.prevCloseSessionDate,
+            fallbackSessionDate: key.fallbackSessionDate,
+          },
+        ]),
+      ).values(),
+    ];
+    if (unique.length === 0) return [];
+    const response = await fetch(`${bridgeBase}/bars/daily-bases`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keys: unique }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    return parseResponse(response, z.array(dailyBasisSchema));
   },
 };

@@ -22,7 +22,7 @@ function todayContext(overrides: Partial<RowTodayContext> = {}): RowTodayContext
     marketPrice: null,
     pricesTrustworthy: true,
     todayCalendarDate: '2026-08-25',
-    prevClose: null,
+    priorSessionBasis: null,
     ...overrides,
   };
 }
@@ -109,7 +109,7 @@ describe('Book row today figure', () => {
       chain.positionRows[0]!,
       chain,
       state,
-      todayContext({ marketPrice: 320, todayCalendarDate: '2026-08-26', prevClose: 310 }),
+      todayContext({ marketPrice: 320, todayCalendarDate: '2026-08-26', priorSessionBasis: 310 }),
     );
 
     expect(today).toEqual({ value: 100 * (320 - 310), basis: 100 * 310 });
@@ -124,7 +124,11 @@ describe('Book row today figure', () => {
         row,
         chain,
         state,
-        todayContext({ marketPrice: 320, todayCalendarDate: '2026-08-26', prevClose: null }),
+        todayContext({
+          marketPrice: 320,
+          todayCalendarDate: '2026-08-26',
+          priorSessionBasis: null,
+        }),
       ),
     ).toEqual({ value: null, basis: 0 });
     expect(
@@ -135,7 +139,7 @@ describe('Book row today figure', () => {
         todayContext({
           marketPrice: 320,
           todayCalendarDate: '2026-08-26',
-          prevClose: 310,
+          priorSessionBasis: 310,
           pricesTrustworthy: false,
         }),
       ),
@@ -190,7 +194,7 @@ describe('Book row today figure', () => {
         closeLeg,
         chain!,
         deriveFilledPnlState([], []),
-        todayContext({ todayCalendarDate: '2026-08-25', prevClose: 304 }),
+        todayContext({ todayCalendarDate: '2026-08-25', priorSessionBasis: 304 }),
       ),
     ).toEqual({ value: 100 * (306 - 304), basis: 100 * 304 });
   });
@@ -210,7 +214,7 @@ describe('Book row today figure', () => {
         closeLeg,
         tradeChain!,
         deriveFilledPnlState([], []),
-        todayContext({ todayCalendarDate: '2026-08-26', prevClose: 304 }),
+        todayContext({ todayCalendarDate: '2026-08-26', priorSessionBasis: 304 }),
       ),
     ).toBeNull();
 

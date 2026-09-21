@@ -66,15 +66,15 @@ interface BookGridProps {
   prices: ReadonlyMap<string, ResolvedPrice>;
   pricesTrustworthy: boolean;
   /**
-   * Today's Istanbul calendar date, and the previous trading session's closing-auction
-   * close per symbol. Together they drive the `today` column: a chain opened on
+   * Today's Istanbul calendar date, and a verified basis per symbol for the prior session.
+   * Together they drive the `today` column: a chain opened on
    * `todayCalendarDate` is measured from its own entry, one carried over from
-   * `closingBars`. This is the wall-clock day, not the trading-session date — a session
+   * `priorSessionBases`. This is the wall-clock day, not the trading-session date — a session
    * rolls to the next day ten minutes past the close, while it is still today by the
    * clock until midnight, and the column must not zero itself at that boundary.
    */
   todayCalendarDate: string | null;
-  closingBars: ReadonlyMap<string, number>;
+  priorSessionBases: ReadonlyMap<string, number>;
   /**
    * The tape at each row's own intent instant, and the slip off it, already
    * guarded and keyed by row. Absent is the ordinary case: most intent instants
@@ -295,7 +295,7 @@ export function BookGrid(props: BookGridProps) {
                               prices={props.prices}
                               pricesTrustworthy={props.pricesTrustworthy}
                               todayCalendarDate={props.todayCalendarDate}
-                              closingBars={props.closingBars}
+                              priorSessionBases={props.priorSessionBases}
                               intentCells={props.intentCells}
                               calendar={props.calendar}
                               writesHeldReason={props.writesHeldReason}
@@ -365,7 +365,7 @@ interface ChainRowsProps {
   prices: ReadonlyMap<string, ResolvedPrice>;
   pricesTrustworthy: boolean;
   todayCalendarDate: string | null;
-  closingBars: ReadonlyMap<string, number>;
+  priorSessionBases: ReadonlyMap<string, number>;
   /**
    * The tape at each row's own intent instant, and the slip off it, already
    * guarded and keyed by row. Absent is the ordinary case: most intent instants
@@ -405,7 +405,7 @@ const ChainRows = memo(function ChainRows(props: ChainRowsProps) {
           pnlState={props.pnlState}
           pricesTrustworthy={props.pricesTrustworthy}
           todayCalendarDate={props.todayCalendarDate}
-          closingBars={props.closingBars}
+          priorSessionBases={props.priorSessionBases}
           intentCells={props.intentCells}
           calendar={props.calendar}
           writesHeldReason={props.writesHeldReason}
@@ -431,7 +431,7 @@ const ChainRows = memo(function ChainRows(props: ChainRowsProps) {
                 pnlState={props.pnlState}
                 pricesTrustworthy={props.pricesTrustworthy}
                 todayCalendarDate={props.todayCalendarDate}
-                closingBars={props.closingBars}
+                priorSessionBases={props.priorSessionBases}
                 intentCells={props.intentCells}
                 calendar={props.calendar}
                 writesHeldReason={props.writesHeldReason}
@@ -492,7 +492,7 @@ const BookRow = memo(function BookRow({
   pnlState,
   pricesTrustworthy,
   todayCalendarDate,
-  closingBars,
+  priorSessionBases,
   intentCells,
   calendar,
   writesHeldReason,
@@ -508,7 +508,7 @@ const BookRow = memo(function BookRow({
   pnlState: FilledPnlState;
   pricesTrustworthy: boolean;
   todayCalendarDate: string | null;
-  closingBars: ReadonlyMap<string, number>;
+  priorSessionBases: ReadonlyMap<string, number>;
   /**
    * The tape at each row's own intent instant, and the slip off it, already
    * guarded and keyed by row. Absent is the ordinary case: most intent instants
@@ -529,7 +529,7 @@ const BookRow = memo(function BookRow({
     marketPrice: price?.price ?? null,
     pricesTrustworthy,
     todayCalendarDate,
-    prevClose: closingBars.get(row.symbol.toUpperCase()) ?? null,
+    priorSessionBasis: priorSessionBases.get(row.symbol.toUpperCase()) ?? null,
   });
   const today = todayFigure?.value ?? null;
   const todayPercent =
@@ -903,7 +903,7 @@ export interface RowTodayContext {
   readonly marketPrice: number | null;
   readonly pricesTrustworthy: boolean;
   readonly todayCalendarDate: string | null;
-  readonly prevClose: number | null;
+  readonly priorSessionBasis: number | null;
 }
 
 export interface RowTodayFigure {
@@ -921,8 +921,8 @@ export interface RowTodayFigure {
  * session date here instead zeroed the column the moment that grace period passed, since a
  * chain that opened today would suddenly compare itself to today's own (now final) close. A
  * chain opened on `todayCalendarDate` is measured from its own average entry, so the two
- * columns agree; one carried over from an earlier day is measured from `prevClose`, the
- * previous trading session's closing-auction price.
+ * columns agree; one carried over from an earlier day is measured from the verified
+ * prior-session basis.
  *
  * `null` means the row carries no today figure at all (a buy, a canceled leg, a round trip
  * closed on an earlier day). A returned figure whose `value` is `null` is withheld — its
@@ -944,7 +944,7 @@ export function bookRowTodayFigure(
     const exposure = index.exposures.get(`position:${row.raw.id}`);
     if (!exposure) return null;
     if (!context.pricesTrustworthy || context.marketPrice === null) return withheld;
-    const basisPrice = openedToday ? exposure.averagePrice : context.prevClose;
+    const basisPrice = openedToday ? exposure.averagePrice : context.priorSessionBasis;
     if (basisPrice === null) return withheld;
     return {
       value: exposure.quantity * (context.marketPrice - basisPrice),
@@ -955,7 +955,7 @@ export function bookRowTodayFigure(
   if (row.source === 'active' && row.direction === 'sell') {
     const fill = index.partialSells.get(row.raw.id);
     if (!fill) return null;
-    const basisPrice = openedToday ? fill.averageOpenPrice : context.prevClose;
+    const basisPrice = openedToday ? fill.averageOpenPrice : context.priorSessionBasis;
     if (basisPrice === null) return withheld;
     return {
       value: fill.quantity * (fill.averageClosePrice - basisPrice),
@@ -966,7 +966,7 @@ export function bookRowTodayFigure(
   if (row.source === 'closed-trade' && row.leg === 'close') {
     const closeDay = toIstanbulDate(row.raw.closeFinalSeenTime ?? row.raw.closeOrderTime);
     if (closeDay === null || closeDay !== context.todayCalendarDate) return null;
-    const basisPrice = openedToday ? row.raw.averageOpenPrice : context.prevClose;
+    const basisPrice = openedToday ? row.raw.averageOpenPrice : context.priorSessionBasis;
     if (basisPrice === null) return withheld;
     return {
       value: row.raw.quantity * (row.raw.averageClosePrice - basisPrice),
@@ -986,7 +986,7 @@ export function summarizeBookToday(
   chains: readonly BookChain[],
   prices: ReadonlyMap<string, ResolvedPrice>,
   pricesTrustworthy: boolean,
-  closingBars: ReadonlyMap<string, number>,
+  priorSessionBases: ReadonlyMap<string, number>,
   todayCalendarDate: string | null,
 ): { available: boolean; value: number; percent: number | null } {
   const positions = new Map(
@@ -1013,7 +1013,7 @@ export function summarizeBookToday(
         marketPrice: prices.get(row.symbol.toUpperCase())?.price ?? null,
         pricesTrustworthy,
         todayCalendarDate,
-        prevClose: closingBars.get(row.symbol.toUpperCase()) ?? null,
+        priorSessionBasis: priorSessionBases.get(row.symbol.toUpperCase()) ?? null,
       });
       if (figure === null) continue;
       if (figure.value === null) {

@@ -62,6 +62,27 @@ export const auctionBarSchema = z.object({
 export type AuctionBar = z.infer<typeof auctionBarSchema>;
 export type AuctionBarKey = { symbol: string; sessionDate: string };
 
+/**
+ * The reference used to measure a carried position's move for the current Istanbul day.
+ * `PREV_CLOSE` is DDA's adjusted daily reference; the other sources only cover a missing one.
+ */
+export const dailyBasisSourceSchema = z.enum(['prev-close', 'closing-auction', 'last-bar']);
+
+export const dailyBasisSchema = z.object({
+  symbol: z.string(),
+  close: z.number(),
+  source: dailyBasisSourceSchema,
+});
+
+export type DailyBasis = z.infer<typeof dailyBasisSchema>;
+export type DailyBasisKey = {
+  symbol: string;
+  /** The current day, where DDA writes its adjusted PREV_CLOSE reference. */
+  prevCloseSessionDate: string;
+  /** The immediately preceding trading session, used by the two historical fallbacks. */
+  fallbackSessionDate: string;
+};
+
 export const barTypeSchema = z.enum(['OPENING_AUCTION', 'NORMAL', 'CLOSING_AUCTION']);
 
 export type BarType = z.infer<typeof barTypeSchema>;

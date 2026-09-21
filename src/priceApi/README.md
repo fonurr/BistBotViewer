@@ -1,7 +1,7 @@
 # DailyDataAggregator boundary
 
 This directory is the only frontend/server boundary allowed to contact DailyDataAggregator or
-read its `bars.db` database.
+read its `bars.db` and `availability.db` databases.
 
 - Live quotes are **pushed**: `/bridge/price/stream` proxies upstream `/api/stream` as SSE, and
   `subscribeToPriceEvents` validates every `subscribed` / `quote` / `status` / `stopped` event.
@@ -24,4 +24,9 @@ read its `bars.db` database.
 - Upstream only runs inside the session and refuses everything outside it, so the viewer opens the
   stream and polls only within `isProducerExpectedUp` (see [calendar.ts](../domain/calendar.ts)).
 - Historical queries accept bounded symbol/date pairs and fixed bar types, never SQL.
+- `/bars/daily-bases` resolves a carried position's daily basis in a strict order: the current
+  session's adjusted `PREV_CLOSE`, the prior session's `CLOSING_AUCTION`, then that session's
+  final real bar. The final bar is returned only when `availability.db` records no feed-wide
+  outage between it and the availability monitor's session-close boundary; unreadable or absent
+  availability history withholds that fallback.
 - SQLite is opened read-only/query-only for each request and closed immediately.

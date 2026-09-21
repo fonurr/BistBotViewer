@@ -9,11 +9,13 @@ import { BarsWorkerClient } from './barsWorkerClient';
 
 let fixtureDirectory: string;
 let databasePath: string;
+let availabilityDatabasePath: string;
 
 beforeAll(async () => {
   fixtureDirectory = path.join(os.tmpdir(), `bist-bot-viewer-bars-${process.pid}-${Date.now()}`);
   await mkdir(fixtureDirectory, { recursive: true });
   databasePath = path.join(fixtureDirectory, 'bars.db');
+  availabilityDatabasePath = path.join(fixtureDirectory, 'availability.db');
   const database = new DatabaseSync(databasePath);
   try {
     database.exec(`
@@ -29,11 +31,33 @@ beforeAll(async () => {
       INSERT INTO bars VALUES ('THYAO', '2026-08-26', 309.0, 400, 1777180000000, 'NORMAL');
       -- Written at 09:44 with yesterday's close, and stamped later than every real bar here, so a
       -- query that forgets to exclude it silently reports a synthetic price as the latest one.
-      INSERT INTO bars VALUES ('THYAO', '2026-08-26', 305.5, 0, 1777190000000, 'PREV_CLOSE');
+      INSERT INTO bars VALUES ('THYAO', '2026-08-26', 310.0, 0, 1777190000000, 'PREV_CLOSE');
       INSERT INTO bars VALUES ('GARAN', '2026-08-25', 88.4, 900, 1777100000000, 'CLOSING_AUCTION');
+      INSERT INTO bars VALUES ('AKBNK', '2026-08-25', 42.0, 300, 950, 'NORMAL');
+      INSERT INTO bars VALUES ('ISCTR', '2026-08-25', 12.0, 200, 800, 'NORMAL');
+      CREATE TABLE session_meta (
+        session_date TEXT NOT NULL,
+        is_trading_day INTEGER NOT NULL,
+        normal_end_ts INTEGER
+      );
+      INSERT INTO session_meta VALUES ('2026-08-25', 1, 1000);
     `);
   } finally {
     database.close();
+  }
+  const availability = new DatabaseSync(availabilityDatabasePath);
+  try {
+    availability.exec(`
+      CREATE TABLE outages (
+        session_date TEXT NOT NULL,
+        start_ts REAL NOT NULL,
+        end_ts REAL,
+        last_observed_ts REAL NOT NULL
+      );
+      INSERT INTO outages VALUES ('2026-08-25', 850, 900, 900);
+    `);
+  } finally {
+    availability.close();
   }
 });
 
@@ -92,6 +116,42 @@ describe('BarsWorkerClient', () => {
     const client = new BarsWorkerClient(databasePath);
     try {
       await expect(client.queryLatest(['NOSUCH'])).resolves.toEqual([]);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('uses the adjusted PREV_CLOSE, then the auction, then a verified final bar', async () => {
+    const client = new BarsWorkerClient(databasePath, availabilityDatabasePath);
+    try {
+      await expect(
+        client.queryDailyBases([
+          {
+            symbol: 'THYAO',
+            prevCloseSessionDate: '2026-08-26',
+            fallbackSessionDate: '2026-08-25',
+          },
+          {
+            symbol: 'GARAN',
+            prevCloseSessionDate: '2026-08-26',
+            fallbackSessionDate: '2026-08-25',
+          },
+          {
+            symbol: 'AKBNK',
+            prevCloseSessionDate: '2026-08-26',
+            fallbackSessionDate: '2026-08-25',
+          },
+          {
+            symbol: 'ISCTR',
+            prevCloseSessionDate: '2026-08-26',
+            fallbackSessionDate: '2026-08-25',
+          },
+        ]),
+      ).resolves.toEqual([
+        { symbol: 'THYAO', close: 310, source: 'prev-close' },
+        { symbol: 'GARAN', close: 88.4, source: 'closing-auction' },
+        { symbol: 'AKBNK', close: 42, source: 'last-bar' },
+      ]);
     } finally {
       await client.close();
     }

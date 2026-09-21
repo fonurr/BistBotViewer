@@ -1,9 +1,9 @@
 import path from 'node:path';
 import { Worker } from 'node:worker_threads';
 
-import type { AuctionBar, AuctionBarKey, LatestBar } from '../types.ts';
+import type { AuctionBar, AuctionBarKey, DailyBasis, DailyBasisKey, LatestBar } from '../types.ts';
 
-type BarsRow = AuctionBar | LatestBar;
+type BarsRow = AuctionBar | DailyBasis | LatestBar;
 
 interface WorkerReply {
   id: number;
@@ -17,7 +17,10 @@ interface PendingBarsRequest {
   timer: ReturnType<typeof setTimeout>;
 }
 
-type BarsQuery = { kind: 'closing'; keys: AuctionBarKey[] } | { kind: 'latest'; symbols: string[] };
+type BarsQuery =
+  | { kind: 'closing'; keys: AuctionBarKey[] }
+  | { kind: 'daily-bases'; keys: DailyBasisKey[] }
+  | { kind: 'latest'; symbols: string[] };
 
 const REQUEST_TIMEOUT_MS = 12_000;
 const MAX_PENDING_REQUESTS = 16;
@@ -28,7 +31,13 @@ export class BarsWorkerClient {
   private closing = false;
   private readonly pending = new Map<number, PendingBarsRequest>();
 
-  constructor(private readonly databasePath: string) {
+  constructor(
+    private readonly databasePath: string,
+    private readonly availabilityDatabasePath = path.join(
+      path.dirname(databasePath),
+      'availability.db',
+    ),
+  ) {
     this.spawnWorker();
   }
 
@@ -66,6 +75,10 @@ export class BarsWorkerClient {
     return this.run({ kind: 'latest', symbols }) as Promise<LatestBar[]>;
   }
 
+  queryDailyBases(keys: DailyBasisKey[]): Promise<DailyBasis[]> {
+    return this.run({ kind: 'daily-bases', keys }) as Promise<DailyBasis[]>;
+  }
+
   private run(request: BarsQuery): Promise<BarsRow[]> {
     if (this.closing) return Promise.reject(new Error('The bars worker is not running.'));
     if (this.pending.size >= MAX_PENDING_REQUESTS) {
@@ -83,7 +96,12 @@ export class BarsWorkerClient {
       }, REQUEST_TIMEOUT_MS);
       this.pending.set(id, { resolve, reject, timer });
       try {
-        worker.postMessage({ id, databasePath: this.databasePath, ...request });
+        worker.postMessage({
+          id,
+          databasePath: this.databasePath,
+          availabilityDatabasePath: this.availabilityDatabasePath,
+          ...request,
+        });
       } catch (error) {
         clearTimeout(timer);
         this.pending.delete(id);

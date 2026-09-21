@@ -26,6 +26,18 @@ const barKeysSchema = z.object({
     .max(1_000),
 });
 
+const dailyBasisKeysSchema = z.object({
+  keys: z
+    .array(
+      z.object({
+        symbol: z.string().regex(/^[A-Z0-9]{1,16}$/),
+        prevCloseSessionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        fallbackSessionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      }),
+    )
+    .max(1_000),
+});
+
 const SYMBOL_PATTERN = /^[A-Z0-9]{1,16}$/;
 /** Upstream refuses a stream over this many symbols and applies no part of the change. */
 const MAX_STREAM_SYMBOLS = 200;
@@ -52,6 +64,7 @@ function boundedSymbols(raw: string | null, limit: number): string[] | null {
 export interface PriceBridgeOptions {
   upstreamUrl: string;
   barsDatabasePath: string;
+  availabilityDatabasePath: string;
   fixtureMode?: boolean;
 }
 
@@ -64,6 +77,7 @@ function register(server: ViteDevServer | PreviewServer, middleware: ConnectMidd
 export function createPriceBridgePlugin(options: PriceBridgeOptions): Plugin {
   const upstreamBase = assertLoopbackTarget(options.upstreamUrl, 'BIST_VIEWER_PRICE_URL');
   const databasePath = path.resolve(process.cwd(), options.barsDatabasePath);
+  const availabilityDatabasePath = path.resolve(process.cwd(), options.availabilityDatabasePath);
   const testRuntime = Boolean(process.env.VITEST);
   let barsWorker: BarsWorkerClient | null = null;
 
@@ -152,12 +166,32 @@ export function createPriceBridgePlugin(options: PriceBridgeOptions): Plugin {
       }
     }
 
+    if (requestUrl.pathname === '/bridge/price/bars/daily-bases') {
+      if (request.method !== 'POST')
+        return sendJson(response, 405, { error: 'Method not allowed.' });
+      try {
+        const { value } = await readJsonBody(request, 128_000);
+        const parsed = dailyBasisKeysSchema.safeParse(value);
+        if (!parsed.success) throw new HttpInputError(400, 'The daily-basis query is invalid.');
+        if (!barsWorker) throw new Error('The bars worker is not running.');
+        const rows = await barsWorker.queryDailyBases(parsed.data.keys);
+        return sendJson(response, 200, rows);
+      } catch (error) {
+        if (error instanceof HttpInputError)
+          return sendJson(response, error.status, { error: error.message });
+        return sendJson(response, 503, {
+          error: 'bars.db could not answer this bounded read.',
+          detail: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
     return sendJson(response, 404, { error: 'Price bridge route not found.' });
   };
 
   const attachClose = (server: ViteDevServer | PreviewServer) => {
     if (!options.fixtureMode && !testRuntime && !barsWorker) {
-      barsWorker = new BarsWorkerClient(databasePath);
+      barsWorker = new BarsWorkerClient(databasePath, availabilityDatabasePath);
     }
     const httpServer = server.httpServer;
     if (httpServer && barsWorker) {

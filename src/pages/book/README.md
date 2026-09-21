@@ -550,12 +550,13 @@ the next day ten minutes past the close while it is still today by the clock unt
 the session date here instead used to zero the column the moment that grace period passed, because a
 chain that opened today would suddenly compare itself to today's own, now-final close. A chain whose
 batch falls on today's calendar date is measured from its own average entry, so its `today` equals
-its `p&l`; one carried over from an earlier day is measured from the previous trading session's
-closing-auction bar, read from `bars.db` through the same `/bridge/price/bars/closing` route
-Performance uses — the percentage is then against that prior close, not the entry cost. It appears on
+its `p&l`; one carried over from an earlier day is measured from a verified daily basis: first the
+current session's adjusted DDA `PREV_CLOSE`, then the prior trading session's closing-auction bar,
+then its final real bar only where DDA's availability history proves no feed-wide outage from that
+bar to the session-close boundary. The percentage is against that basis, not the entry cost. It appears on
 the same rows `p&l` does, but only on a sell that executed today — a round trip closed on an earlier
 day says nothing about today. The figure is **withheld, never qualified**: a Position with no trusted
-live price, or any carried-over row whose prior close is missing, leaves the cell empty rather than
+live price, or any carried-over row whose daily basis is missing, leaves the cell empty rather than
 showing a "last known" figure or falling back to the entry price.
 
 The **stat strip leads with `today`, left of `realized`**: every visible chain's move since today
@@ -571,7 +572,7 @@ Those are the two terms MatriksOrder charges a bot's `limit` with; the strip sum
 than reading `limit − remainingBotBudget`, which answers for a whole bot, not the chains on screen,
 and is also bent by buying power and the portfolio percentage. Every held position counts, forbidden
 symbol or not — `heldPositionsSize` charges a bot's budget the same way for one it already holds;
-`forbiddenStocks` only keeps a bot from buying the symbol, and only a holding it does *not* have is
+`forbiddenStocks` only keeps a bot from buying the symbol, and only a holding it does _not_ have is
 kept out of its budget, by discounting the portfolio value instead (`../MatriksOrder/API.md` —
 "Budget and limits"). A queued basket owns no order yet and reserves nothing, the same as a scheduled
 buy not yet sized — no price or quantity — which contributes zero rather than voiding the whole
