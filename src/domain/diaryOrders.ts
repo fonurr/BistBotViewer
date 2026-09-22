@@ -128,12 +128,14 @@ export function diaryOrderEvents(
         ...(dueTime.dayOffset === null
           ? []
           : [{ ...part('value', dueTime.dayOffset), superscript: true }]),
+        ...quantityWords(originalQuantity),
         ...priceWords('order price', scheduled.orderPrice),
       ]);
     }
     const marketPrice = rows.find((entry) => entry.marketPrice !== null)?.marketPrice ?? null;
     add('sent', stamp('sentTime'), [
       part('field', 'sent'),
+      ...quantityWords(originalQuantity),
       ...priceWords('market price', marketPrice),
     ]);
     if (dead) {
@@ -145,15 +147,21 @@ export function diaryOrderEvents(
             ? 'canceled externally'
             : `canceled by ${dead.statusSource.toLowerCase()}`
           : status.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
+      // `canceledQuantity` is 0 on a fire-time-resolved or never-sized order, which is
+      // not a count of anything; the full order size stands in for it instead.
+      const remainder =
+        dead.canceledQuantity !== null && dead.canceledQuantity > 0 ? dead.canceledQuantity : null;
       add('canceled', dead.finalSeenTime, [
         part(status === 'Unconfirmed' ? 'wait' : 'removed', words),
-        ...(filled > 0 && dead.canceledQuantity !== null
-          ? [
-              part('text', ', '),
-              part('value', formatNumber(dead.canceledQuantity, 0)),
-              part('text', ' remaining'),
-            ]
-          : []),
+        ...(filled > 0
+          ? remainder !== null
+            ? [
+                part('text', ', '),
+                part('value', formatNumber(remainder, 0)),
+                part('text', ' remaining'),
+              ]
+            : []
+          : quantityWords(remainder ?? originalQuantity)),
         ...(dead.reason ? [part('text', ': '), part('value', dead.reason)] : []),
       ]);
     }
@@ -176,4 +184,11 @@ export function diaryOrderEvents(
 
 function priceWords(label: string, price: number | null): DiaryFragment[] {
   return price === null ? [] : [part('text', `, ${label} `), part('value', formatNumber(price))];
+}
+
+// A stored 0 means never sized, not a count, so it is treated as unknown here too.
+function quantityWords(quantity: number | null): DiaryFragment[] {
+  return quantity === null || quantity <= 0
+    ? []
+    : [part('text', ', '), part('value', formatNumber(quantity, 0)), part('text', ' shares')];
 }

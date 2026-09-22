@@ -55,13 +55,17 @@ source-row identities stay separate; neither `chainId` nor `positionId` identifi
 
 - **Scheduled:** `createdTime` for a recorded schedule only. The sentence names its target
   `scheduledTime` (Istanbul clock, with the Book's superscript `+1`, `+2`, etc. relative to
-  the event day; no offset on the same day) and stored order price.
-  Immediate orders have no creation entry. Skipped/SkippedForNow rows carry a hypothetical
-  schedule but were never admitted, so they produce no scheduled event.
-- **Sent:** `sentTime`, never the exchange's registration time or an inferred send. The stored
-  market price is included when present and explicitly labeled `market price`.
+  the event day; no offset on the same day), the order's quantity when known, and stored
+  order price. Immediate orders have no creation entry. Skipped/SkippedForNow rows carry a
+  hypothetical schedule but were never admitted, so they produce no scheduled event.
+- **Sent:** `sentTime`, never the exchange's registration time or an inferred send. The order's
+  quantity is included when known, and the stored market price is included when present and
+  explicitly labeled `market price`.
 - **Canceled:** `finalSeenTime` from CanceledOrders, including rejected, expired and skipped
-  orders. The stored status and reason are shown. An in-flight cancellation is not an end.
+  orders. The stored status and reason are shown, plus a quantity when one is known: the order's
+  full size when nothing filled, or the unfilled `remaining` count when part of it did (a stored
+  `0` means the order's size was never fixed — fire-time-resolved or a skip — not a count of
+  zero, so it stands in for nothing). An in-flight cancellation is not an end.
 - **Filled:** confirmed quantity, dated by `finalSeenTime` carried by a position or closed
   trade, or the canceled remainder's observation time if that is the only timestamp. The API
   stores no true execution timestamp; this remains stated in the filter help, not on each row.

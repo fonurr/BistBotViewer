@@ -65,8 +65,10 @@ describe('order diary', () => {
       averagePrice: 300.25,
     });
     const events = eventsFor({ positions: [order] });
-    expect(say(events[0]!)).toBe('THYAO buy scheduled for 09:55:30+1, order price 300,00.');
-    expect(say(events[1]!)).toBe('THYAO buy sent, market price 299,00.');
+    expect(say(events[0]!)).toBe(
+      'THYAO buy scheduled for 09:55:30+1, 100 shares, order price 300,00.',
+    );
+    expect(say(events[1]!)).toBe('THYAO buy sent, 100 shares, market price 299,00.');
     expect(say(events[2]!)).toBe('THYAO buy filled, 100 shares, average fill price 300,25.');
     expect(
       events.every((event) =>
@@ -77,7 +79,7 @@ describe('order diary', () => {
     const sale = eventsFor({
       activeOrders: [makeActiveOrder({ direction: 'sell', marketPrice: null })],
     });
-    expect(say(sale[0]!)).toBe('AKBNK sell sent.');
+    expect(say(sale[0]!)).toBe('AKBNK sell sent, 40 shares.');
     expect(sale[0]!.description.some((fragment) => fragment.ink === 'sell')).toBe(true);
   });
 
@@ -96,12 +98,13 @@ describe('order diary', () => {
 
   it('does not invent a creation event or missing prices', () => {
     const events = eventsFor({ activeOrders: [makeActiveOrder({ marketPrice: null })] });
-    expect(events.map((event) => say(event))).toEqual(['AKBNK buy sent.']);
+    expect(events.map((event) => say(event))).toEqual(['AKBNK buy sent, 40 shares.']);
   });
-  it('does not infer a fill from a zero canceled quantity on an unsized order', () => {
+  it('does not infer a fill, nor state a quantity, from a zero canceled quantity on an unsized order', () => {
     const events = eventsFor({
       canceledOrders: [
         makeCanceledOrder({
+          orderQuantity: 0,
           canceledQuantity: 0,
           status: 'Canceled',
           source: 'Server',
@@ -112,6 +115,22 @@ describe('order diary', () => {
     expect(events.some((event) => event.orderStage === 'filled')).toBe(false);
     expect(say(events.find((event) => event.orderStage === 'canceled')!)).toBe(
       'THYAO sell canceled by server: BuyGuard.',
+    );
+  });
+  it('falls back to the order size when a fire-time-resolved cancel carries no remainder', () => {
+    const events = eventsFor({
+      canceledOrders: [
+        makeCanceledOrder({
+          orderQuantity: 120,
+          canceledQuantity: 0,
+          status: 'Canceled',
+          source: 'Server',
+          reason: 'BuyGuard',
+        }),
+      ],
+    });
+    expect(say(events.find((event) => event.orderStage === 'canceled')!)).toBe(
+      'THYAO sell canceled by server, 120 shares: BuyGuard.',
     );
   });
   it('uses creation for scheduled, send for sent and the observed end for canceled', () => {
@@ -128,8 +147,10 @@ describe('order diary', () => {
       ['sent', 300],
       ['canceled', 400],
     ]);
-    expect(say(events[0]!)).toBe('THYAO sell scheduled for 02:00:00, order price 310,00.');
-    expect(say(events[2]!)).toBe('THYAO sell canceled by user: BuyGuard.');
+    expect(say(events[0]!)).toBe(
+      'THYAO sell scheduled for 02:00:00, 120 shares, order price 310,00.',
+    );
+    expect(say(events[2]!)).toBe('THYAO sell canceled by user, 120 shares: BuyGuard.');
   });
 
   it.each(['Rejected', 'Expired', 'Skipped', 'SkippedForNow'])(
